@@ -4,7 +4,7 @@ import socket
 import os, zipfile
 import logging
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
+app = Flask(__name__, static_folder='static', template_folder='')
 socketio = SocketIO(app, cors_allowed_origins='*')
 
 lan_enabled = False
@@ -15,7 +15,7 @@ def index():
     # request.remote_addr is '127.0.0.1' for IPv4 and '::1' for IPv6
     #if request.remote_addr not in ('127.0.0.1', '::1'):
     #    return redirect(url_for('viewer'))
-    return render_template('main.html')
+    return render_template('index.html')
 
 @app.route('/viewer')
 def viewer():
