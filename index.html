@@ -1,179 +1,58 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Beamer+</title>
-  <!-- PDF.js library -->
+  <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
-  <style>
-    /* global reset */
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      background-color: #fcfcfc;
-      font-family: sans-serif;
-    }
+  <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+  <script src="/static/js/shared.js" defer></script>
+  <script src="/static/js/main.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
 
-    /* control panel at top */
-    #control-panel {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      padding: 10px;
-      background: #222;
-      color: white;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      z-index: 100;
-      box-sizing: border-box;
-    }
-    /* buttons & range styling */
-    #control-panel button,
-    #control-panel input[type="range"] {
-      background: #444;
-      border: none;
-      color: white;
-      padding: 6px 10px;
-      font-size: 14px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    #control-panel button:hover { background: #666; }
-    #control-panel input[type="range"] { width: 100px; }
-
-    /* container for PDF and overlays */
-    #pdf-container {
-      position: absolute;
-      top: 50px;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    #viewer-wrapper {
-      position: relative;
-      width: 120vw;
-      height: 90vw;
-      max-width: 120vh;
-      max-height: 90vh;
-      background-color: white;
-    }
-
-    /* PDF canvas (bottom layer) */
-    #pdfCanvas {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
-    }
-
-    /* annotation canvas (above PDF, captures input) */
-    #annotationCanvas {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      cursor: crosshair;
-      z-index: 30;
-    }
-
-    /* video overlays (beneath annotation canvas) */
-    .slide-video {
-      position: absolute;
-      object-fit: contain;
-      pointer-events: none;   /* let annotationCanvas capture clicks */
-      z-index: 20;
-    }
-    /* hide PiP button in Chrome */
-    .slide-video::-webkit-media-controls-pip-button,
-    .slide-video::-webkit-media-controls-picture-in-picture-button {
-      display: none !important;
-    }
-
-    #color-picker {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .color-swatch {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      border: 2px solid #fff;
-      box-shadow: 0 0 0 1px #999;
-      cursor: pointer;
-      transition: box-shadow .1s;
-    }
-    .color-swatch.selected {
-      box-shadow: 0 0 0 2px #fff, 0 0 0 3px #000;
-    }
-
-    #timer-display {
-      cursor: pointer;        /* show hand on hover */
-    }
-    /* if you want a subtle hover effect */
-    #timer-display:hover {
-      background: #444;
-    }
-
-    .timer-container {
-      margin-left: auto;     /* this pushes it to the far right in the flex row */
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    input[type="file"] {
-      display: none;
-    }
-
-    .file-uploader {
-      background: #444;
-      border: none;
-      color: white;
-      padding: 6px 10px;
-      font-size: 14px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-  </style>
 </head>
 <body>
-
   <div id="control-panel">
-    <label for="upload-zip" class="file-uploader">Upload</label>
+    <div class="controls-left">
+    <button id="errBtn1", class="control_panel_btn"><i class="fa-solid fa-info"></i></button>
+    <label for="upload-zip" class="control_panel_btn"><i class="fa-solid fa-upload"></i></label>
+    <button id="show-lan-url", class="control_panel_btn"><i class="fa-solid fa-eye"></i></button>
     <input type="file" id="upload-zip" accept=".zip">
-    <button id="prev-slide">Previous</button>
-    <button id="next-slide">Next</button>
-    <button id="pen-tool">✏️ Pen</button>
-    <button id="highlight-tool">🖍️ Highlight</button>
+    <button id="prev-slide", class="control_panel_btn"><i class="fa-solid fa-arrow-left"></i></button>
+    <button id="next-slide" class="control_panel_btn"><i class="fa-solid fa-arrow-right"></i></button>  
+    </div>
+
+  <div class="controls-right">
+
+    <button id="pen-tool", class="control_panel_btn_selected"><i class="fa-solid fa-pen"></i></button>
+    <button id="highlight-tool", class="control_panel_btn"><i class="fa-solid fa-highlighter"></i></button>
     <div id="color-picker">
+      <span class="color-swatch" data-color="#ffffff" style="background:#eeeeee"></span>
       <span class="color-swatch" data-color="#e74c3c" style="background:#e74c3c"></span>
       <span class="color-swatch" data-color="#f1c40f" style="background:#f1c40f"></span>
       <span class="color-swatch" data-color="#2ecc71" style="background:#2ecc71"></span>
       <span class="color-swatch" data-color="#3498db" style="background:#3498db"></span>
       <span class="color-swatch" data-color="#9b59b6" style="background:#9b59b6"></span>
-      <span class="color-swatch" data-color="#34495e" style="background:#34495e"></span>
+      <span class="color-swatch" data-color="#111111" style="background:#333333"></span>
     </div>
-    <button id="eraser-tool">🧽 Eraser</button>
-    <label for="brush-size">Size:</label>
-    <input type="range" id="brush-size" min="1" max="20" value="5">
-    <button id="clear-annotations">🧹 Clear</button>
-
+    <button id="eraser-tool" class="control_panel_btn"><i class="fa-solid fa-eraser"></i></button>
+    <button id="brush_size_decrease" class="control_panel_btn"><i class="fa-solid fa-minus"></i></button>
+    <label id="brush_size_scroll" class="brush_size_scroll">5</label>
+    <button id="brush_size_increase" class="control_panel_btn"><i class="fa-solid fa-plus"></i></button>
+    <button id="clear-annotations" class="control_panel_btn"><i class="fa-solid fa-broom"></i></button>
     <div class="timer-container">
-    <span id="timer-display">00:00</span>
-    <button id="timer-reset">🔄 Reset</button>
+      <span id="timer_display">00:00</span>
     </div>
-
   </div>
+</div>
 
   <div id="pdf-container">
     <div id="viewer-wrapper">
@@ -182,359 +61,6 @@
     </div>
   </div>
 
-  <script>
-  // --- Globals & state -------------------
-  let config, pdfURL, videoFiles = {};
-  let currentPDF;
-  let currentSlideIndex = 0;
 
-  let isErasing     = false;
-  let isHighlighting= false;
-  let brushSize     = 5;
-  let drawing       = false;
-
-  const strokesMap     = {};      // store strokes per slide
-  let strokes          = [];      // current slide strokes
-  let currentStroke    = null;    // stroke being drawn
-
-  // DOM elements
-  const pdfCanvas        = document.getElementById('pdfCanvas');
-  const pdfCtx           = pdfCanvas.getContext('2d');
-  const annotationCanvas = document.getElementById('annotationCanvas');
-  const annotationCtx    = annotationCanvas.getContext('2d');
-  annotationCtx.lineCap  = 'round';
-  annotationCtx.lineJoin = 'round';
-
-  annotationCtx.lineCap = 'round';
-
-  let currentColor = '#34495e';
-
-
-  // --- Initialization --------------------
-
-  // handle a user selecting a ZIP
-  document.getElementById('upload-zip').addEventListener('change', async e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const zip = await JSZip.loadAsync(file);
-
-    // unzip and categorize files
-    zip.forEach(async (path, entry) => {
-      if (path.match(/\.pdf$/i)) {
-        const blob = await entry.async('blob');
-        pdfURL = URL.createObjectURL(blob);
-      }
-      else if (path.match(/\.json$/i)) {
-        const text = await entry.async('text');
-        config = JSON.parse(text);
-      }
-      else if (path.match(/\.(mp4|webm|ogg)$/i)) {
-        const blob = await entry.async('blob');
-        videoFiles[path] = URL.createObjectURL(blob);
-      }
-    });
-
-    // wait until both PDF + config are loaded
-    const waitInit = setInterval(() => {
-      if (pdfURL && config) {
-        clearInterval(waitInit);
-        initFromUploads();
-      }
-    }, 100);
-  });
-
-  window.addEventListener('load', () => {
-    resizeCanvas();
-
-    // if no ZIP was used, fall back to static files
-    if (!config) {
-      fetch('static/config.json')
-        .then(r => r.json())
-        .then(cfg => {
-          config = cfg;
-          pdfURL = 'static/pdf/' + config.pdf;
-        })
-        .then(initFromUploads);
-    }
-  });
-
-  function initFromUploads() {
-  // PDF.js accepts a URL or Blob URL
-  pdfjsLib.getDocument(pdfURL).promise.then(pdf => {
-    currentPDF = pdf;
-    loadSlideStrokes();   // restore per‐slide annotations
-    showSlide();          // render first slide + any video overlays
-  });
-}
-
-  window.addEventListener('resize', resizeCanvas);
-
-  document.querySelectorAll('.color-swatch').forEach(swatch => {
-    swatch.addEventListener('click', e => {
-      // un-select all, then select this one
-      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
-      swatch.classList.add('selected');
-
-      // update the current color
-      currentColor = swatch.dataset.color;
-    });
-  });
-  // mark the default swatch selected
-  document.querySelector(`.color-swatch[data-color="${currentColor}"]`)
-  .classList.add('selected');
-
-  // --- Canvas sizing & DPI handling ------
-  function resizeCanvas() {
-    const rect = annotationCanvas.getBoundingClientRect();
-    const dpr  = window.devicePixelRatio || 1;
-
-    // set physical size
-    pdfCanvas.width        = rect.width  * dpr;
-    pdfCanvas.height       = rect.height * dpr;
-    annotationCanvas.width = rect.width  * dpr;
-    annotationCanvas.height= rect.height * dpr;
-
-    // keep CSS size
-    pdfCanvas.style.width        = rect.width  + 'px';
-    pdfCanvas.style.height       = rect.height + 'px';
-    annotationCanvas.style.width = rect.width  + 'px';
-    annotationCanvas.style.height= rect.height + 'px';
-
-    // scale drawing context
-    pdfCtx.scale(dpr, dpr);
-    annotationCtx.scale(dpr, dpr);
-
-    if (currentPDF) showSlide();
-  }
-
-  // --- Slide rendering & navigation ------
-  function showSlide() {
-    const slideNum = config.slides[currentSlideIndex];
-    const key      = 's' + slideNum;
-    const wrapper  = document.getElementById('viewer-wrapper');
-
-    // clear old video overlays
-    wrapper.querySelectorAll('.slide-video').forEach(v => v.remove());
-
-    // render PDF page underneath
-    renderPage(slideNum);
-
-    // redraw any existing annotations for this slide
-    redrawAllStrokes();
-
-    // add video overlays for this slide
-    let list = config.videos[key] || [];
-    if (!Array.isArray(list)) list = [list];
-    list.forEach(vinfo => addVideoOverlay(vinfo, wrapper));
-  }
-
-  function renderPage(pageNum) {
-    currentPDF.getPage(pageNum).then(page => {
-      const s   = config.scale || 1;
-      const vp  = page.getViewport({ scale: s });
-      // match canvas size to page
-      pdfCanvas.width        = vp.width;
-      pdfCanvas.height       = vp.height;
-      annotationCanvas.width = vp.width;
-      annotationCanvas.height= vp.height;
-      
-      // render the PDF page onto pdfCanvas
-      const renderTask = page.render({
-        canvasContext: pdfCtx,
-        viewport: vp
-      });
-
-      // once the PDF is fully drawn, replay your annotations
-      renderTask.promise.then(() => {
-        redrawAllStrokes();
-      });
-      
-    });
-  }
-
-  // go to next slide
-  document.getElementById('next-slide').onclick = () => changeSlide(1);
-  // go to previous slide
-  document.getElementById('prev-slide').onclick = () => changeSlide(-1);
-
-  function changeSlide(dir) {
-    // save current strokes to map
-    strokesMap[currentSlideIndex] = strokes.slice();
-    // move index
-    const newIndex = currentSlideIndex + dir;
-    if (newIndex < 0 || newIndex >= config.slides.length) return;
-    currentSlideIndex = newIndex;
-    loadSlideStrokes();
-    showSlide();
-  }
-
-  function loadSlideStrokes() {
-    // load saved strokes or start fresh
-    strokes = (strokesMap[currentSlideIndex] || []).slice();
-    currentStroke = null;
-  }
-
-  // --- Clear annotations for current slide ---
-  document.getElementById('clear-annotations').onclick = () => {
-    strokes = [];
-    strokesMap[currentSlideIndex] = [];
-    redrawAllStrokes();
-  };
-
-  // --- Tool buttons ------------------------
-  document.getElementById('pen-tool').onclick        = () => { isErasing = false; isHighlighting = false; };
-  document.getElementById('highlight-tool').onclick  = () => { isErasing = false; isHighlighting = true; };
-  document.getElementById('eraser-tool').onclick     = () => { isErasing = true;  isHighlighting = false; };
-  document.getElementById('brush-size').oninput      = e => brushSize = +e.target.value;
-
-  // --- Handle keyboard shortcuts -------------
-  document.addEventListener('keydown', e => {
-    switch (e.key) {
-      case 'ArrowRight': changeSlide(1); break;
-      case 'ArrowLeft':  changeSlide(-1); break;
-      case 'p': case 'P': isErasing = false; isHighlighting = false; break;
-      case 'h': case 'H': isErasing = false; isHighlighting = true;  break;
-      case 'e': case 'E': isErasing = true;  isHighlighting = false; break;
-      case 'c': case 'C': // clear
-        strokes = [];
-        strokesMap[currentSlideIndex] = [];
-        redrawAllStrokes();
-        break;
-      case '+': case '=':
-        brushSize = Math.min(20, brushSize + 1);
-        document.getElementById('brush-size').value = brushSize;
-        break;
-      case '-':
-        brushSize = Math.max(1, brushSize - 1);
-        document.getElementById('brush-size').value = brushSize;
-        break;
-    }
-  });
-
-  // --- Video overlay helper ---------------
-  function addVideoOverlay(vinfo, container) {
-    const vid = document.createElement('video');
-    vid.className                    = 'slide-video';
-    vid.src = videoFiles[vinfo.path] || ('static/videos/' + vinfo.path);
-    vid.disablePictureInPicture      = true;
-    vid.controlsList                 = 'nodownload nofullscreen noremoteplayback nopicture-in-picture';
-
-    // set position and size
-    vid.style.left   = vinfo.x      || '0%';
-    vid.style.top    = vinfo.y      || '0%';
-    vid.style.width  = vinfo.width  || '100%';
-    vid.style.height = vinfo.height || '100%';
-
-    const mode = vinfo.mode || 'once';
-
-    // shared toggle via clicking on annotationCanvas
-    annotationCanvas.addEventListener('click', e => {
-      const x = e.clientX, y = e.clientY;
-      const rect = vid.getBoundingClientRect();
-      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-        vid.paused ? vid.play() : vid.pause();
-      }
-    });
-
-    // configure playback mode
-    if (mode === 'once') {
-      vid.autoplay = true;
-      vid.loop     = false;
-      vid.muted    = true;
-      vid.play().catch(()=>{});
-    } else if (mode === 'loop') {
-      vid.autoplay = true;
-      vid.loop     = true;
-      vid.muted    = true;
-      vid.play().catch(()=>{});
-    } else if (mode === 'click') {
-      vid.autoplay = false;
-      vid.loop     = false;
-      vid.muted    = false;
-      // wait for user click
-    }
-
-    container.appendChild(vid);
-  }
-
-  // --- Annotation drawing ------------------
-  function getPos(e) {
-    const r = annotationCanvas.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    return { x: x * (annotationCanvas.width / r.width),
-             y: y * (annotationCanvas.height / r.height) };
-  }
-
-  function startDraw(e) {
-    drawing = true;
-    const p = getPos(e);
-    currentStroke = {
-      type:   isErasing   ? 'erase'
-          : isHighlighting ? 'highlight'
-          : 'pen',
-      width:  isHighlighting ? brushSize * 10 : isErasing ? brushSize * 5 : brushSize,
-      color:  currentColor,
-      points: [ p ]
-    };
-
-    e.preventDefault();
-  }
-
-  function draw(e) {
-    if (!drawing) return;
-    currentStroke.points.push(getPos(e));
-    redrawAllStrokes();
-    e.preventDefault();
-  }
-
-  function stopDraw() {
-    if (!drawing) return;
-    drawing = false;
-    strokes.push(currentStroke);
-    currentStroke = null;
-    annotationCtx.closePath();
-  }
-
-  function redrawAllStrokes() {
-    // clear canvas
-    annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-    // draw each stroke once
-    const all = currentStroke ? strokes.concat(currentStroke) : strokes;
-    all.forEach(stroke => {
-      annotationCtx.beginPath();
-      stroke.points.forEach((pt, i) => i===0
-        ? annotationCtx.moveTo(pt.x, pt.y)
-        : annotationCtx.lineTo(pt.x, pt.y)
-      );
-      annotationCtx.lineWidth = stroke.width;
-      switch (stroke.type) {
-        case 'erase':
-          annotationCtx.globalCompositeOperation = 'destination-out';
-          annotationCtx.globalAlpha = 1;
-          break;
-        case 'highlight':
-          annotationCtx.globalCompositeOperation = 'source-over';
-          annotationCtx.globalAlpha              = 0.4;
-          annotationCtx.strokeStyle              = stroke.color;
-          break;
-        default: // pen
-          annotationCtx.globalCompositeOperation = 'source-over';
-          annotationCtx.globalAlpha              = 1;
-          annotationCtx.strokeStyle              = stroke.color;
-      }
-      annotationCtx.stroke();
-    });
-    // reset composite & alpha
-    annotationCtx.globalCompositeOperation = 'source-over';
-    annotationCtx.globalAlpha = 1;
-  }
-
-  // bind drawing events
-  ['mousedown','touchstart'].forEach(evt => annotationCanvas.addEventListener(evt, startDraw));
-  ['mousemove','touchmove' ].forEach(evt => annotationCanvas.addEventListener(evt, draw));
-  ['mouseup','mouseout','touchend'].forEach(evt => annotationCanvas.addEventListener(evt, stopDraw));
-
-  </script>
 </body>
 </html>

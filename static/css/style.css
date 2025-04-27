@@ -1,0 +1,195 @@
+html, body { margin:0; padding:0; width: 100%; height:100%; overflow:hidden; background:#fcfcfc; font-family:sans-serif; }
+
+#control-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    background: #ccc;
+    color: white;
+    gap: 10px; /* space between columns */
+    box-sizing: border-box;
+  }
+  
+  /* each column is also a flex row */
+  .controls-left,
+  .controls-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .controls-center {
+    left: 50%;                /* center point of the panel */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* no flex:1 here */
+    position: static;           /* instead of absolute */
+    transform: none;            /* cancel centering hack */
+    flex: 1 1 100%;             /* full-width row */
+  }
+  
+/* make the center group grow and center its items */
+.controls-center {
+flex: 1;                 /* take up all available space */
+justify-content: center; /* center its children */
+}
+  
+/* right column stays right but its items flow normally */
+.controls-right {
+  justify-content: flex-end;
+}
+
+.control_panel_btn_view_only {
+  display: inline-block;
+  padding: 0.5em 1em;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 1rem;
+  color: #666;
+  background-color: #eeeeee; /* soft parchment-like background */
+  border: 2px solid #666;
+  border-radius: 4px;
+  text-decoration: none;
+}
+
+.control_panel_btn {
+  display: inline-block;
+  padding: 0.5em 1em;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 1rem;
+  color: #666;
+  background-color: #eeeeee; /* soft parchment-like background */
+  border: 2px solid #666;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.control_panel_btn:hover {
+  display: inline-block;
+  padding: 0.5em 1em;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 1rem;
+  color: #666;
+  background-color: #bbbbbb; /* soft parchment-like background */
+  border: 2px solid #666;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.control_panel_btn_selected {
+  display: inline-block;
+  padding: 0.5em 1em;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 1rem;
+  color: #eee;
+  background-color: #666; /* soft parchment-like background */
+  border: 2px solid #eeeeee;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+#control-panel input[type=range], #control-panel label.file-uploader { background:#444; border:none; color:white; padding:6px 10px; font-size:14px; border-radius:4px; width: 60px; cursor:pointer; }
+#control-panel label.file-uploader:hover { background:#666; }
+#control-panel input[type=range] { width:100px; }
+
+/* wrap the viewer-wrapper in a scrollable "zoom-container" */
+#pdf-container {
+    position: relative;
+    margin: 0 auto;
+    overflow: hidden;
+    background: #fff;
+    justify-content:center;
+    align-items:center;
+  }
+    
+  #viewer-wrapper {
+    transform-origin: top left;
+    position: relative; 
+    transition: transform 0.1s ease-out;
+    will-change: transform;
+  }
+
+.color_picker_view_only {
+  gap: 8px;
+  display: inline-block;
+}
+
+.color_swatch_view_only {
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  border:2px solid #666;
+}
+
+.brush_size_scroll {
+  font-family: "Open Sans", sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  font-style: normal;
+  color: #333;
+}
+
+
+#pdfCanvas, #annotationCanvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+#annotationCanvas { cursor:crosshair; z-index:30; }
+.slide-video { position:absolute; object-fit:contain; pointer-events:none; z-index:20; }
+.slide-video::-webkit-media-controls-pip-button, .slide-video::-webkit-media-controls-picture-in-picture-button { display:none!important; }
+#color-picker { display:flex; gap:6px; }
+.color-swatch { width:20px; height:20px; border-radius:50%; border:2px solid #666; cursor:pointer;}
+.color-swatch.selected { border: 2px solid #eee; }
+.timer-container { margin-left:auto; display:flex; gap:8px; align-items:center;}
+#timer_display {
+  cursor:pointer; font-family:monospace; font-size:14px; padding:4px 8px; background:#eee; color:#bbb; border-radius:4px; height:27px; line-height: 27px; border:2px solid #aaa;
+}
+#timer_display.timer_running { color:#666; }
+#timer_reset { background:#555; }
+#timer_reset:hover { background:#777; }
+input[type=file] { display:none; }
+#lan-url,
+#lan-url a {
+  color: white;
+}
+
+/* base modal styles */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  font-family: "Open Sans", sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  font-style: normal;
+  border: 2px solid #666;
+}
+.modal.show {
+  display: flex;
+  opacity: 1;
+}
+.modal-box {
+  background: #eee;
+  border: 2px solid #666;
+  padding: 1.5rem;
+  border-radius: 6px;
+  max-width: 45%;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 2rem; right: 1.65rem;
+  font-size: 2.5rem;
+  cursor: pointer;
+  color: #666;
+}
+.modal-close:hover {
+  color: #000;
+}
+
