@@ -11,11 +11,20 @@ import { setControlsEnabledAfterUpload, disableControlButtons } from './beamer_u
 const isViewer = window.BEAMER_ROLE === "viewer" || location.pathname === "/viewer";
 
 const socket = io();
-if (isViewer) socket.emit("join_viewer");
-else socket.emit("join_presenter");
+socket.on("connect", () => {
+    if (isViewer) {
+        console.log("viewer connected, joining viewer room");
+        socket.emit("join_viewer");
+    }
+});
+
 
 // Available AI models (loaded from presentation ZIP)
 let availableModels = [];
+
+let annCvs = null;
+let pdfCvs = null;
+let annotationSyncTimeout = null;
 
 window.addEventListener("DOMContentLoaded", () => {
 
@@ -208,7 +217,7 @@ uploadBtn.onClick(() => {
     fileInput.click();
 });
 
-let annotationSyncTimeout = null;
+
 annCvs.canvas.addEventListener('mouseup', () => syncAnnotations());
 annCvs.canvas.addEventListener('touchend', () => syncAnnotations());
 
@@ -647,6 +656,27 @@ socket.on("model_interaction", (data) => {
     }
 });
 
+socket.on("annotation_update", async ({ slide, annotation }) => {
+    if (!isViewer) return;
+
+    console.log("viewer got annotation for slide:", slide);
+
+    annotations[slide] = annotation;
+
+    if (slide === currentSlide && annCvs) {
+        annCvs.clear();
+        await annCvs.loadAnnotations(annotation);
+    }
+});
+
+socket.on("clear_annotations", () => {
+    if (!isViewer) return;
+
+    annotations[currentSlide] = null;
+    annCvs.clear();
+});
+
+
 async function loadSlideConfig(slideIndex) {
     if (slideConfigs[slideIndex]) {
         return slideConfigs[slideIndex];
@@ -694,8 +724,8 @@ function syncAnnotations() {
         // Save annotations locally per-slide and emit to server
         annotations[currentSlide] = annData;
         socket.emit('annotation_update', {
-            annotations: annData,
-            slideIndex: currentSlide
+            slide: currentSlide,
+            annotation: annData
         });
     }, 100);
 }

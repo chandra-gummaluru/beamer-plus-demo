@@ -1,4 +1,9 @@
 export class Canvas {
+    // Attributes:
+    // canvas
+    // pointer_mode
+    // ctx
+
     constructor(container, drawable=true) {
         if (!container) throw new Error("Container element is required");
 
@@ -13,8 +18,8 @@ export class Canvas {
         this.canvas.style.width = `${rect.width}px`;
         this.canvas.style.height = `${rect.height}px`;
         
-        this.pointer_mode = 'hand';
-        container.appendChild(this.canvas);
+        this.pointer_mode = 'hand'; // the default pointer_mode is 'hand'
+        container.appendChild(this.canvas);  // so this.canvas is inside the 'ann-canvas' div
 
         // Ensure clicks pass through when in hand mode by default
         if (this.pointer_mode === 'hand') {

@@ -373,10 +373,25 @@ def handle_widget_sync(data):
 
 @socketio.on("annotation_update")
 def handle_annotation_update(data):
-    # Broadcast to all viewers
-    slide = data.get("slide", presentation_state["current_slide"])
-    presentation_state["annotations"][slide] = data.get("annotation", data)
-    emit("annotation_update", data, room='viewer')
+    ## Broadcast to all viewers
+    # slide = data.get("slide", presentation_state["current_slide"])
+    # presentation_state["annotations"][slide] = data.get("annotation", data)
+    # emit("annotation_update", data, room='viewer')
+
+
+    print("annotation_update received, viewers in room:",
+        socketio.server.manager.rooms.get('/', {}).get('viewer'))
+    
+    slide = data["slide"]
+    annotation = data["annotation"]
+
+    presentation_state["annotations"][slide] = annotation
+
+    emit("annotation_update", {
+        "slide": slide,
+        "annotation": annotation
+    }, room="viewer")
+
 
 
 @socketio.on("clear_annotations")
@@ -426,4 +441,4 @@ def handle_survey_close(data=None):
 
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
