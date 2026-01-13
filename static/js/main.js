@@ -95,10 +95,15 @@ const undoBtn = new Button(otherControlsContainer, {
     label: '<i class="fa-solid fa-rotate-left"></i>'
 });
 
+undoBtn.el.style.marginLeft = '15px';
+undoBtn.el.style.marginRight = '5px';
+
 const redoBtn = new Button(otherControlsContainer, {
     className: 'btn',
     label: '<i class="fa-solid fa-rotate-right"></i>'
 });
+
+redoBtn.el.style.marginRight = '5px';
 
 const clearBtn = new Button(otherControlsContainer, {
     className: 'btn',
@@ -128,7 +133,7 @@ const displayControls = document.getElementById('display-controls');
 
 const uploadBtn = new Button(displayControls, {
     className: 'btn',
-    label: '<i class="fa-solid fa-upload"></i>',
+    label: '<i class="fa-solid fa-folder-open"></i>',
 });
 
 // Keep list of controls for enabling/disabling (upload button remains enabled)
@@ -536,14 +541,34 @@ async function renderSlide(slideIndex) {
 }
 
 fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    console.log('File selected:', file.name);
+    const files = Array.from(e.target.files);
+    if (!files || files.length === 0) return;
+    console.log('Folder selected with', files.length, 'files');
 
     const uploadModal = Modal.loading('Uploading Presentation', 'Please wait while your presentation is uploaded...');
 
+    // Create a ZIP file from the selected folder
+    const zip = new JSZip();
+    
+    // Add all files to the ZIP, preserving folder structure
+    for (const file of files) {
+        // Get the relative path from the file's webkitRelativePath
+        const relativePath = file.webkitRelativePath;
+        // Remove the first folder name to get the path relative to the selected folder
+        const pathParts = relativePath.split('/');
+        const zipPath = pathParts.slice(1).join('/');
+        
+        if (zipPath) {
+            const fileData = await file.arrayBuffer();
+            zip.file(zipPath, fileData);
+        }
+    }
+    
+    console.log('Creating ZIP from folder...');
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', zipBlob, 'presentation.zip');
 
     try {
         const response = await fetch('/api/presentation/upload', {
@@ -569,8 +594,8 @@ fileInput.addEventListener('change', async (e) => {
         return;
     }
     
-    const arrayBuffer = await file.arrayBuffer();
-    zipFile = await JSZip.loadAsync(arrayBuffer);
+    // Load the ZIP we just created into memory for frontend use
+    zipFile = zip;
     console.log('ZIP loaded into memory');
     
     const pdfFile = zipFile.file("slides.pdf");
