@@ -2,9 +2,10 @@
 
 #pdf-container,
 #viewer-container {
-    width: 100%;
+    width: calc(100% - 75px);
     height: calc(100vh - 60px);
     position: relative;
+    margin-left: 75px;
     overflow: hidden;
     display: flex;
     justify-content: center;

@@ -21,6 +21,77 @@ input[type=file] {
     display: none;
 }
 
+/* Slide Navigator */
+#slide-navigator {
+    position: fixed;
+    left: 0;
+    top: 60px;
+    bottom: 0;
+    width: 75px;
+    background: #ddd;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 100;
+    padding: 10px 0;
+    border-right: 2px solid #666;
+    box-shadow: none;
+}
+
+#slide-navigator::-webkit-scrollbar {
+    width: 10px;
+    background: #ccc;
+}
+
+#slide-navigator::-webkit-scrollbar-track {
+    background: #ccc;
+    border-left: 1px solid #999;
+}
+
+#slide-navigator::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 0;
+    border: none;
+}
+
+#slide-navigator::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+#slide-navigator::-webkit-scrollbar-button {
+    display: none;
+}
+
+.slide-nav-item {
+    width: 55px;
+    height: 50px;
+    margin: 8px auto;
+    background: #eee;
+    border: 2px solid #666;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    user-select: none;
+    font-family: "Computer Modern Sans", sans-serif;
+}
+
+.slide-nav-item:hover {
+    background: #ccc;
+    border-color: #444;
+}
+
+.slide-nav-item.active {
+    background: #bbb;
+    border-color: #333;
+    color: #000;
+    font-weight: 700;
+}
+
 /* Accessibility */
 *:focus-visible {
     outline: 2px solid #3498db;

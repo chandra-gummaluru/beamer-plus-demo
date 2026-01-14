@@ -29,10 +29,13 @@
 
 </head>
 <body>
+  <div id="slide-navigator"></div>
+  
   <div id="control-panel">
     <div class="controls-left">
     <div id="display-controls"></div>
-    <input type="file" id="upload-zip" webkitdirectory directory multiple>
+    <input type="file" id="upload-zip" accept=".zip" style="display: none;">
+    <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
     <div id="nav-container"></div>
     </div>
 

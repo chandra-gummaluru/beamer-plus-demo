@@ -216,10 +216,126 @@ redoBtn.onClick(async () => {
     syncAnnotations();
 });
 
-const fileInput = document.getElementById("upload-zip");
+const zipInput = document.getElementById("upload-zip");
+const folderInput = document.getElementById("upload-folder");
+
 uploadBtn.onClick(() => {
-    fileInput.click();
+    showUploadModal();
 });
+
+function showUploadModal() {
+    const existingModal = document.querySelector('.upload-modal-overlay');
+    if (existingModal) existingModal.remove();
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-modal-overlay';
+    
+    const modal = document.createElement('div');
+    modal.className = 'custom-modal-content';
+    modal.style.maxWidth = '500px';
+    
+    modal.innerHTML = `
+        <div class="custom-modal-icon">
+            <i class="fa-solid fa-upload"></i>
+        </div>
+        <h2 class="custom-modal-title">Upload Presentation</h2>
+        <p class="custom-modal-message">
+            Choose how you want to upload your presentation
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 1rem;">
+            <button class="custom-modal-btn upload-option-btn" data-type="zip" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                padding: 0.75em 1em;
+                font-size: 1rem;
+            ">
+                <i class="fa-solid fa-file-zipper"></i>
+                <span>Upload ZIP File</span>
+            </button>
+            <button class="custom-modal-btn upload-option-btn" data-type="folder" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                padding: 0.75em 1em;
+                font-size: 1rem;
+            ">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>Select Folder</span>
+            </button>
+        </div>
+        <div class="custom-modal-buttons">
+            <button class="custom-modal-btn custom-modal-btn-cancel">Cancel</button>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    // Handle button clicks
+    modal.querySelector('[data-type="zip"]').onclick = () => {
+        overlay.remove();
+        zipInput.click();
+    };
+    
+    modal.querySelector('[data-type="folder"]').onclick = () => {
+        overlay.remove();
+        folderInput.click();
+    };
+    
+    const cancelBtn = modal.querySelector('.custom-modal-btn-cancel');
+    cancelBtn.onclick = () => {
+        overlay.remove();
+    };
+    
+    overlay.onclick = (e) => {
+        if (e.target === overlay) overlay.remove();
+    };
+    
+    // ESC key handler
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+
+function populateSlideNavigator() {
+    const navigator = document.getElementById('slide-navigator');
+    navigator.innerHTML = '';
+    
+    for (let i = 0; i < totalSlides; i++) {
+        const item = document.createElement('div');
+        item.className = 'slide-nav-item';
+        item.textContent = i + 1;
+        item.dataset.slideIndex = i;
+        
+        item.onclick = () => {
+            goToSlide(i);
+        };
+        
+        navigator.appendChild(item);
+    }
+    
+    updateSlideNavigator();
+}
+
+function updateSlideNavigator() {
+    const items = document.querySelectorAll('.slide-nav-item');
+    items.forEach((item, index) => {
+        if (index === currentSlide) {
+            item.classList.add('active');
+            // Scroll into view
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            item.classList.remove('active');
+        }
+    });
+}
 
 let zipFile = null;
 let slideConfigs = {};
@@ -341,11 +457,45 @@ async function goToSlide(slideIndex) {
     
     currentSlide = slideIndex;
     await renderSlide(currentSlide);
+    updateSlideNavigator();
     
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
         slideIndex: currentSlide,
         annotations: annData
+    });
+}
+
+function populateSlideNavigator() {
+    const navigator = document.getElementById('slide-navigator');
+    navigator.innerHTML = '';
+    
+    for (let i = 0; i < totalSlides; i++) {
+        const item = document.createElement('div');
+        item.className = 'slide-nav-item';
+        item.textContent = i + 1;
+        item.dataset.slideIndex = i;
+        
+        item.onclick = () => {
+            goToSlide(i);
+        };
+        
+        navigator.appendChild(item);
+    }
+    
+    updateSlideNavigator();
+}
+
+function updateSlideNavigator() {
+    const items = document.querySelectorAll('.slide-nav-item');
+    items.forEach((item, index) => {
+        if (index === currentSlide) {
+            item.classList.add('active');
+            // Scroll into view
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            item.classList.remove('active');
+        }
     });
 }
 
@@ -540,7 +690,7 @@ async function renderSlide(slideIndex) {
     }
 }
 
-fileInput.addEventListener('change', async (e) => {
+folderInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
     console.log('Folder selected with', files.length, 'files');
@@ -618,6 +768,9 @@ fileInput.addEventListener('change', async (e) => {
     
     await renderSlide(0);
     
+    // Populate slide navigator
+    populateSlideNavigator();
+    
     socket.emit('presentation_loaded', {
         totalSlides: totalSlides
     });
@@ -625,6 +778,80 @@ fileInput.addEventListener('change', async (e) => {
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
     updateHistoryButtons();
+});
+
+zipInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    console.log('ZIP file selected:', file.name);
+
+    const uploadModal = Modal.loading('Uploading Presentation', 'Please wait while your presentation is uploaded...');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/presentation/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        console.log('Upload response:', data);
+
+        if (data.success) {
+            await loadAvailableModels();
+
+            console.log(`Presentation uploaded with ${data.models_found} Summarizer Script`);
+            if (data.models && data.models.length > 0) {
+                console.log('Available AI models:', data.models);
+            }
+        }
+    } catch (error) {
+        console.error('Error uploading presentation:', error);
+        uploadModal.close();
+        Modal.error('Upload Failed', 'Failed to upload presentation. Please try again.');
+        return;
+    }
+    
+    // Load the ZIP into memory for frontend use
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        zipFile = await JSZip.loadAsync(event.target.result);
+        console.log('ZIP loaded into memory');
+        
+        const pdfFile = zipFile.file("slides.pdf");
+        if (!pdfFile) {
+            console.error("The uploaded package is not a valid Beamer+ presentation (no slides.pdf found).");
+            uploadModal.close();
+            Modal.error('Invalid Presentation', 'The uploaded package is not a valid Beamer+ presentation.');
+            return;
+        }
+        
+        const pdfData = await pdfFile.async("arraybuffer");
+        const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        totalSlides = pdfDoc.numPages;
+        
+        console.log(`Total slides: ${totalSlides}`);
+        
+        currentSlide = 0;
+        slideConfigs = {};
+        mediaCache = {};
+        
+        await renderSlide(0);
+        
+        // Populate slide navigator
+        populateSlideNavigator();
+        
+        socket.emit('presentation_loaded', {
+            totalSlides: totalSlides
+        });
+        // Enable controls now that a presentation is loaded
+        uploadModal.close();
+        setControlsEnabledAfterUpload(true, __beamer_controls);
+        updateHistoryButtons();
+    };
+    reader.readAsArrayBuffer(file);
 });
 
 async function loadAvailableModels() {
