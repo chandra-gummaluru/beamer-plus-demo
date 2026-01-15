@@ -50,6 +50,7 @@ presentation_state = {
     "current_slide": 0,
     "annotations": {},  # Store annotationData or list of strokes
     "active_survey": None,  # payload broadcast in survey_show
+    "is_streaming": False
 }
 
 
@@ -337,12 +338,8 @@ def join_presenter():
 def join_viewer():
     join_room('viewer')
     emit('joined', {'room': 'viewer'})
-    emit("state_sync", {
-        "presentation_loaded": presentation_state["presentation_loaded"],
-        "current_slide": presentation_state["current_slide"],
-        "annotations": presentation_state["annotations"],
-        "active_survey": presentation_state["active_survey"],
-    })
+    if presentation_state.get("is_streaming"):
+        emit("presenter_started_stream")
 
 
 @socketio.on('join_survey')
@@ -353,69 +350,68 @@ def join_survey(data):
         emit('joined', {'room': f'survey_{survey_id}'})
 
 
-@socketio.on("presentation_loaded")
-def handle_presentation_loaded(data):
-    # Broadcast to all viewers that they should load the presentation
-    presentation_state["presentation_loaded"] = data
-    emit("presentation_loaded", data, room='viewer')
+# @socketio.on("presentation_loaded")
+# def handle_presentation_loaded(data):
+#     # Broadcast to all viewers that they should load the presentation
+#     presentation_state["presentation_loaded"] = data
+#     emit("presentation_loaded", data, room='viewer')
 
 
-@socketio.on("slide_change")
-def handle_slide_change(data):
-    # Broadcast to all viewers
-    presentation_state["current_slide"] = data.get("slide", 0)
-    emit("slide_change", data, room='viewer')
+# @socketio.on("slide_change")
+# def handle_slide_change(data):
+#     # Broadcast to all viewers
+#     presentation_state["current_slide"] = data.get("slide", 0)
+#     emit("slide_change", data, room='viewer')
 
-@socketio.on("widget_sync")
-def handle_widget_sync(data):
-    # Broadcast the widget data to all viewers
-    emit("widget_sync", data, room='viewer')
+# @socketio.on("widget_sync")
+# def handle_widget_sync(data):
+#     # Broadcast the widget data to all viewers
+#     emit("widget_sync", data, room='viewer')
 
-@socketio.on("annotation_update")
-def handle_annotation_update(data):
-    ## Broadcast to all viewers
-    # slide = data.get("slide", presentation_state["current_slide"])
-    # presentation_state["annotations"][slide] = data.get("annotation", data)
-    # emit("annotation_update", data, room='viewer')
-
-
-    print("annotation_update received, viewers in room:",
-        socketio.server.manager.rooms.get('/', {}).get('viewer'))
-    
-    slide = data["slide"]
-    annotation = data["annotation"]
-
-    presentation_state["annotations"][slide] = annotation
-
-    emit("annotation_update", {
-        "slide": slide,
-        "annotation": annotation
-    }, room="viewer")
-
-
-
-@socketio.on("clear_annotations")
-def handle_clear_annotations(data=None):
-    slide = None
-    if data and "slide" in data:
-        slide = data["slide"]
-    else:
-        slide = presentation_state["current_slide"]
-
-    presentation_state["annotations"].pop(slide, None)
-    emit("clear_annotations", room='viewer')
+# @socketio.on("annotation_update")
+# def handle_annotation_update(data):
+#     ## Broadcast to all viewers
+#     # slide = data.get("slide", presentation_state["current_slide"])
+#     # presentation_state["annotations"][slide] = data.get("annotation", data)
+#     # emit("annotation_update", data, room='viewer')
+#
+#
+#     print("annotation_update received, viewers in room:",
+#         socketio.server.manager.rooms.get('/', {}).get('viewer'))
+#
+#     slide = data["slide"]
+#     annotation = data["annotation"]
+#
+#     presentation_state["annotations"][slide] = annotation
+#
+#     emit("annotation_update", {
+#         "slide": slide,
+#         "annotation": annotation
+#     }, room="viewer")
 
 
-@socketio.on("video_action")
-def handle_video_action(data):
-    # Broadcast video play/pause to all viewers
-    emit("video_action", data, room='viewer')
+# @socketio.on("clear_annotations")
+# def handle_clear_annotations(data=None):
+#     slide = None
+#     if data and "slide" in data:
+#         slide = data["slide"]
+#     else:
+#         slide = presentation_state["current_slide"]
+#
+#     presentation_state["annotations"].pop(slide, None)
+#     emit("clear_annotations", room='viewer')
 
 
-@socketio.on("model_interaction")
-def handle_model_interaction(data):
-    # Broadcast 3D model interactions to all viewers
-    emit("model_interaction", data, room='viewer')
+# @socketio.on("video_action")
+# def handle_video_action(data):
+#     # Broadcast video play/pause to all viewers
+#     emit("video_action", data, room='viewer')
+
+
+# @socketio.on("model_interaction")
+# def handle_model_interaction(data):
+#     # Broadcast 3D model interactions to all viewers
+#     emit("model_interaction", data, room='viewer')
 
 
 @socketio.on("survey_show")
@@ -438,6 +434,37 @@ def handle_survey_close(data=None):
             surveys[survey_id]['active'] = False
             # Notify all users on the survey response page
             emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
+
+# WebRTC signaling events
+@socketio.on("presenter_started_stream")
+def handle_stream_start(data=None):
+    # Tell all viewers that the stream is ready
+    presentation_state["is_streaming"] = True
+    emit("presenter_started_stream", room='viewer')
+
+@socketio.on("stop_share")
+def handle_stop_share(data=None):
+    presentation_state["is_streaming"] = False
+    print("Stream stopped, state reset.")
+
+@socketio.on("viewer_ready_for_stream")
+def handle_viewer_ready(data):
+    # Triggers the Presenter to create a connection for this viewer
+    emit("viewer_ready_for_stream", data, room='presenter')
+@socketio.on('webrtc_offer')
+def handle_offer(data):
+    # Presenter sends offer to a specific viewer by socket ID
+    emit('webrtc_offer', data, room=data['target'])
+
+@socketio.on('webrtc_answer')
+def handle_answer(data):
+    # Viewer sends answer back to presenter
+    emit('webrtc_answer', data, room='presenter')
+
+@socketio.on('webrtc_ice_candidate')
+def handle_ice_candidate(data):
+    target = data['target']
+    emit('webrtc_ice_candidate', data, room=target)
 
 
 if __name__ == '__main__':

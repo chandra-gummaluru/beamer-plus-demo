@@ -10,11 +10,21 @@ import { setControlsEnabledAfterUpload, disableControlButtons } from './beamer_u
 
 const isViewer = window.BEAMER_ROLE === "viewer" || location.pathname === "/viewer";
 
+// WebRTC State
+const peers = {}; // Store peer connections (Presenter side)
+let localStream = null;
+let peerConnection = null; // Viewer side
+const rtcConfig = {
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+};
+
 const socket = io();
 socket.on("connect", () => {
     if (isViewer) {
         console.log("viewer connected, joining viewer room");
         socket.emit("join_viewer");
+    } else {
+        socket.emit("join_presenter");
     }
 });
 
@@ -48,8 +58,6 @@ let currentSlide = 0;
 let totalSlides = 0;
 let pdfDoc = null; // cache pdf document so we don't re-parse every render
 
-// Presenter only: UI + event handlers + emits
-if (!isViewer) {
 const timerContainer = document.getElementById("timer-container");
 const timer = new Timer(timerContainer);
 
@@ -155,6 +163,18 @@ const uploadBtn = new Button(displayControls, {
     label: '<i class="fa-solid fa-upload"></i>',
 });
 
+// Create Share Button (Presenter Only)
+let shareBtn = null;
+if (!isViewer) {
+    shareBtn = new Button(otherControlsContainer, {
+        className: 'btn',
+        label: '<i class="fa-solid fa-desktop"></i>',
+        id: 'share-btn'
+    });
+    shareBtn.el.title = "Start Screen Share";
+    shareBtn.onClick(() => startScreenShare());
+}
+
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
     hand, pen, highlighter, eraser,
@@ -165,7 +185,25 @@ const __beamer_controls = [
 ];
 
 // Disable at startup
-setControlsEnabledAfterUpload(false, __beamer_controls);
+if (isViewer) {
+    __beamer_controls.forEach(btn => {
+        btn.el.disabled = true;
+        btn.el.style.opacity = '0.5';
+        btn.el.style.pointerEvents = 'none';
+    });
+    // Disable results button specifically
+    if(surveyResultsBtn) {
+        surveyResultsBtn.el.style.opacity = '0.5';
+        surveyResultsBtn.el.style.display = 'none';
+    }
+    // Hide upload button
+    if(uploadBtn) uploadBtn.el.style.display = 'none';
+
+    // Disable canvas interaction
+    annCvs.canvas.style.pointerEvents = "none";
+} else {
+    setControlsEnabledAfterUpload(false, __beamer_controls);
+}
 
 // Full set used for temporary disabling (includes upload button)
 const __beamer_all_buttons = [...__beamer_controls, uploadBtn];
@@ -209,7 +247,7 @@ clearBtn.onClick(() => {
     annCvs.clear();
     // Clear current slide annotations locally and notify server
     annotations[currentSlide] = null;
-    socket.emit('clear_annotations');
+//    socket.emit('clear_annotations');
 });
 
 const fileInput = document.getElementById("upload-zip");
@@ -229,6 +267,137 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') goToSlide(currentSlide - 1);
     if (e.key === 'ArrowRight') goToSlide(currentSlide + 1);
 });
+
+async function startScreenShare() {
+    try {
+        // Get the display media
+        localStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                cursor: "always",
+                displaySurface: "browser",
+                frameRate: { ideal: 60, max: 120 },
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 }
+            },
+            audio: false,
+            preferCurrentTab: true,
+            selfBrowserSurface: "include"
+        });
+
+        const [track] = localStream.getVideoTracks();
+        if ('contentHint' in track) {
+            track.contentHint = 'text';
+        }
+
+        // Region Capture
+        try {
+            if (window.CropTarget && localStream.getVideoTracks()[0].cropTo) {
+                const pdfContainer = document.getElementById('pdf-container');
+                const cropTarget = await CropTarget.fromElement(pdfContainer);
+                const [track] = localStream.getVideoTracks();
+                await track.cropTo(cropTarget);
+                console.log("Region Capture Active: Toolbar hidden.");
+            }
+        } catch (err) {
+            console.warn("Region Capture failed (browser may not support it):", err);
+        }
+
+        // Handle stream stop
+        localStream.getVideoTracks()[0].onended = () => {
+            socket.emit('stop_share');
+            if (shareBtn) shareBtn.el.style.color = "";
+            Object.values(peers).forEach(p => p.close());
+        };
+
+        if (shareBtn) shareBtn.el.style.color = "red";
+        socket.emit('presenter_started_stream');
+
+    } catch (err) {
+        console.error("Error starting screen share:", err);
+        Modal.error("Screen Share Failed", err.message);
+    }
+}
+
+// WebRTC Socket Listeners (Presenter)
+if (!isViewer) {
+    socket.on('viewer_ready_for_stream', async (data) => {
+        if (!localStream) return;
+        const viewerId = data.socketId;
+        createPeerConnection(viewerId);
+    });
+
+    socket.on('webrtc_answer', async (data) => {
+        const pc = peers[data.sender];
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    });
+
+    socket.on('webrtc_ice_candidate', (data) => {
+        const pc = peers[data.sender];
+        if (pc && data.candidate) pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+    });
+}
+
+async function createPeerConnection(viewerId) {
+    const pc = new RTCPeerConnection(rtcConfig);
+    peers[viewerId] = pc;
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            socket.emit('webrtc_ice_candidate', { target: viewerId, candidate: event.candidate, sender: 'presenter' });
+        }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('webrtc_offer', { target: viewerId, sdp: offer });
+}
+
+// WebRTC Socket Listeners (Viewer)
+if (isViewer) {
+    socket.emit('viewer_ready_for_stream', { socketId: socket.id });
+
+    socket.on('webrtc_offer', async (data) => {
+        const vid = document.getElementById('remote-view');
+        if(vid) vid.style.display = 'block';
+        const contentContainer = document.getElementById('pdf-canvas');
+        if(contentContainer) {
+            contentContainer.style.display = 'none';
+            contentContainer.innerHTML = '';
+        }
+
+        peerConnection = new RTCPeerConnection(rtcConfig);
+
+        peerConnection.ontrack = (event) => {
+            if (vid && vid.srcObject !== event.streams[0]) {
+                vid.srcObject = event.streams[0];
+            }
+        };
+
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('webrtc_ice_candidate', { target: 'presenter', candidate: event.candidate, sender: socket.id });
+            }
+        };
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        socket.emit('webrtc_answer', { sender: socket.id, sdp: answer });
+    });
+
+    socket.on('presenter_started_stream', () => {
+        console.log("Stream started, requesting connection...");
+        socket.emit('viewer_ready_for_stream', { socketId: socket.id });
+    });
+
+    socket.on('webrtc_ice_candidate', (data) => {
+        if (peerConnection && data.candidate) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+    });
+}
 
 fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -288,31 +457,24 @@ fileInput.addEventListener('change', async (e) => {
 
     await renderSlide(0);
 
-    socket.emit('presentation_loaded', {
-        totalSlides: totalSlides
-    });
+//    socket.emit('presentation_loaded', {
+//        totalSlides: totalSlides
+//    });
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
 });
 
-    window.addEventListener('message', (event) => {
-        if (event.data.type === 'widget_sync') {
-            // Send to server
-            socket.emit('widget_sync', event.data);
-        }
-    });
-
-    socket.on('widget_sync', (payload) => {
-        const iframes = document.querySelectorAll('.widget-iframe');
-        iframes.forEach(iframe => {
-            iframe.contentWindow.postMessage({
-                type: 'widget_sync_receive',
-                action: payload.action,
-                data: payload.data
-            }, '*');
-        });
-    });
+//    socket.on('widget_sync', (payload) => {
+//        const iframes = document.querySelectorAll('.widget-iframe');
+//        iframes.forEach(iframe => {
+//            iframe.contentWindow.postMessage({
+//                type: 'widget_sync_receive',
+//                action: payload.action,
+//                data: payload.data
+//            }, '*');
+//        });
+//    });
 
 // Survey functionality
 let currentSurveyResults = null;
@@ -604,77 +766,76 @@ document.addEventListener('fullscreenchange', () => {
         }
     }, 100);
 });
-}
 
-socket.on("state_sync", (state) => {
-  console.log("state_sync received", state);
-});
+//socket.on("state_sync", (state) => {
+//  console.log("state_sync received", state);
+//});
+//
+//socket.on("presentation_loaded", async () => {
+//  if (!isViewer) return;
+//
+//  const resp = await fetch("/api/presentation/current");
+//  if (!resp.ok) return;
+//
+//  const blob = await resp.blob();
+//  await loadPresentationFromBlob(blob);
+//
+//  await renderSlide(0);
+//});
 
-socket.on("presentation_loaded", async () => {
-  if (!isViewer) return;
+//socket.on("slide_change", async ({ slideIndex, annotations: annData }) => {
+//    if (!isViewer) return;
+//
+//    if (!zipFile || !pdfDoc) {
+//        const resp = await fetch("/api/presentation/current");
+//        if (!resp.ok) return;
+//        const blob = await resp.blob();
+//        await loadPresentationFromBlob(blob);
+//    }
+//
+//    currentSlide = slideIndex;
+//
+//    if (annData) {
+//        annotations[slideIndex] = annData;
+//    }
+//
+//    await renderSlide(slideIndex);
+//    });
 
-  const resp = await fetch("/api/presentation/current");
-  if (!resp.ok) return;
+//socket.on("model_interaction", (data) => {
+//    const mv = document.querySelector(`model-viewer[data-model-id="${data.modelId}"]`);
+//
+//    if (mv) {
+//        const c = data.camera;
+//        const t = data.target;
+//
+//        mv.cameraOrbit = `${c.theta}rad ${c.phi}rad ${c.radius}m`;
+//
+//        mv.cameraTarget = `${t.x}m ${t.y}m ${t.z}m`;
+//
+//        mv.jumpCameraToGoal();
+//    }
+//});
 
-  const blob = await resp.blob();
-  await loadPresentationFromBlob(blob);
+//socket.on("annotation_update", async ({ slide, annotation }) => {
+//    if (!isViewer) return;
+//
+//    console.log("viewer got annotation for slide:", slide);
+//
+//    annotations[slide] = annotation;
+//
+//    if (slide === currentSlide && annCvs) {
+//        annCvs.clear();
+//        await annCvs.loadAnnotations(annotation);
+//    }
+//});
 
-  await renderSlide(0);
-});
-
-socket.on("slide_change", async ({ slideIndex, annotations: annData }) => {
-    if (!isViewer) return;
-
-    if (!zipFile || !pdfDoc) {
-        const resp = await fetch("/api/presentation/current");
-        if (!resp.ok) return;
-        const blob = await resp.blob();
-        await loadPresentationFromBlob(blob);
-    }
-
-    currentSlide = slideIndex;
-
-    if (annData) {
-        annotations[slideIndex] = annData;
-    }
-
-    await renderSlide(slideIndex);
-    });
-
-socket.on("model_interaction", (data) => {
-    const mv = document.querySelector(`model-viewer[data-model-id="${data.modelId}"]`);
-
-    if (mv) {
-        const c = data.camera;
-        const t = data.target;
-
-        mv.cameraOrbit = `${c.theta}rad ${c.phi}rad ${c.radius}m`;
-
-        mv.cameraTarget = `${t.x}m ${t.y}m ${t.z}m`;
-
-        mv.jumpCameraToGoal();
-    }
-});
-
-socket.on("annotation_update", async ({ slide, annotation }) => {
-    if (!isViewer) return;
-
-    console.log("viewer got annotation for slide:", slide);
-
-    annotations[slide] = annotation;
-
-    if (slide === currentSlide && annCvs) {
-        annCvs.clear();
-        await annCvs.loadAnnotations(annotation);
-    }
-});
-
-socket.on("clear_annotations", () => {
-    if (!isViewer) return;
-
-    annotations[currentSlide] = null;
-    annCvs.clear();
-});
+//socket.on("clear_annotations", () => {
+//    if (!isViewer) return;
+//
+//    annotations[currentSlide] = null;
+//    annCvs.clear();
+//});
 
 
 async function loadSlideConfig(slideIndex) {
@@ -723,10 +884,10 @@ function syncAnnotations() {
         const annData = annCvs.canvas.toDataURL("image/png");
         // Save annotations locally per-slide and emit to server
         annotations[currentSlide] = annData;
-        socket.emit('annotation_update', {
-            slide: currentSlide,
-            annotation: annData
-        });
+//        socket.emit('annotation_update', {
+//            slide: currentSlide,
+//            annotation: annData
+//        });
     }, 100);
 }
 
@@ -778,10 +939,10 @@ async function goToSlide(slideIndex) {
     await renderSlide(currentSlide);
 
     const annData = annCvs.canvas.toDataURL("image/png");
-    socket.emit('slide_change', {
-        slideIndex: currentSlide,
-        annotations: annData
-    });
+//    socket.emit('slide_change', {
+//        slideIndex: currentSlide,
+//        annotations: annData
+//    });
 }
 
 async function renderSlide(slideIndex) {
@@ -877,27 +1038,27 @@ async function renderSlide(slideIndex) {
                 video.controls = true;
             }
 
-            // Only presenter can have the access to control videos
-            if (!isViewer) {
-                video.addEventListener('play', () => {
-                    socket.emit('video_action', {
-                        videoId: v.id,
-                        slideIndex: currentSlide,
-                        action: 'play',
-                        currentTime: video.currentTime
-                    });
-                });
-
-                video.addEventListener('pause', () => {
-                    socket.emit('video_action', {
-                        videoId: v.id,
-                        slideIndex: currentSlide,
-                        action: 'pause',
-                        currentTime: video.currentTime
-                    });
-                });
-            }
-
+//            // Only presenter can have the access to control videos
+//            if (!isViewer) {
+//                video.addEventListener('play', () => {
+//                    socket.emit('video_action', {
+//                        videoId: v.id,
+//                        slideIndex: currentSlide,
+//                        action: 'play',
+//                        currentTime: video.currentTime
+//                    });
+//                });
+//
+//                video.addEventListener('pause', () => {
+//                    socket.emit('video_action', {
+//                        videoId: v.id,
+//                        slideIndex: currentSlide,
+//                        action: 'pause',
+//                        currentTime: video.currentTime
+//                    });
+//                });
+//            }
+//
             // Allow clicking the video to toggle play/pause
             video.addEventListener('click', (ev) => {
                 // Only toggle when in hand mode (clicks should pass through otherwise)
@@ -947,27 +1108,27 @@ async function renderSlide(slideIndex) {
             mv.style.height = `${m.height * containerRect.height}px`;
             mv.style.zIndex = m.zIndex || 5;
 
-            // Only presenter can have the access to control models
-            if (!isViewer) {
-                mv.addEventListener('camera-change', () => {
-                    const camera = mv.getCameraOrbit();
-                    const target = mv.getCameraTarget();
-                    socket.emit('model_interaction', {
-                        modelId: m.id,
-                        slideIndex: currentSlide,
-                        camera: {
-                            theta: camera.theta,
-                            phi: camera.phi,
-                            radius: camera.radius
-                        },
-                        target: {
-                            x: target.x,
-                            y: target.y,
-                            z: target.z
-                        }
-                    });
-                });
-            }
+//            // Only presenter can have the access to control models
+//            if (!isViewer) {
+//                mv.addEventListener('camera-change', () => {
+//                    const camera = mv.getCameraOrbit();
+//                    const target = mv.getCameraTarget();
+//                    socket.emit('model_interaction', {
+//                        modelId: m.id,
+//                        slideIndex: currentSlide,
+//                        camera: {
+//                            theta: camera.theta,
+//                            phi: camera.phi,
+//                            radius: camera.radius
+//                        },
+//                        target: {
+//                            x: target.x,
+//                            y: target.y,
+//                            z: target.z
+//                        }
+//                    });
+//                });
+//            }
 
             slide_canvas_container.appendChild(mv);
         }

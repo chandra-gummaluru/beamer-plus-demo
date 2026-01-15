@@ -6,8 +6,13 @@
 
   <!-- Beamer+ Modular CSS -->
   <link rel="stylesheet" href="/static/css/shared.css">
-  <link rel="stylesheet" href="/static/css/canvas.css">
+  <link rel="stylesheet" href="/static/css/control-panel.css">
+  <link rel="stylesheet" href="/static/css/button.css">
+  <link rel="stylesheet" href="/static/css/selector.css">
   <link rel="stylesheet" href="/static/css/label.css">
+  <link rel="stylesheet" href="/static/css/toggle.css">
+  <link rel="stylesheet" href="/static/css/canvas.css">
+  <link rel="stylesheet" href="/static/css/timer.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/survey.css">
 
@@ -19,6 +24,8 @@
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
   </script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 </head>
 
@@ -39,12 +46,38 @@
     VIEWER
   </div>
 
-  <div id="pdf-container">
-    <div id="ann-canvas"></div>
-    <div id="pdf-canvas"></div>
+  <div id="control-panel">
+    <div class="controls-left">
+        <div id="display-controls"></div>
+        <input type="file" id="upload-zip" accept=".zip" style="display:none">
+        <div id="nav-container"></div>
+    </div>
+
+    <div class="controls-right">
+        <div id="tool-container"></div>
+        <div id="color-picker"></div>
+        <div id="brush-controls"></div>
+        <div id="other-controls"></div>
+        <div id="timer-container"></div>
+    </div>
   </div>
 
-  <div id="interaction-blocker"></div>
+  <div id="pdf-container">
+    <video id="remote-view" autoplay playsinline muted style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        z-index: 5;
+        display: none;
+        background: #fff;
+    "></video>
+
+    <div id="ann-canvas" style="z-index: 10;"></div>
+    <div id="pdf-canvas"></div>
+  </div>
 
 
   <script type="module"
