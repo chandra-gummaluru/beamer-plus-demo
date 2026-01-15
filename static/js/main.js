@@ -148,6 +148,186 @@ screenShareBtn.el.disabled = true;
 screenShareBtn.el.style.opacity = '0.5';
 screenShareBtn.el.style.cursor = 'not-allowed';
 
+// Create floating annotation panel toggle button for mobile
+const annotationToggleBtn = document.createElement('button');
+annotationToggleBtn.id = 'annotation-panel-toggle';
+annotationToggleBtn.className = 'btn';
+annotationToggleBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+annotationToggleBtn.title = 'Annotation Tools';
+
+// Insert after nav-container instead of in display-controls
+const navContainerElement = document.getElementById('nav-container');
+const controlsLeft = document.querySelector('.controls-left');
+if (navContainerElement && navContainerElement.nextSibling) {
+    controlsLeft.insertBefore(annotationToggleBtn, navContainerElement.nextSibling);
+} else if (navContainerElement) {
+    navContainerElement.parentNode.insertBefore(annotationToggleBtn, navContainerElement.nextSibling);
+} else {
+    controlsLeft.appendChild(annotationToggleBtn);
+}
+
+// Create floating annotation panel
+const floatingPanel = document.createElement('div');
+floatingPanel.id = 'floating-annotation-panel';
+document.body.appendChild(floatingPanel);
+
+// Function to populate floating panel on mobile
+function updateFloatingPanel() {
+    const toolContainer = document.getElementById('tool-container');
+    const colorPicker = document.getElementById('color-picker');
+    const brushControls = document.getElementById('brush-controls');
+    const otherControls = document.getElementById('other-controls');
+    const controlsRight = document.querySelector('.controls-right');
+    
+    if (window.innerWidth <= 1300) {
+        // Move elements to floating panel on mobile
+        floatingPanel.innerHTML = '';
+        
+        // Tools section
+        const toolsSection = document.createElement('div');
+        toolsSection.className = 'panel-section';
+        if (toolContainer) toolsSection.appendChild(toolContainer);
+        floatingPanel.appendChild(toolsSection);
+        
+        // Colors section
+        const colorsSection = document.createElement('div');
+        colorsSection.className = 'panel-section';
+        if (colorPicker) colorsSection.appendChild(colorPicker);
+        floatingPanel.appendChild(colorsSection);
+        
+        // Brush controls section
+        const brushSection = document.createElement('div');
+        brushSection.className = 'panel-section';
+        if (brushControls) brushSection.appendChild(brushControls);
+        floatingPanel.appendChild(brushSection);
+        
+        // Undo/Redo/Clear section - move individual buttons from other-controls
+        const actionSection = document.createElement('div');
+        actionSection.className = 'panel-section';
+        const undoBtn = document.querySelector('#other-controls .btn:has(.fa-rotate-left)');
+        const redoBtn = document.querySelector('#other-controls .btn:has(.fa-rotate-right)');
+        const clearBtn = document.querySelector('#other-controls .btn:has(.fa-broom)');
+        if (undoBtn) actionSection.appendChild(undoBtn);
+        if (redoBtn) actionSection.appendChild(redoBtn);
+        if (clearBtn) actionSection.appendChild(clearBtn);
+        if (actionSection.children.length > 0) floatingPanel.appendChild(actionSection);
+        
+        // Show toggle button on mobile
+        annotationToggleBtn.style.display = 'inline-flex';
+    } else {
+        // Move elements back to controls-right on desktop
+        
+        // Move undo/redo/clear back to other-controls first
+        const undoBtn = floatingPanel.querySelector('.btn:has(.fa-rotate-left)');
+        const redoBtn = floatingPanel.querySelector('.btn:has(.fa-rotate-right)');
+        const clearBtn = floatingPanel.querySelector('.btn:has(.fa-broom)');
+        if (undoBtn && otherControls) otherControls.insertBefore(undoBtn, otherControls.firstChild);
+        if (redoBtn && otherControls) otherControls.insertBefore(redoBtn, otherControls.firstChild);
+        if (clearBtn && otherControls) otherControls.insertBefore(clearBtn, otherControls.firstChild);
+        
+        // Insert elements back in correct order
+        if (toolContainer && !controlsRight.contains(toolContainer)) {
+            controlsRight.insertBefore(toolContainer, otherControls || controlsRight.firstChild);
+        }
+        if (colorPicker && !controlsRight.contains(colorPicker)) {
+            controlsRight.insertBefore(colorPicker, otherControls || controlsRight.firstChild);
+        }
+        if (brushControls && !controlsRight.contains(brushControls)) {
+            controlsRight.insertBefore(brushControls, otherControls || controlsRight.firstChild);
+        }
+        
+        // Clear floating panel after moving elements
+        floatingPanel.innerHTML = '';
+        
+        // Hide toggle button and floating panel on desktop
+        annotationToggleBtn.style.display = 'none';
+        floatingPanel.classList.remove('visible');
+    }
+}
+
+// Initialize and listen for resize
+updateFloatingPanel();
+window.addEventListener('resize', updateFloatingPanel);
+
+// Make floating panel draggable
+let isDragging = false;
+let currentX;
+let currentY;
+let initialX;
+let initialY;
+let xOffset = 0;
+let yOffset = 0;
+
+floatingPanel.addEventListener('mousedown', dragStart);
+floatingPanel.addEventListener('touchstart', dragStart);
+document.addEventListener('mousemove', drag);
+document.addEventListener('touchmove', drag);
+document.addEventListener('mouseup', dragEnd);
+document.addEventListener('touchend', dragEnd);
+
+function dragStart(e) {
+    // Only start drag if clicking on the panel background, not on buttons
+    if (e.target === floatingPanel || e.target.classList.contains('panel-section')) {
+        if (e.type === 'touchstart') {
+            initialX = e.touches[0].clientX - xOffset;
+            initialY = e.touches[0].clientY - yOffset;
+        } else {
+            initialX = e.clientX - xOffset;
+            initialY = e.clientY - yOffset;
+        }
+        isDragging = true;
+        floatingPanel.style.cursor = 'grabbing';
+    }
+}
+
+function drag(e) {
+    if (isDragging) {
+        e.preventDefault();
+        
+        if (e.type === 'touchmove') {
+            currentX = e.touches[0].clientX - initialX;
+            currentY = e.touches[0].clientY - initialY;
+        } else {
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+        }
+
+        xOffset = currentX;
+        yOffset = currentY;
+
+        setTranslate(currentX, currentY, floatingPanel);
+    }
+}
+
+function dragEnd() {
+    if (isDragging) {
+        initialX = currentX;
+        initialY = currentY;
+        isDragging = false;
+        floatingPanel.style.cursor = 'grab';
+    }
+}
+
+function setTranslate(xPos, yPos, el) {
+    el.style.transform = `translate(${xPos}px, ${yPos}px)`;
+}
+
+// Set initial cursor
+floatingPanel.style.cursor = 'grab';
+
+// Toggle panel visibility
+annotationToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    floatingPanel.classList.toggle('visible');
+});
+
+// Close panel when clicking outside
+document.addEventListener('click', (e) => {
+    if (!floatingPanel.contains(e.target) && e.target !== annotationToggleBtn && !annotationToggleBtn.contains(e.target)) {
+        floatingPanel.classList.remove('visible');
+    }
+});
+
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
     hand, pen, highlighter, eraser,

@@ -9,14 +9,81 @@
     color: white;
     gap: 10px;
     box-sizing: border-box;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 200;
 }
 
 /* Control panel sections */
-.controls-left,
+.controls-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex: 0 1 auto;
+}
+
 .controls-right {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+/* Floating annotation panel for small screens */
+#annotation-panel-toggle {
+    display: none;
+}
+
+#floating-annotation-panel {
+    display: none;
+}
+
+@media (max-width: 1300px) {
+    /* Show toggle button on small screens */
+    #annotation-panel-toggle {
+        display: inline-flex;
+    }
+    
+    /* Floating panel */
+    #floating-annotation-panel {
+        position: fixed;
+        bottom: 70px;
+        left: 85px;
+        background: #ccc;
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        border: 2px solid #999;
+        z-index: 500;
+        display: none;
+        flex-direction: row;
+        gap: 10px;
+        align-items: center;
+        max-width: 90vw;
+        pointer-events: auto;
+    }
+    
+    #floating-annotation-panel.visible {
+        display: flex;
+    }
+    
+    #floating-annotation-panel .panel-section {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: nowrap;
+    }
+}
+
+/* Ensure button containers don't wrap internally */
+#tool-container,
+#nav-container,
+#display-controls {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
 }
 
 .controls-center {
@@ -65,6 +132,11 @@
     display: flex;
     gap: 8px;
     align-items: center;
+}
+
+/* Keep tool container (pointer, pen, highlighter, eraser) on first row */
+#tool-container {
+    flex-shrink: 0;
 }
 
 /* Color picker */

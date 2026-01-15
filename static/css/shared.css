@@ -35,29 +35,12 @@ input[type=file] {
     padding: 10px 0;
     border-right: 2px solid #666;
     box-shadow: none;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
 }
 
+/* Hide scrollbar for Chrome, Safari and Opera */
 #slide-navigator::-webkit-scrollbar {
-    width: 10px;
-    background: #ccc;
-}
-
-#slide-navigator::-webkit-scrollbar-track {
-    background: #ccc;
-    border-left: 1px solid #999;
-}
-
-#slide-navigator::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 0;
-    border: none;
-}
-
-#slide-navigator::-webkit-scrollbar-thumb:hover {
-    background: #666;
-}
-
-#slide-navigator::-webkit-scrollbar-button {
     display: none;
 }
 
