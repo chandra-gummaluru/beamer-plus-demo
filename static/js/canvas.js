@@ -51,12 +51,9 @@ export class Canvas {
         this.redoStack = [];
         this.maxHistory = 50;
         this.historyChangeHandler = null;
-        this.shapeLock = null;
-        this.shapeLockTimer = null;
-        this.shapeLockDelay = 2000;
-        this.lastMoveTime = 0;
-        this.lastMovePoint = null;
         this.savedCanvasState = null;
+        this.shapeTool = null;
+        this.shapeMode = 'draw';
 
         this.setupEvents(drawable);
         this.commitHistory();
@@ -93,6 +90,14 @@ export class Canvas {
         } else {
             this.canvas.style.pointerEvents = 'auto';
         }
+    }
+
+    setShapeTool(shapeTool) {
+        this.shapeTool = shapeTool;
+    }
+
+    setShapeMode(shapeMode) {
+        this.shapeMode = shapeMode;
     }
 
     setupEvents(drawable) {
@@ -229,11 +234,6 @@ export class Canvas {
 
         e.preventDefault();
         this.drawing = true;
-        this.shapeLock = null;
-        if (this.shapeLockTimer) {
-            clearTimeout(this.shapeLockTimer);
-            this.shapeLockTimer = null;
-        }
         this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
         const ctx = this.ctx;
@@ -241,12 +241,46 @@ export class Canvas {
         ctx.lineCap = 'round';
 
         const p = this.getPos(e);
-        this.lastMoveTime = Date.now();
-        this.lastMovePoint = p;
-
         let color = this.strokeColor;
         let width = this.strokeWidth;
         let mode = this.pointer_mode;
+
+        if (this.pointer_mode === "shape") {
+            const shapeMode = this.shapeMode || 'draw';
+            if (shapeMode === 'highlight') {
+                const rect = this.canvas.getBoundingClientRect();
+                this.strokeBuffer.width = rect.width * this.dpr;
+                this.strokeBuffer.height = rect.height * this.dpr;
+                this.strokeBufferCtx = this.strokeBuffer.getContext("2d");
+                this.strokeBufferCtx.scale(this.dpr, this.dpr);
+                this.strokeBufferCtx.lineCap = 'round';
+                this.strokeBufferCtx.lineJoin = 'round';
+                this.strokeBufferCtx.imageSmoothingEnabled = true;
+                this.strokeBufferCtx.imageSmoothingQuality = 'high';
+                this.strokeBufferCtx.globalAlpha = 1;
+                this.strokeBufferCtx.globalCompositeOperation = "source-over";
+                this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                width = this.strokeWidth * 8;
+            } else if (shapeMode === 'erase') {
+                this.ctx.globalCompositeOperation = "destination-out";
+                this.ctx.globalAlpha = 1;
+                width = this.strokeWidth * 12;
+                color = "white";
+            } else {
+                this.ctx.globalAlpha = 1;
+                this.ctx.globalCompositeOperation = "source-over";
+            }
+
+            this.currentStroke = {
+                start: p,
+                end: p,
+                color,
+                width,
+                mode: shapeMode,
+                shape: this.shapeTool
+            };
+            return;
+        }
 
         switch (this.pointer_mode) {
             case "draw":
@@ -284,6 +318,22 @@ export class Canvas {
                 width = this.strokeWidth * 12;
                 color = "white";
                 break;
+            case "shape":
+                this.ctx.globalAlpha = 1;
+                this.ctx.globalCompositeOperation = "source-over";
+                break;
+        }
+
+        if (this.pointer_mode === "shape") {
+            this.currentStroke = {
+                start: p,
+                end: p,
+                color,
+                width,
+                mode,
+                shape: this.shapeTool
+            };
+            return;
         }
 
         this.currentStroke = {
@@ -310,6 +360,12 @@ export class Canvas {
         this.lastDrawTime = now;
         
         const p = this.getPos(e);
+        if (this.currentStroke && this.currentStroke.shape) {
+            this.currentStroke.end = p;
+            this.drawShapePreview(this.currentStroke);
+            return;
+        }
+
         const pts = this.currentStroke.points;
         
         // Skip if point is too close to last point (reduces jitter)
@@ -320,20 +376,6 @@ export class Canvas {
         }
         
         pts.push(p);
-
-        if (!this.shapeLock) {
-            this.lastMoveTime = now;
-            this.lastMovePoint = p;
-            if (this.shapeLockTimer) {
-                clearTimeout(this.shapeLockTimer);
-            }
-            this.shapeLockTimer = setTimeout(() => this.tryLockShape(), this.shapeLockDelay);
-        }
-
-        if (this.shapeLock) {
-            this.drawLockedShape(p);
-            return;
-        }
 
         // Use stroke buffer for highlighter, main context for others
         const ctx = this.currentStroke.mode === 'highlight' ? this.strokeBufferCtx : this.ctx;
@@ -414,10 +456,6 @@ export class Canvas {
 
         if (!this.drawing) return;
         e.preventDefault();
-        if (this.shapeLockTimer) {
-            clearTimeout(this.shapeLockTimer);
-            this.shapeLockTimer = null;
-        }
         
         // For highlighter, finalize the composite
         if (this.currentStroke && this.currentStroke.mode === 'highlight') {
@@ -438,6 +476,20 @@ export class Canvas {
             this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
             this.savedCanvasState = null;
         }
+
+        if (this.currentStroke && this.currentStroke.shape) {
+            this.drawShapePreview(this.currentStroke);
+            if (this.currentStroke.mode === 'highlight') {
+                this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
+            }
+            this.drawing = false;
+            this.currentStroke = null;
+            this.ctx.globalCompositeOperation = "source-over";
+            this.ctx.globalAlpha = 1;
+            this.savedCanvasState = null;
+            this.commitHistory();
+            return;
+        }
         
         // For e-ink: redraw the entire stroke smoothly when pen lifts
         // This creates a cleaner final result
@@ -451,56 +503,6 @@ export class Canvas {
         this.ctx.globalAlpha = 1;
         this.savedCanvasState = null;
         this.commitHistory();
-    }
-
-    tryLockShape() {
-        this.shapeLockTimer = null;
-        if (this.shapeLock || !this.drawing || !this.currentStroke) return;
-        if (Date.now() - this.lastMoveTime < this.shapeLockDelay) return;
-
-        const pts = this.currentStroke.points || [];
-        if (pts.length < 10) return;
-
-        const lockedType = this.detectShape(pts);
-        if (!lockedType) return;
-
-        const lockPoint = this.lastMovePoint || pts[pts.length - 1];
-        this.shapeLock = this.getLockedShapeData(lockedType, pts, lockPoint);
-        if (!this.savedCanvasState) {
-            this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-        }
-        this.drawLockedShape(lockPoint);
-    }
-
-    getLockedShapeData(type, points, center) {
-        const bbox = this.getBoundingBox(points);
-        const width = bbox.maxX - bbox.minX;
-        const height = bbox.maxY - bbox.minY;
-        const shape = {
-            type,
-            center,
-            width,
-            height
-        };
-
-        if (type === 'line') {
-            let dx = points[points.length - 1].x - points[0].x;
-            let dy = points[points.length - 1].y - points[0].y;
-            let norm = Math.sqrt(dx * dx + dy * dy);
-            if (norm < 1) {
-                dx = 1;
-                dy = 0;
-                norm = 1;
-            }
-            const length = Math.max(norm, Math.max(width, height));
-            shape.line = {
-                dx: dx / norm,
-                dy: dy / norm,
-                length
-            };
-        }
-
-        return shape;
     }
     
     redrawStrokeSmooth(stroke) {
@@ -548,66 +550,65 @@ export class Canvas {
         this.resetHistory(dataURL);
     }
 
-    drawLockedShape(p) {
-        const mode = this.currentStroke.mode;
-        const shape = this.shapeLock;
-        const rect = this.canvas.getBoundingClientRect();
-        const ctx = mode === 'highlight' ? this.strokeBufferCtx : this.ctx;
-
-        if (mode === 'highlight') {
+    drawShapePreview(stroke) {
+        if (!stroke || !this.savedCanvasState) return;
+        if (stroke.mode === 'highlight') {
             this.ctx.putImageData(this.savedCanvasState, 0, 0);
             this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
-        } else if (this.savedCanvasState) {
-            this.ctx.putImageData(this.savedCanvasState, 0, 0);
-        }
+            this.strokeBufferCtx.lineJoin = 'round';
+            this.strokeBufferCtx.lineCap = 'round';
+            this.strokeBufferCtx.strokeStyle = stroke.color;
+            this.strokeBufferCtx.lineWidth = stroke.width;
+            this.strokeBufferCtx.globalAlpha = 1;
+            this.strokeBufferCtx.globalCompositeOperation = "source-over";
+            this.drawShapeFromPoints(stroke.shape, stroke.start, stroke.end, this.strokeBufferCtx);
 
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = this.currentStroke.color;
-        ctx.lineWidth = this.currentStroke.width;
-        ctx.globalAlpha = 1;
-        if (mode === 'erase') {
-            ctx.globalCompositeOperation = "destination-out";
-        } else {
-            ctx.globalCompositeOperation = "source-over";
-        }
-
-        this.renderLockedShape(ctx, shape);
-
-        if (mode === 'highlight') {
+            const rect = this.canvas.getBoundingClientRect();
             this.ctx.save();
             this.ctx.globalAlpha = 0.4;
             this.ctx.globalCompositeOperation = "multiply";
             this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
             this.ctx.restore();
+            return;
         }
+
+        this.ctx.putImageData(this.savedCanvasState, 0, 0);
+        this.ctx.lineJoin = 'round';
+        this.ctx.lineCap = 'round';
+        this.ctx.strokeStyle = stroke.color;
+        this.ctx.lineWidth = stroke.width;
+        this.ctx.globalAlpha = 1;
+        if (stroke.mode === 'erase') {
+            this.ctx.globalCompositeOperation = "destination-out";
+        } else {
+            this.ctx.globalCompositeOperation = "source-over";
+        }
+        this.drawShapeFromPoints(stroke.shape, stroke.start, stroke.end, this.ctx);
     }
 
-    renderLockedShape(ctx, shape) {
-        const type = shape.type;
-        const center = shape.center;
-        const width = shape.width;
-        const height = shape.height;
+    drawShapeFromPoints(type, start, end, ctx) {
+        if (!type || !start || !end) return;
+        const left = Math.min(start.x, end.x);
+        const right = Math.max(start.x, end.x);
+        const top = Math.min(start.y, end.y);
+        const bottom = Math.max(start.y, end.y);
+        const width = right - left;
+        const height = bottom - top;
+        const centerX = left + width / 2;
+        const centerY = top + height / 2;
+
         ctx.beginPath();
         if (type === 'line') {
-            const half = (shape.line ? shape.line.length : Math.max(width, height)) / 2;
-            const dx = (shape.line ? shape.line.dx : 1) * half;
-            const dy = (shape.line ? shape.line.dy : 0) * half;
-            ctx.moveTo(center.x - dx, center.y - dy);
-            ctx.lineTo(center.x + dx, center.y + dy);
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
         } else if (type === 'rectangle') {
-            ctx.strokeRect(center.x - width / 2, center.y - height / 2, width, height);
+            ctx.strokeRect(left, top, width, height);
             return;
         } else if (type === 'circle') {
             const radius = Math.max(width, height) / 2;
-            ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
         } else if (type === 'triangle') {
-            const left = center.x - width / 2;
-            const right = center.x + width / 2;
-            const top = center.y - height / 2;
-            const bottom = center.y + height / 2;
-            const apex = { x: center.x, y: top };
-            ctx.moveTo(apex.x, apex.y);
+            ctx.moveTo(centerX, top);
             ctx.lineTo(right, bottom);
             ctx.lineTo(left, bottom);
             ctx.closePath();
@@ -615,168 +616,6 @@ export class Canvas {
         ctx.stroke();
     }
 
-    detectShape(points) {
-        const bbox = this.getBoundingBox(points);
-        const width = bbox.maxX - bbox.minX;
-        const height = bbox.maxY - bbox.minY;
-        const diag = Math.sqrt(width * width + height * height);
-        if (diag < 30) return null;
-
-        const start = points[0];
-        const end = points[points.length - 1];
-        const closeDist = Math.max(10, Math.min(width, height) * 0.2);
-        const isClosed = this.distance(start, end) <= closeDist;
-
-        if (this.isLine(points, bbox, diag)) return 'line';
-        if (!isClosed) return null;
-
-        if (this.isCircle(points, bbox)) return 'circle';
-
-        const simplified = this.simplifyPath(points, Math.max(4, diag * 0.02));
-        const closed = this.closePath(simplified, closeDist);
-        if (closed.length === 4 && this.isRectangle(closed)) return 'rectangle';
-        if (closed.length === 3 && this.isTriangle(closed, bbox)) return 'triangle';
-
-        return null;
-    }
-
-    getBoundingBox(points) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const p of points) {
-            if (p.x < minX) minX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y > maxY) maxY = p.y;
-        }
-        return { minX, minY, maxX, maxY };
-    }
-
-    distance(a, b) {
-        const dx = a.x - b.x;
-        const dy = a.y - b.y;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    isLine(points, bbox, diag) {
-        const width = bbox.maxX - bbox.minX;
-        const height = bbox.maxY - bbox.minY;
-        const longSide = Math.max(width, height);
-        const shortSide = Math.min(width, height);
-        if (longSide < 40 || shortSide / longSide > 0.25) return false;
-
-        const start = points[0];
-        const end = points[points.length - 1];
-        const lineDist = this.maxDistanceToLine(points, start, end);
-        return lineDist <= Math.max(6, diag * 0.02);
-    }
-
-    maxDistanceToLine(points, start, end) {
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const denom = Math.sqrt(dx * dx + dy * dy) || 1;
-        let maxDist = 0;
-        for (const p of points) {
-            const dist = Math.abs(dy * p.x - dx * p.y + end.x * start.y - end.y * start.x) / denom;
-            if (dist > maxDist) maxDist = dist;
-        }
-        return maxDist;
-    }
-
-    isCircle(points, bbox) {
-        const width = bbox.maxX - bbox.minX;
-        const height = bbox.maxY - bbox.minY;
-        const ratio = width / (height || 1);
-        if (ratio < 0.8 || ratio > 1.25) return false;
-        if (points.length < 20) return false;
-
-        const cx = (bbox.minX + bbox.maxX) / 2;
-        const cy = (bbox.minY + bbox.maxY) / 2;
-        let sum = 0;
-        for (const p of points) {
-            sum += this.distance(p, { x: cx, y: cy });
-        }
-        const mean = sum / points.length;
-        let variance = 0;
-        for (const p of points) {
-            const d = this.distance(p, { x: cx, y: cy }) - mean;
-            variance += d * d;
-        }
-        const stddev = Math.sqrt(variance / points.length);
-        return stddev / mean < 0.2;
-    }
-
-    simplifyPath(points, epsilon) {
-        if (points.length < 3) return points.slice();
-        const first = points[0];
-        const last = points[points.length - 1];
-
-        let index = -1;
-        let maxDist = 0;
-        for (let i = 1; i < points.length - 1; i++) {
-            const dist = this.perpendicularDistance(points[i], first, last);
-            if (dist > maxDist) {
-                maxDist = dist;
-                index = i;
-            }
-        }
-
-        if (maxDist > epsilon) {
-            const left = this.simplifyPath(points.slice(0, index + 1), epsilon);
-            const right = this.simplifyPath(points.slice(index), epsilon);
-            return left.slice(0, -1).concat(right);
-        }
-
-        return [first, last];
-    }
-
-    perpendicularDistance(p, start, end) {
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        if (dx === 0 && dy === 0) return this.distance(p, start);
-        const t = ((p.x - start.x) * dx + (p.y - start.y) * dy) / (dx * dx + dy * dy);
-        const proj = { x: start.x + t * dx, y: start.y + t * dy };
-        return this.distance(p, proj);
-    }
-
-    closePath(points, closeDist) {
-        if (points.length < 2) return points.slice();
-        const first = points[0];
-        const last = points[points.length - 1];
-        if (this.distance(first, last) <= closeDist) {
-            return points.slice(0, -1);
-        }
-        return points.slice();
-    }
-
-    isRectangle(points) {
-        if (points.length !== 4) return false;
-        for (let i = 0; i < 4; i++) {
-            const prev = points[(i + 3) % 4];
-            const curr = points[i];
-            const next = points[(i + 1) % 4];
-            const v1 = { x: prev.x - curr.x, y: prev.y - curr.y };
-            const v2 = { x: next.x - curr.x, y: next.y - curr.y };
-            const dot = v1.x * v2.x + v1.y * v2.y;
-            const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y) || 1;
-            const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y) || 1;
-            const cos = dot / (mag1 * mag2);
-            if (Math.abs(cos) > 0.3) return false;
-        }
-        return true;
-    }
-
-    isTriangle(points, bbox) {
-        if (points.length !== 3) return false;
-        const area = Math.abs(
-            (points[0].x * (points[1].y - points[2].y) +
-            points[1].x * (points[2].y - points[0].y) +
-            points[2].x * (points[0].y - points[1].y)) / 2
-        );
-        const width = bbox.maxX - bbox.minX;
-        const height = bbox.maxY - bbox.minY;
-        const boxArea = width * height || 1;
-        return area / boxArea > 0.2;
-    }
 
     async renderPDFPage(pdfPage) {
         if (!pdfPage) {
