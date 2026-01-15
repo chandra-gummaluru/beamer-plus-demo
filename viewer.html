@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Beamer+ Viewer</title>
+  
+  <!-- Beamer+ Font -->
+  <style>
+    @font-face {
+      font-family: "Computer Modern Sans";
+      src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunss.otf");
+      font-display: swap;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #fcfcfc;
+      font-family: "Computer Modern Sans", sans-serif;
+    }
+
+    /* Viewer container */
+    #viewer-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      background: #fcfcfc;
+      padding: 0;
+    }
+
+    #screen-display {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    /* Waiting message */
+    #waiting-message {
+      text-align: center;
+      color: #666;
+    }
+
+    #waiting-message h2 {
+      font-size: 28px;
+      margin-bottom: 20px;
+      margin-top: 20px;
+      font-weight: 700;
+      color: #333;
+    }
+
+    #waiting-message p {
+      font-size: 16px;
+      color: #666;
+    }
+
+    /* Scribble animation matching Beamer+ modal style */
+    .viewer-squiggle {
+      width: 120px;
+      height: 40px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .viewer-squiggle path {
+      fill: none;
+      stroke: #666;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 150;
+      stroke-dashoffset: 150;
+      animation: draw-squiggle 1.6s ease-in-out infinite;
+    }
+
+    @keyframes draw-squiggle {
+      0% { stroke-dashoffset: 150; opacity: 0.6; }
+      40% { stroke-dashoffset: 0; opacity: 1; }
+      100% { stroke-dashoffset: -150; opacity: 0.6; }
+    }
+
+    /* FPS counter in corner */
+    #stream-info {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      background: #eee;
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid #999;
+      opacity: 0.9;
+      display: none;
+    }
+  </style>
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <span id="stream-info"></span>
+  
+  <div id="viewer-container">
+    <div id="waiting-message">
+      <svg class="viewer-squiggle" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 5,20 Q 15,5 25,20 T 45,20 Q 55,5 65,20 T 85,20 Q 95,5 105,20 T 115,20" />
+      </svg>
+      <h2>Waiting for presenter...</h2>
+      <p>The presenter screen will appear here when streaming begins</p>
+    </div>
+    <img id="screen-display" alt="Presentation Screen">
+  </div>
+
+  <script>
+    const socket = io();
+    const screenDisplay = document.getElementById('screen-display');
+    const waitingMessage = document.getElementById('waiting-message');
+    const streamInfo = document.getElementById('stream-info');
+
+    let isScreenSharing = false;
+    let frameCount = 0;
+    let lastUpdateTime = Date.now();
+
+    // Join viewer room
+    socket.emit('join_viewer');
+
+    // Connection status
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      screenDisplay.style.display = 'none';
+      waitingMessage.style.display = 'block';
+      streamInfo.style.display = 'none';
+    });
+
+    socket.on('joined', (data) => {
+      console.log('Joined room:', data.room);
+    });
+
+    // Screen capture event (from html2canvas)
+    socket.on('screen_capture', (data) => {
+      if (data.image) {
+        // Show screen, hide waiting message
+        if (!isScreenSharing) {
+          isScreenSharing = true;
+          waitingMessage.style.display = 'none';
+          screenDisplay.style.display = 'block';
+          streamInfo.style.display = 'block';
+        }
+
+        // Update the image
+        screenDisplay.src = data.image;
+
+        // Update FPS counter
+        frameCount++;
+        const currentTime = Date.now();
+        const elapsed = currentTime - lastUpdateTime;
+        
+        if (elapsed >= 1000) {
+          const fps = Math.round((frameCount / elapsed) * 1000);
+          streamInfo.textContent = `${fps} FPS`;
+          frameCount = 0;
+          lastUpdateTime = currentTime;
+        }
+      }
+    });
+
+    // Fallback to legacy screen sharing events if needed
+    socket.on('screen_share_start', () => {
+      console.log('Screen sharing started (legacy)');
+      isScreenSharing = true;
+      waitingMessage.style.display = 'none';
+      screenDisplay.style.display = 'block';
+    });
+
+    socket.on('screen_share_stop', () => {
+      console.log('Screen sharing stopped (legacy)');
+      isScreenSharing = false;
+      screenDisplay.style.display = 'none';
+      waitingMessage.style.display = 'block';
+      streamInfo.style.display = 'none';
+    });
+
+    socket.on('screen_frame', (data) => {
+      if (data.frame) {
+        if (!isScreenSharing) {
+          isScreenSharing = true;
+          waitingMessage.style.display = 'none';
+          screenDisplay.style.display = 'block';
+        }
+        screenDisplay.src = data.frame;
+      }
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      // Image styling will handle scaling automatically
+    });
+  </script>
+</body>
+</html>

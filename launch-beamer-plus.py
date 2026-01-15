@@ -10,6 +10,7 @@ import socket
 import subprocess
 import threading
 import time
+import ssl
 
 # Colors for terminal output
 class Colors:
@@ -71,7 +72,8 @@ def generate_qr_ascii(data):
         # Generate ASCII art
         qr.print_ascii(invert=True)
         return True
-    except ImportError:
+    except (ImportError, Exception) as e:
+        # Silently fail if QR code generation fails
         return False
 
 def install_qrcode():
@@ -84,6 +86,63 @@ def install_qrcode():
     except subprocess.CalledProcessError:
         print_error("Failed to install qrcode library")
         return False
+
+def generate_self_signed_cert():
+    """Generate a self-signed SSL certificate"""
+    cert_file = "cert.pem"
+    key_file = "key.pem"
+    
+    # Check if certificate already exists
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        print_success("SSL certificate already exists")
+        return cert_file, key_file
+    
+    print_info("Generating self-signed SSL certificate...")
+    
+    try:
+        # Check if pyOpenSSL is installed
+        try:
+            from OpenSSL import crypto
+        except ImportError:
+            print_warning("pyOpenSSL not found. Installing...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "pyOpenSSL"])
+            from OpenSSL import crypto
+        
+        # Generate key
+        k = crypto.PKey()
+        k.generate_key(crypto.TYPE_RSA, 2048)
+        
+        # Generate certificate
+        cert = crypto.X509()
+        cert.get_subject().C = "US"
+        cert.get_subject().ST = "State"
+        cert.get_subject().L = "City"
+        cert.get_subject().O = "Beamer+"
+        cert.get_subject().OU = "Beamer+"
+        cert.get_subject().CN = "localhost"
+        cert.set_serial_number(1000)
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(365*24*60*60)  # Valid for 1 year
+        cert.set_issuer(cert.get_subject())
+        cert.set_pubkey(k)
+        cert.sign(k, 'sha256')
+        
+        # Save certificate and key
+        with open(cert_file, "wb") as f:
+            f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+        
+        with open(key_file, "wb") as f:
+            f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k))
+        
+        print_success("SSL certificate generated successfully")
+        print_warning("Note: Browsers will show a security warning for self-signed certificates")
+        print_warning("      Click 'Advanced' and 'Proceed' to continue")
+        
+        return cert_file, key_file
+    
+    except Exception as e:
+        print_error(f"Failed to generate SSL certificate: {e}")
+        return None, None
 
 def check_dependencies():
     """Check and install required dependencies"""
@@ -99,10 +158,23 @@ def check_dependencies():
             if os.path.exists("requirements.txt"):
                 subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
             else:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "flask"])
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "flask", "flask-socketio"])
             print_success("Flask installed successfully")
         except subprocess.CalledProcessError:
             print_error("Failed to install Flask")
+            sys.exit(1)
+    
+    # Check Flask-SocketIO
+    try:
+        import flask_socketio
+        print_success("Flask-SocketIO is installed")
+    except ImportError:
+        print_warning("Flask-SocketIO not found. Installing...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "flask-socketio"])
+            print_success("Flask-SocketIO installed successfully")
+        except subprocess.CalledProcessError:
+            print_error("Failed to install Flask-SocketIO")
             sys.exit(1)
     
     # Check qrcode
@@ -124,14 +196,17 @@ def display_info(url, local_ip, port, has_qr=True):
     print()
     
     if local_ip != '127.0.0.1':
-        print(f"{Colors.BOLD}{Colors.ENDC}{url}")
+        print(f"{Colors.BOLD}{url}{Colors.ENDC}")
     else:
         print_info("Network access not available (no network IP detected)")
     
     print()
     
     if has_qr and local_ip != '127.0.0.1':
-        if not generate_qr_ascii(url):
+        try:
+            generate_qr_ascii(url)
+        except Exception:
+            # Silently skip QR code if it fails
             pass
 
 def main():    
@@ -144,16 +219,22 @@ def main():
     # Check dependencies
     has_qr = check_dependencies()
     
+    # Generate SSL certificate
+    cert_file, key_file = generate_self_signed_cert()
+    if not cert_file or not key_file:
+        print_error("Failed to generate SSL certificate. Exiting.")
+        sys.exit(1)
+    
     # Get network information
     print_header("Detecting network configuration...")
     local_ip = get_local_ip()
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     
     if local_ip == '127.0.0.1':
-        url = f"http://localhost:{port}"
+        url = f"https://localhost:{port}"
         print_warning("Could not detect network IP, using localhost only")
     else:
-        url = f"http://{local_ip}:{port}"
+        url = f"https://{local_ip}:{port}"
         print_success(f"IP Address: {local_ip}")
     
     print_success(f"Port: {port}")
@@ -163,13 +244,23 @@ def main():
     display_info(url, local_ip, port, has_qr)
         
     # Start the Flask app
-    print_header("Starting Beamer+ server...")
+    print_header("Starting Beamer+ server with HTTPS...")
+    print_warning("Your browser will show a security warning. Click 'Advanced' then 'Proceed' to continue.")
+    print()
     
     try:
-        # Import and run the Flask app
-        from app import app
+        # Import and run the Flask app with SocketIO
+        from app import socketio, app
         print(f"{Colors.GREEN}Server is running! Press Ctrl+C to quit.{Colors.ENDC}\n")
-        app.run(host='0.0.0.0', port=port, debug=False)
+        print(f"{Colors.BOLD}{Colors.CYAN}Presenter:{Colors.ENDC} {url}")
+        print(f"{Colors.BOLD}{Colors.CYAN}Viewer:{Colors.ENDC} {url}/viewer")
+        print()
+        
+        # Create SSL context
+        ssl_context = (cert_file, key_file)
+        
+        socketio.run(app, host='0.0.0.0', port=port, debug=False, 
+                    ssl_context=ssl_context, allow_unsafe_werkzeug=True)
     except KeyboardInterrupt:
         print(f"\n\n{Colors.YELLOW}Server stopped. Goodbye!{Colors.ENDC}\n")
         sys.exit(0)

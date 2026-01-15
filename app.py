@@ -368,5 +368,20 @@ def handle_survey_close(data=None):
             # Notify all users on the survey response page
             emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
 
+@socketio.on("screen_share_start")
+def handle_screen_share_start():
+    # Notify all viewers that screen sharing has started
+    emit("screen_share_start", room='viewer')
+
+@socketio.on("screen_share_stop")
+def handle_screen_share_stop():
+    # Notify all viewers that screen sharing has stopped
+    emit("screen_share_stop", room='viewer')
+
+@socketio.on("screen_frame")
+def handle_screen_frame(data):
+    # Broadcast screen frame to all viewers
+    emit("screen_frame", data, room='viewer')
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

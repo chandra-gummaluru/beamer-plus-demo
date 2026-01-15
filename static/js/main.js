@@ -136,6 +136,18 @@ const uploadBtn = new Button(displayControls, {
     label: '<i class="fa-solid fa-folder-open"></i>',
 });
 
+const screenShareContainer = document.getElementById('screen-share-container');
+
+const screenShareBtn = new Button(screenShareContainer, {
+    className: 'btn',
+    label: '<i class="fa-solid fa-desktop"></i>',
+});
+
+// Initially disabled until presentation is loaded
+screenShareBtn.el.disabled = true;
+screenShareBtn.el.style.opacity = '0.5';
+screenShareBtn.el.style.cursor = 'not-allowed';
+
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
     hand, pen, highlighter, eraser,
@@ -777,6 +789,12 @@ folderInput.addEventListener('change', async (e) => {
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
+    
+    // Enable screen share button
+    screenShareBtn.el.disabled = false;
+    screenShareBtn.el.style.opacity = '1';
+    screenShareBtn.el.style.cursor = 'pointer';
+    
     updateHistoryButtons();
 });
 
@@ -849,6 +867,12 @@ zipInput.addEventListener('change', async (e) => {
         // Enable controls now that a presentation is loaded
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
+        
+        // Enable screen share button
+        screenShareBtn.el.disabled = false;
+        screenShareBtn.el.style.opacity = '1';
+        screenShareBtn.el.style.cursor = 'pointer';
+        
         updateHistoryButtons();
     };
     reader.readAsArrayBuffer(file);
@@ -1388,5 +1412,183 @@ document.addEventListener('fullscreenchange', () => {
         }
     }, 100);
 });
+
+// ==================== SCREEN SHARING ====================
+let screenStream = null;
+let isScreenSharing = false;
+
+screenShareBtn.onClick(async () => {
+    if (isScreenSharing) {
+        stopScreenShare();
+    } else {
+        await startScreenShare();
+    }
+});
+
+async function startScreenShare() {
+    try {
+        // Request screen capture - restrict to current tab only
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                cursor: 'always',
+                displaySurface: 'browser'
+            },
+            audio: false,
+            selfBrowserSurface: 'include',
+            surfaceSwitching: 'exclude',
+            systemAudio: 'exclude'
+        });
+        
+        // Check if the user selected the correct surface type
+        const videoTrack = stream.getVideoTracks()[0];
+        const settings = videoTrack.getSettings();
+        
+        // Verify that a browser tab was selected (not window or monitor)
+        if (settings.displaySurface && settings.displaySurface !== 'browser') {
+            // Stop the stream immediately
+            stream.getTracks().forEach(track => track.stop());
+            
+            Modal.error(
+                'Wrong Source Selected', 
+                'Please select the Beamer+ browser tab (not a window or entire screen). Click the screen share button again and choose "This Tab" or the Beamer+ tab from the list.'
+            );
+            isScreenSharing = false;
+            return;
+        }
+        
+        screenStream = stream;
+        isScreenSharing = true;
+        
+        // Update button appearance
+        screenShareBtn.el.innerHTML = '<i class="fa-solid fa-stop"></i>';
+        screenShareBtn.el.style.backgroundColor = '#e74c3c';
+        
+        // Create a hidden video element to capture the stream
+        const video = document.createElement('video');
+        video.style.display = 'none';
+        video.srcObject = stream;
+        video.play();
+        
+        document.body.appendChild(video);
+        
+        // Create canvas for cropping
+        const cropCanvas = document.createElement('canvas');
+        const cropCtx = cropCanvas.getContext('2d');
+        
+        // Get the canvas container dimensions
+        const pdfContainer = document.getElementById('pdf-canvas');
+        
+        let lastFrameTime = 0;
+        const frameInterval = 100; // Reduced to 10 FPS to prevent flashing
+        
+        // Start capturing and cropping frames
+        const captureFrame = (currentTime) => {
+            if (!isScreenSharing) return;
+            
+            // Throttle frame rate
+            if (currentTime - lastFrameTime < frameInterval) {
+                requestAnimationFrame(captureFrame);
+                return;
+            }
+            lastFrameTime = currentTime;
+            
+            const containerRect = pdfContainer.getBoundingClientRect();
+            
+            // Set canvas size to match the container
+            cropCanvas.width = containerRect.width;
+            cropCanvas.height = containerRect.height;
+            
+            // Calculate the position and size to crop from the video
+            // This assumes the video is capturing the full screen
+            const scaleX = video.videoWidth / window.innerWidth;
+            const scaleY = video.videoHeight / window.innerHeight;
+            
+            const sourceX = containerRect.left * scaleX;
+            const sourceY = containerRect.top * scaleY;
+            const sourceWidth = containerRect.width * scaleX;
+            const sourceHeight = containerRect.height * scaleY;
+            
+            // Draw the cropped region onto the canvas
+            cropCtx.drawImage(
+                video,
+                sourceX, sourceY, sourceWidth, sourceHeight,
+                0, 0, cropCanvas.width, cropCanvas.height
+            );
+            
+            // Convert canvas to blob and emit to server
+            cropCanvas.toBlob((blob) => {
+                if (blob && isScreenSharing) {
+                    // Convert blob to base64
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const base64data = reader.result;
+                        socket.emit('screen_frame', {
+                            frame: base64data,
+                            width: cropCanvas.width,
+                            height: cropCanvas.height
+                        });
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }, 'image/jpeg', 0.75); // Reduced quality to 75% for less bandwidth
+            
+            // Request next frame
+            if (isScreenSharing) {
+                requestAnimationFrame(captureFrame);
+            }
+        };
+        
+        // Wait for video to be ready
+        video.onloadedmetadata = () => {
+            requestAnimationFrame(captureFrame);
+        };
+        
+        // Handle stream end (user clicks "Stop sharing" in browser)
+        stream.getVideoTracks()[0].onended = () => {
+            stopScreenShare();
+        };
+        
+        // Notify viewers that screen sharing has started
+        socket.emit('screen_share_start');
+        
+        // Show a helper message
+        console.log('Screen sharing started. Sharing Beamer+ tab.');
+        
+    } catch (error) {
+        console.error('Error starting screen share:', error);
+        
+        let errorMessage = 'Could not start screen sharing.';
+        if (error.name === 'NotAllowedError') {
+            errorMessage = 'Screen sharing permission was denied. Please allow screen sharing and select the Beamer+ tab (choose "This Tab" option).';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = 'No screen sharing source was selected. Please click the button again and select the Beamer+ tab.';
+        } else if (error.name === 'NotSupportedError') {
+            errorMessage = 'Screen sharing is not supported in this browser. Please use Chrome, Firefox, or Edge.';
+        }
+        
+        Modal.error('Screen Share Error', errorMessage);
+        isScreenSharing = false;
+    }
+}
+
+function stopScreenShare() {
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        screenStream = null;
+    }
+    
+    isScreenSharing = false;
+    
+    // Reset button appearance
+    screenShareBtn.el.innerHTML = '<i class="fa-solid fa-desktop"></i>';
+    screenShareBtn.el.style.backgroundColor = '';
+    
+    // Remove the hidden video element
+    const videos = document.querySelectorAll('video[style*="display: none"]');
+    videos.forEach(v => v.remove());
+    
+    // Notify viewers that screen sharing has stopped
+    socket.emit('screen_share_stop');
+}
 
 });
