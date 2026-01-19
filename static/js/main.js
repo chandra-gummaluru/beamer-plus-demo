@@ -34,7 +34,12 @@ const populateSlideButtons = (totalSlides) => {
     for (let i = 0; i < totalSlides; i++) {
         const btn = document.createElement("button");
         btn.className = "slide-button";
-        btn.textContent = `Slide #${i}`;
+        btn.textContent = `Slide ${i + 1}`;
+        btn.addEventListener("click", () => {
+            currentSlide = i;
+            goToSlide(currentSlide);
+
+        }) 
         slideButtons.append(btn)
     }
 }
