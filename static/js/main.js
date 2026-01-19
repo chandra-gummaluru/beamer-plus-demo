@@ -1310,18 +1310,38 @@ let audioContext = null;
 async function toggleRecording() {
   if (!isRecording) {
     try {
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
-      });
+      if (!navigator.mediaDevices) {
+        alert("Recording is not supported in this browser context (try using HTTPS or localhost).");
+        return;
+      }
+      let micStream;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+      } catch (micErr) {
+          console.error("Mic Error:", micErr);
+          alert("Microphone permission was denied. Please reset permissions in your browser URL bar.");
+          return; // Stop here if mic is blocked
+      }
 
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 30 },
-        audio: true // user must check "share system audio"
-      });
+      let displayStream;
+      try {
+        displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { frameRate: 30 },
+            audio: true // Asks to share system audio
+        });
+      } catch (screenErr) {
+        console.error("Screen Error:", screenErr);
+        // Stop mic if screen share failed/cancelled
+        if (micStream) micStream.getTracks().forEach(t => t.stop());
+        alert("Screen recording was cancelled or denied. You must select a screen to share.");
+        return;
+      }
 
       // ===== Audio mixing =====
       audioContext = new AudioContext();
@@ -1345,9 +1365,26 @@ async function toggleRecording() {
         ...destination.stream.getAudioTracks()
       ]);
 
-      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')
-        ? 'video/webm; codecs=vp9,opus'
-        : 'video/webm; codecs=vp8,opus';
+      const possibleTypes = [
+                    'video/webm; codecs=vp9,opus',
+                    'video/webm; codecs=vp8,opus',
+                    'video/webm', // Fallback for Chrome/Firefox
+                    'video/mp4'   // Fallback for Safari
+                ];
+
+                let selectedMimeType = '';
+                for (const type of possibleTypes) {
+                    if (MediaRecorder.isTypeSupported(type)) {
+                        selectedMimeType = type;
+                        break;
+                    }
+                }
+
+                if (!selectedMimeType) {
+                    throw new Error("No supported recording format found in this browser.");
+                }
+
+                console.log(`Starting recording with format: ${selectedMimeType}`);
 
       recordedChunks = [];
       mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
