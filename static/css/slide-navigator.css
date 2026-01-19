@@ -1,0 +1,14 @@
+#slide-navigator {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+
+  /* Optional spacing */
+  padding: 10px;
+
+  /* Optional styling */
+  z-index: 100;
+  border-width: 1px;
+  border-style: solid;
+}

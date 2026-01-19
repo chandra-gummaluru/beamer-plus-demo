@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/static/css/timer.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/survey.css">
+  <link rel="stylesheet" href="/static/css/slide-navigator.css">
   
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
@@ -31,20 +32,31 @@
 <body>
   <div id="control-panel">
     <div class="controls-left">
-    <div id="display-controls"></div>
-    <input type="file" id="upload-zip" webkitdirectory directory multiple>
-    <div id="nav-container"></div>
+      <div id="display-controls"></div>
+      <input type="file" id="upload-zip" webkitdirectory directory multiple>
+      <div id="nav-container"></div>
     </div>
 
-  <div class="controls-right">
+    <div class="controls-right">
 
-    <div id="tool-container"></div>
-    <div id="color-picker"></div>
-    <div id="brush-controls"></div>
-    <div id="other-controls"></div>
-    <div id="timer-container"></div>
+      <div id="tool-container"></div>
+      <div id="color-picker"></div>
+      <div id="brush-controls"></div>
+      <div id="other-controls"></div>
+      <div id="timer-container"></div>
+    </div>
+
+  </div>
+
+<div id="slide-navigator">
+  <div class="slide-counter">
+    <span id="current-slide-container">e</span> 
+    / <span id="total-slide-container">f</span>
+  </div>
+  <div id="slide-buttons">
   </div>
 </div>
+
 
   <div id="pdf-container">
       <div id="ann-canvas"></div>
