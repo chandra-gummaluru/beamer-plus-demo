@@ -44,6 +44,45 @@ const eraser = new Button(toolContainer, {
 const toolSelector = new Selector([hand, pen, highlighter, eraser], 'btn_selected');
 toolSelector.select(hand);
 
+const shapeSidebar = document.getElementById('shape-sidebar');
+
+const lineShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-solid fa-minus"></i>',
+    className: 'btn'
+});
+
+const rectShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-regular fa-square"></i>',
+    className: 'btn'
+});
+
+const circleShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-regular fa-circle"></i>',
+    className: 'btn'
+});
+
+const triangleShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-solid fa-play"></i>',
+    className: 'btn'
+});
+
+const shapeSelector = new Selector(
+    [lineShapeBtn, rectShapeBtn, circleShapeBtn, triangleShapeBtn],
+    'btn_selected'
+);
+
+function clearShapeSelection() {
+    shapeSelector.buttons.forEach(btn => btn.el.classList.remove('btn_selected'));
+}
+
+function clearToolSelection() {
+    toolSelector.buttons.forEach(btn => btn.el.classList.remove('btn_selected'));
+}
+
+function setShapeSidebarVisible(isVisible) {
+    shapeSidebar.style.display = isVisible ? 'flex' : 'none';
+}
+
 const colors = ['#eeeeee', '#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#333333'];
 const colorContainer = document.getElementById('color-picker');
 
@@ -139,6 +178,7 @@ const uploadBtn = new Button(displayControls, {
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
     hand, pen, highlighter, eraser,
+    lineShapeBtn, rectShapeBtn, circleShapeBtn, triangleShapeBtn,
     ...colorBtns,
     brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
@@ -169,10 +209,53 @@ pen.onClick(() => annCvs.setPointerMode('draw'));
 highlighter.onClick(() => annCvs.setPointerMode('highlight'));
 eraser.onClick(() => annCvs.setPointerMode('erase'));
 
+lineShapeBtn.onClick(() => {
+    annCvs.setShapeTool('line');
+    annCvs.setPointerMode('shape');
+    shapeSelector.select(lineShapeBtn);
+    setShapeSidebarVisible(true);
+});
+
+rectShapeBtn.onClick(() => {
+    annCvs.setShapeTool('rectangle');
+    annCvs.setPointerMode('shape');
+    shapeSelector.select(rectShapeBtn);
+    setShapeSidebarVisible(true);
+});
+
+circleShapeBtn.onClick(() => {
+    annCvs.setShapeTool('circle');
+    annCvs.setPointerMode('shape');
+    shapeSelector.select(circleShapeBtn);
+    setShapeSidebarVisible(true);
+});
+
+triangleShapeBtn.onClick(() => {
+    annCvs.setShapeTool('triangle');
+    annCvs.setPointerMode('shape');
+    shapeSelector.select(triangleShapeBtn);
+    setShapeSidebarVisible(true);
+});
+
 function onToolSelected(selected) {
-    if (selected === pen) annCvs.setPointerMode('draw');
-    else if (selected === highlighter) annCvs.setPointerMode('highlight');
-    else if (selected === eraser) annCvs.setPointerMode('erase');
+    clearShapeSelection();
+    annCvs.setShapeTool(null);
+    if (selected === hand) {
+        annCvs.setPointerMode('hand');
+        setShapeSidebarVisible(false);
+    } else if (selected === pen) {
+        annCvs.setPointerMode('draw');
+        annCvs.setShapeMode('draw');
+        setShapeSidebarVisible(true);
+    } else if (selected === highlighter) {
+        annCvs.setPointerMode('highlight');
+        annCvs.setShapeMode('highlight');
+        setShapeSidebarVisible(true);
+    } else if (selected === eraser) {
+        annCvs.setPointerMode('erase');
+        annCvs.setShapeMode('erase');
+        setShapeSidebarVisible(true);
+    }
 }
 
 toolSelector.buttons.forEach(item => {

@@ -1,0 +1,30 @@
+/* Shape sidebar */
+#shape-sidebar {
+    position: fixed;
+    left: 10px;
+    top: 80px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    background: #dddddd;
+    border: 2px solid #666;
+    border-radius: 6px;
+    z-index: 30;
+}
+
+#shape-sidebar .btn {
+    width: 60px;
+    height: 44px;
+    padding: 0;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+#pdf-container {
+    padding-left: 80px;
+    box-sizing: border-box;
+}
