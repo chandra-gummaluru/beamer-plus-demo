@@ -52,6 +52,7 @@ const highlightActiveSlideButton = () => {
 }
 
 
+
 const hand = new Button(toolContainer, {
     label: '<i class="fa-solid fa-hand-pointer"></i>',
     className: 'btn'
