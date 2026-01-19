@@ -26,11 +26,20 @@ const currentSlideContainer = document.getElementById("current-slide-container")
 const totalSlideContainer = document.getElementById("total-slide-container");
 const updateSlideCount = () => {
     totalSlideContainer.textContent = totalSlides;
-    currentSlideContainer.textContent = currentSlide + 1; // because indexing starts at 0
+    currentSlideContainer.textContent = totalSlides ? currentSlide + 1 : 0;
+}
+const slideButtons = document.getElementById("slide-buttons");
+const populateSlideButtons = (totalSlides) => {
+    slideButtons.innerHTML = "";
+    for (let i = 0; i < totalSlides; i++) {
+        const btn = document.createElement("button");
+        btn.className = "slide-button";
+        btn.textContent = `Slide #${i}`;
+        slideButtons.append(btn)
+    }
 }
 
-const slideButtons = document.getElementById("slide-buttons");
-//
+
 const hand = new Button(toolContainer, {
     label: '<i class="fa-solid fa-hand-pointer"></i>',
     className: 'btn'
@@ -650,6 +659,7 @@ fileInput.addEventListener('change', async (e) => {
     updateHistoryButtons();
 
     updateSlideCount();
+    populateSlideButtons(totalSlides);
 });
 
 async function loadAvailableModels() {
