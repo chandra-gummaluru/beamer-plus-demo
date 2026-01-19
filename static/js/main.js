@@ -130,6 +130,7 @@ const colorSelector = new Selector(colorBtns, 'color-selected');
 colorSelector.select(colorBtns[6]);
 
 const navContainer = document.getElementById('nav-container');
+const splitViewButtonContainer = document.getElementById('split-view-button-container');
 
 const prevBtn = new Button(navContainer, {
     label: '<i class="fa-solid fa-arrow-left"></i>',
@@ -140,6 +141,11 @@ const nextBtn = new Button(navContainer, {
     label: '<i class="fa-solid fa-arrow-right"></i>',
     className: 'btn'
 });
+
+const splitViewBtn = new Button(splitViewButtonContainer, {
+    label: '<i class="fa-solid fa-compress"></i>',
+    className: 'btn'
+})
 
 const brushContainer = document.getElementById('brush-controls');
 
@@ -221,6 +227,7 @@ const __beamer_controls = [
     ...colorBtns,
     brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
+    splitViewBtn,
     undoBtn, redoBtn,
     clearBtn, surveyBtn
 ];
