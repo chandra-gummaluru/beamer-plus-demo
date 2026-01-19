@@ -21,6 +21,38 @@ const timer = new Timer(timerContainer);
 
 const toolContainer = document.getElementById('tool-container');
 
+// For the slide navigator
+const currentSlideContainer = document.getElementById("current-slide-container");
+const totalSlideContainer = document.getElementById("total-slide-container");
+const updateSlideCount = () => {
+    totalSlideContainer.textContent = totalSlides;
+    currentSlideContainer.textContent = totalSlides ? currentSlide + 1 : 0;
+}
+const slideButtons = document.getElementById("slide-buttons");
+const populateSlideButtons = (totalSlides) => {
+    slideButtons.innerHTML = "";
+    for (let i = 0; i < totalSlides; i++) {
+        const btn = document.createElement("button");
+        btn.className = "slide-button";
+        btn.textContent = `Slide ${i + 1}`;
+        btn.addEventListener("click", () => {
+            currentSlide = i;
+            goToSlide(currentSlide);
+        }) 
+        slideButtons.append(btn)
+    }
+    highlightActiveSlideButton();
+}
+const highlightActiveSlideButton = () => {
+    const allTheSlideButtons = slideButtons.children;
+    console.log(allTheSlideButtons);
+    for (let i = 0; i < totalSlides; i++) {
+        allTheSlideButtons[i].classList.toggle("active", i == currentSlide);
+    }
+}
+
+
+
 const hand = new Button(toolContainer, {
     label: '<i class="fa-solid fa-hand-pointer"></i>',
     className: 'btn'
@@ -175,6 +207,15 @@ const uploadBtn = new Button(displayControls, {
     label: '<i class="fa-solid fa-folder-open"></i>',
 });
 
+
+
+
+
+
+
+
+
+
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
     hand, pen, highlighter, eraser,
@@ -310,6 +351,8 @@ let mediaCache = {};
 let annotations = {};
 let currentSlide = 0;
 let totalSlides = 0;
+updateSlideCount();
+
 
 async function loadSlideConfig(slideIndex) {
     if (slideConfigs[slideIndex]) {
@@ -413,16 +456,19 @@ function updateMediaPositions() {
 prevBtn.onClick(() => goToSlide(currentSlide - 1));
 nextBtn.onClick(() => goToSlide(currentSlide + 1));
 
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', (e) => {  // enable slide navigation with arrow-keys
     if (surveyOverlayVisible || resultsOverlayVisible) return;
     if (e.key === 'ArrowLeft') goToSlide(currentSlide - 1);
     if (e.key === 'ArrowRight') goToSlide(currentSlide + 1);
 });
 
 async function goToSlide(slideIndex) {
+    console.log("GOING TO SLIDE: ", slideIndex);
     if (slideIndex < 0 || slideIndex >= totalSlides) return;
     
     currentSlide = slideIndex;
+    updateSlideCount();
+    highlightActiveSlideButton();
     await renderSlide(currentSlide);
     
     const annData = annCvs.canvas.toDataURL("image/png");
@@ -623,7 +669,8 @@ async function renderSlide(slideIndex) {
     }
 }
 
-fileInput.addEventListener('change', async (e) => {
+// file upload handler:
+fileInput.addEventListener('change', async (e) => {  
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
     console.log('Folder selected with', files.length, 'files');
@@ -692,7 +739,6 @@ fileInput.addEventListener('change', async (e) => {
     const pdfData = await pdfFile.async("arraybuffer");
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     totalSlides = pdfDoc.numPages;
-    
     console.log(`Total slides: ${totalSlides}`);
     
     currentSlide = 0;
@@ -708,6 +754,9 @@ fileInput.addEventListener('change', async (e) => {
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
     updateHistoryButtons();
+
+    updateSlideCount();
+    populateSlideButtons(totalSlides);
 });
 
 async function loadAvailableModels() {

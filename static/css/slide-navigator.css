@@ -1,0 +1,49 @@
+#slide-navigator {
+    position: fixed; /* pinned to viewport */
+    left: 0;
+    top: 20%; /* top margin as % of viewport */
+    width: 12%; /* width as % of viewport */
+    height: 66%; /* height as % of viewport */
+    padding: 1%;
+    border-right: 1px solid #ccc;
+    background-color: #f9f9f9;
+    box-sizing: border-box;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* parent does not scroll */
+}
+
+.slide-counter {
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+#slide-buttons {
+    flex: 1 1 auto; /* fill remaining height */
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    overflow-y: auto; /* scroll if content overflows */
+}
+
+.slide-button {
+    display: block;
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    background-color: #eee;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    font-size: 0.8rem; /* small text for many buttons */
+    font-family: inherit;
+}
+
+.slide-button:hover {
+    background-color: #ddd;
+}
+
+.slide-button.active {
+    background-color: #ccc;
+}
