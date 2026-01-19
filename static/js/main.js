@@ -41,6 +41,7 @@ const populateSlideButtons = (totalSlides) => {
         }) 
         slideButtons.append(btn)
     }
+    highlightActiveSlideButton();
 }
 const highlightActiveSlideButton = () => {
     const allTheSlideButtons = slideButtons.children;
