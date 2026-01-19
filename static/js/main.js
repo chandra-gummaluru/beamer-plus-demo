@@ -38,9 +38,15 @@ const populateSlideButtons = (totalSlides) => {
         btn.addEventListener("click", () => {
             currentSlide = i;
             goToSlide(currentSlide);
-
         }) 
         slideButtons.append(btn)
+    }
+}
+const highlightActiveSlideButton = () => {
+    const allTheSlideButtons = slideButtons.children;
+    console.log(allTheSlideButtons);
+    for (let i = 0; i < totalSlides; i++) {
+        allTheSlideButtons[i].classList.toggle("active", i == currentSlide);
     }
 }
 
@@ -377,6 +383,7 @@ async function goToSlide(slideIndex) {
     
     currentSlide = slideIndex;
     updateSlideCount();
+    highlightActiveSlideButton();
     await renderSlide(currentSlide);
     
     const annData = annCvs.canvas.toDataURL("image/png");

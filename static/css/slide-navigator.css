@@ -37,6 +37,7 @@
     text-align: left;
     white-space: nowrap;
     font-size: 0.8rem; /* small text for many buttons */
+    font-family: inherit;
 }
 
 .slide-button:hover {
