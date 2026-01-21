@@ -32,6 +32,9 @@ socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 surveys = {}
 survey_responses = defaultdict(list)
 
+# Store active quick questions and responses
+quick_questions = {}
+
 # Store current presentation
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -120,6 +123,12 @@ def survey_page(survey_id):
         return render_template("survey_not_found.html"), 404
     return render_template("survey_response.html", survey_id=survey_id)
 
+@app.route("/quick-question/<question_id>")
+def quick_question_page(question_id):
+    if question_id not in quick_questions:
+        return render_template("survey_not_found.html"), 404
+    return render_template("quick_question_response.html", question_id=question_id)
+
 # Presentation endpoints
 @app.route('/api/presentation/upload', methods=['POST'])
 def upload_presentation():
@@ -182,6 +191,96 @@ def create_survey():
         'num_summaries': data.get('num_summaries', 3)
     }
     return jsonify({'survey_id': survey_id, 'url': f'/survey/{survey_id}'})
+
+# API endpoints for quick questions (multiple choice)
+@app.route('/api/quick_question/create', methods=['POST'])
+def create_quick_question():
+    data = request.json or {}
+    question_id = str(uuid.uuid4())[:8]
+
+    question = (data.get('question') or 'Quick Question').strip()
+    options_raw = data.get('options', [])
+
+    if not isinstance(options_raw, list):
+        return jsonify({'error': 'Options must be a list'}), 400
+
+    options = [str(opt).strip() for opt in options_raw if str(opt).strip()]
+    if len(options) < 2:
+        return jsonify({'error': 'At least two options are required'}), 400
+    if len(options) > 8:
+        return jsonify({'error': 'At most eight options are supported'}), 400
+
+    quick_questions[question_id] = {
+        'question': question,
+        'options': options,
+        'counts': [0 for _ in options],
+        'total': 0,
+        'created_at': time.time(),
+        'active': True
+    }
+
+    return jsonify({'question_id': question_id, 'url': f'/quick-question/{question_id}'})
+
+@app.route('/api/quick_question/<question_id>')
+def get_quick_question(question_id):
+    if question_id not in quick_questions:
+        return jsonify({'error': 'Quick question not found'}), 404
+    question = quick_questions[question_id]
+    return jsonify({
+        'question': question['question'],
+        'options': question['options'],
+        'counts': question['counts'],
+        'total': question['total'],
+        'active': question['active']
+    })
+
+@app.route('/api/quick_question/<question_id>/respond', methods=['POST'])
+def respond_quick_question(question_id):
+    if question_id not in quick_questions:
+        return jsonify({'error': 'Quick question not found'}), 404
+
+    question = quick_questions[question_id]
+    if not question['active']:
+        return jsonify({'error': 'Question is closed'}), 403
+
+    data = request.json or {}
+    option_index = data.get('option_index', None)
+
+    if not isinstance(option_index, int):
+        return jsonify({'error': 'Invalid option index'}), 400
+    if option_index < 0 or option_index >= len(question['options']):
+        return jsonify({'error': 'Option index out of range'}), 400
+
+    question['counts'][option_index] += 1
+    question['total'] += 1
+
+    socketio.emit('quick_question_response', {
+        'question_id': question_id,
+        'counts': question['counts'],
+        'total': question['total']
+    })
+
+    return jsonify({'success': True})
+
+@app.route('/api/quick_question/<question_id>/results')
+def get_quick_question_results(question_id):
+    if question_id not in quick_questions:
+        return jsonify({'error': 'Quick question not found'}), 404
+    question = quick_questions[question_id]
+    return jsonify({
+        'question': question['question'],
+        'options': question['options'],
+        'counts': question['counts'],
+        'total': question['total'],
+        'active': question['active']
+    })
+
+@app.route('/api/quick_question/<question_id>/close', methods=['POST'])
+def close_quick_question(question_id):
+    if question_id in quick_questions:
+        quick_questions[question_id]['active'] = False
+        socketio.emit('quick_question_closed', {'question_id': question_id}, room=f'quick_question_{question_id}')
+    return jsonify({'success': True})
 
 @app.route('/api/survey/<survey_id>')
 def get_survey(survey_id):
@@ -320,6 +419,13 @@ def join_survey(data):
     if survey_id:
         join_room(f'survey_{survey_id}')
         emit('joined', {'room': f'survey_{survey_id}'})
+
+@socketio.on('join_quick_question')
+def join_quick_question(data):
+    question_id = data.get('question_id')
+    if question_id:
+        join_room(f'quick_question_{question_id}')
+        emit('joined', {'room': f'quick_question_{question_id}'})
 
 @socketio.on("presentation_loaded")
 def handle_presentation_loaded(data):

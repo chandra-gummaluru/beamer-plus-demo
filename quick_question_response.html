@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Quick Question</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/shared.css">
+  <link rel="stylesheet" href="/static/css/button.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fcfcfc;
+      font-family: "Computer Modern Sans", sans-serif;
+      color: #333;
+    }
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      width: 100%;
+      max-width: 640px;
+      background: #ffffff;
+      border: 2px solid #666;
+      border-radius: 6px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    }
+    h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.6rem;
+      font-weight: 600;
+    }
+    .subtitle {
+      margin: 0 0 1.25rem 0;
+      color: #666;
+      font-size: 0.95rem;
+    }
+    .options {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .option-btn {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border: 2px solid #666;
+      border-radius: 6px;
+      background: #f6f6f6;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.1s ease;
+    }
+    .option-btn:hover {
+      background: #e9e9e9;
+    }
+    .option-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .state {
+      text-align: center;
+      color: #666;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <div id="question-view" style="display:none;">
+        <h1 id="question-title">Quick Question</h1>
+        <p class="subtitle">Select one option below.</p>
+        <div id="options" class="options"></div>
+      </div>
+      <div id="state-view" class="state" style="display:none;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+  <script type="module">
+    import { Modal } from '/static/js/beamer_modal.js';
+
+    const questionId = window.location.pathname.split('/').pop();
+    let socket;
+    let hasSubmitted = false;
+
+    function showState(message) {
+      document.getElementById('question-view').style.display = 'none';
+      const state = document.getElementById('state-view');
+      state.textContent = message;
+      state.style.display = 'block';
+    }
+
+    function setOptionsDisabled(disabled) {
+      document.querySelectorAll('.option-btn').forEach(btn => {
+        btn.disabled = disabled;
+      });
+    }
+
+    function initSocket() {
+      socket = io();
+      socket.emit('join_quick_question', { question_id: questionId });
+      socket.on('quick_question_closed', (data) => {
+        if (data.question_id === questionId) {
+          showState('This question is closed.');
+        }
+      });
+    }
+
+    async function loadQuestion() {
+      try {
+        const response = await fetch(`/api/quick_question/${questionId}`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            showState('This question was not found.');
+            return;
+          }
+          throw new Error('Failed to load question');
+        }
+        const data = await response.json();
+        if (!data.active) {
+          showState('This question is closed.');
+          return;
+        }
+        renderQuestion(data);
+      } catch (error) {
+        console.error('Error loading quick question:', error);
+        Modal.error('Connection Error', 'Unable to load the question. Please try again.');
+      }
+    }
+
+    function renderQuestion(data) {
+      const view = document.getElementById('question-view');
+      const optionsContainer = document.getElementById('options');
+      document.getElementById('question-title').textContent = data.question || 'Quick Question';
+      optionsContainer.innerHTML = '';
+
+      data.options.forEach((opt, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.textContent = opt;
+        btn.addEventListener('click', () => submitOption(index));
+        optionsContainer.appendChild(btn);
+      });
+
+      view.style.display = 'block';
+      document.getElementById('state-view').style.display = 'none';
+    }
+
+    async function submitOption(index) {
+      if (hasSubmitted) return;
+      hasSubmitted = true;
+      setOptionsDisabled(true);
+
+      const loadingModal = Modal.loading('Submitting', 'Recording your answer...');
+      try {
+        const response = await fetch(`/api/quick_question/${questionId}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ option_index: index })
+        });
+
+        if (response.ok) {
+          loadingModal.close();
+          Modal.success('Thanks!', 'Your answer has been recorded.');
+          return;
+        }
+
+        if (response.status === 403) {
+          loadingModal.close();
+          showState('This question is closed.');
+          return;
+        }
+
+        throw new Error('Submit failed');
+      } catch (error) {
+        console.error('Error submitting response:', error);
+        loadingModal.close();
+        Modal.error('Submission Failed', 'Unable to submit your answer. Please try again.');
+        hasSubmitted = false;
+        setOptionsDisabled(false);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadQuestion();
+      initSocket();
+    });
+  </script>
+</body>
+</html>

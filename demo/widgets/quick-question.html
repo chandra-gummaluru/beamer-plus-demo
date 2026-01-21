@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Quick Question Widget</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Computer Modern Sans", sans-serif;
+      color: #222;
+    }
+    #widget-container {
+      width: 100%;
+      height: 100%;
+      border: 2px solid #666;
+      border-radius: 6px;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+    }
+    #header {
+      padding: 0.75rem 1rem;
+      border-bottom: 2px solid #666;
+      background: #f4f4f4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    #header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    #status {
+      font-size: 0.85rem;
+      color: #555;
+    }
+    #content {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      padding: 1rem;
+      overflow: hidden;
+    }
+    #editor, #live {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 0.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      overflow: hidden;
+      min-height: 0;
+    }
+    #editor {
+      background: #fafafa;
+    }
+    #options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 0 0 110px;
+      max-height: 110px;
+      overflow-y: scroll;
+      scrollbar-gutter: stable;
+      padding-right: 0.25rem;
+    }
+    label {
+      font-size: 0.85rem;
+      color: #555;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid #999;
+      border-radius: 4px;
+      font-family: "Computer Modern Sans", sans-serif;
+    }
+    .option-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .option-row input {
+      height: 30px;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.9rem;
+    }
+    .option-row input {
+      flex: 1;
+    }
+    .option-remove {
+      border: 1px solid #999;
+      background: #f3f3f3;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .button-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: nowrap;
+      margin-top: auto;
+      padding-top: 0.4rem;
+      border-top: 1px solid #e0e0e0;
+      background: #fafafa;
+    }
+    #editor .button-row button {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.85rem;
+    }
+    button {
+      padding: 0.45rem 0.75rem;
+      border: 2px solid #666;
+      border-radius: 4px;
+      background: #ededed;
+      cursor: pointer;
+      font-family: "Computer Modern Sans", sans-serif;
+      font-size: 0.9rem;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #live {
+      background: #ffffff;
+    }
+    #question-display {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    #results {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      overflow: auto;
+      padding-right: 0.25rem;
+    }
+    .result-row {
+      display: grid;
+      grid-template-columns: 1fr 4fr auto;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .result-label {
+      font-size: 0.85rem;
+      color: #333;
+    }
+    .bar {
+      height: 14px;
+      background: #e6e6e6;
+      border: 1px solid #999;
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+    .bar-fill {
+      height: 100%;
+      background: #4a6fa5;
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+    .result-count {
+      font-size: 0.85rem;
+      color: #444;
+      width: 3.5rem;
+      text-align: right;
+    }
+    #qr-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.5rem;
+      border: 1px dashed #bbb;
+      border-radius: 6px;
+      background: #f9f9f9;
+    }
+    #qr-url {
+      width: 100%;
+      text-align: center;
+      font-size: 0.8rem;
+      border: 1px solid #ddd;
+      padding: 0.4rem;
+      border-radius: 4px;
+      background: #ffffff;
+    }
+    #live-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="widget-container">
+    <div id="header">
+      <h2>Quick Question</h2>
+      <div id="status">Idle</div>
+    </div>
+    <div id="content">
+      <div id="editor">
+        <div>
+          <label for="question-input">Question</label>
+          <input id="question-input" type="text" placeholder="Type your question">
+        </div>
+        <div>
+          <label>Options</label>
+          <div id="options-list"></div>
+        </div>
+        <div class="button-row">
+          <button id="add-option-btn" type="button">Add Option</button>
+          <button id="create-btn" type="button">Start Question</button>
+        </div>
+      </div>
+      <div id="live" class="hidden">
+        <div id="question-display">Question</div>
+        <div id="qr-container">
+          <div id="qr-code"></div>
+          <input id="qr-url" readonly>
+        </div>
+        <div id="results"></div>
+        <div id="response-count">Responses: 0</div>
+        <div id="live-actions">
+          <button id="new-btn" type="button">New Question</button>
+          <button id="close-btn" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    class QuickQuestionWidget {
+      constructor() {
+        this.config = {
+          question: '',
+          options: ['Option A', 'Option B'],
+          autoStart: false
+        };
+        this.maxOptions = 8;
+        this.minOptions = 2;
+        this.state = {
+          questionId: null,
+          url: null,
+          options: [],
+          counts: [],
+          total: 0,
+          active: false
+        };
+        this.socket = io();
+        this.baseOrigin = this.getBaseOrigin();
+        this.qr = null;
+        this.cacheElements();
+        this.bindEvents();
+        this.renderOptionsInputs(this.config.options);
+        this.listenToSocket();
+      }
+
+      cacheElements() {
+        this.statusEl = document.getElementById('status');
+        this.editorEl = document.getElementById('editor');
+        this.liveEl = document.getElementById('live');
+        this.questionInput = document.getElementById('question-input');
+        this.optionsList = document.getElementById('options-list');
+        this.createBtn = document.getElementById('create-btn');
+        this.addOptionBtn = document.getElementById('add-option-btn');
+        this.questionDisplay = document.getElementById('question-display');
+        this.qrContainer = document.getElementById('qr-code');
+        this.qrUrl = document.getElementById('qr-url');
+        this.resultsEl = document.getElementById('results');
+        this.responseCountEl = document.getElementById('response-count');
+        this.newBtn = document.getElementById('new-btn');
+        this.closeBtn = document.getElementById('close-btn');
+      }
+
+      bindEvents() {
+        this.addOptionBtn.addEventListener('click', () => this.addOption());
+        this.createBtn.addEventListener('click', () => this.createQuestion());
+        this.newBtn.addEventListener('click', () => this.resetToEditor());
+        this.closeBtn.addEventListener('click', () => this.closeQuestion());
+      }
+
+      listenToSocket() {
+        this.socket.on('quick_question_response', (data) => {
+          if (!this.state.questionId || data.question_id !== this.state.questionId) return;
+          this.state.counts = data.counts || this.state.counts;
+          this.state.total = data.total || this.state.total;
+          this.updateResults();
+        });
+        this.socket.on('quick_question_closed', (data) => {
+          if (data.question_id === this.state.questionId) {
+            this.state.active = false;
+            this.setStatus('Closed');
+          }
+        });
+      }
+
+      getBaseOrigin() {
+        try {
+          if (window.parent && window.parent.location && window.parent.location.origin) {
+            return window.parent.location.origin;
+          }
+        } catch (e) {
+          // Ignore cross-origin access errors.
+        }
+        return window.location.origin || '';
+      }
+
+      renderOptionsInputs(options) {
+        this.optionsList.innerHTML = '';
+        options.forEach((opt) => this.addOption(opt));
+      }
+
+      addOption(value = '') {
+        const count = this.optionsList.querySelectorAll('.option-row').length;
+        if (count >= this.maxOptions) return;
+
+        const row = document.createElement('div');
+        row.className = 'option-row';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = `Option ${count + 1}`;
+        input.value = value;
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'option-remove';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', () => {
+          row.remove();
+        });
+
+        row.appendChild(input);
+        row.appendChild(remove);
+        this.optionsList.appendChild(row);
+      }
+
+      collectOptions() {
+        const inputs = Array.from(this.optionsList.querySelectorAll('input'));
+        return inputs.map(input => input.value.trim()).filter(Boolean);
+      }
+
+      async createQuestion() {
+        const question = this.questionInput.value.trim() || 'Quick Question';
+        const options = this.collectOptions();
+
+        if (options.length < this.minOptions) {
+          this.setStatus(`Need at least ${this.minOptions} options`);
+          return;
+        }
+
+        this.setStatus('Creating...');
+        this.createBtn.disabled = true;
+
+        try {
+          const response = await fetch('/api/quick_question/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, options })
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            this.setStatus(data.error || 'Failed to create');
+            return;
+          }
+
+          this.state.questionId = data.question_id;
+          this.state.url = `${this.baseOrigin}${data.url}`;
+          this.state.options = options;
+          this.state.counts = options.map(() => 0);
+          this.state.total = 0;
+          this.state.active = true;
+
+          this.showLive(question);
+          this.fetchResults();
+        } catch (error) {
+          console.error('Error creating quick question:', error);
+          this.setStatus('Creation failed');
+        } finally {
+          this.createBtn.disabled = false;
+        }
+      }
+
+      async fetchResults() {
+        if (!this.state.questionId) return;
+        try {
+          const response = await fetch(`/api/quick_question/${this.state.questionId}/results`);
+          if (!response.ok) return;
+          const data = await response.json();
+          this.state.counts = data.counts || this.state.counts;
+          this.state.total = data.total || this.state.total;
+          this.state.active = data.active;
+          this.updateResults();
+        } catch (error) {
+          console.error('Error fetching results:', error);
+        }
+      }
+
+      showLive(question) {
+        this.questionDisplay.textContent = question;
+        this.editorEl.classList.add('hidden');
+        this.liveEl.classList.remove('hidden');
+        this.setStatus('Live');
+
+        this.qrContainer.innerHTML = '';
+        this.qrUrl.value = this.state.url || '';
+
+        this.qr = new QRCode(this.qrContainer, {
+          text: this.state.url || '',
+          width: 90,
+          height: 90,
+          colorDark: '#333333',
+          colorLight: '#ffffff'
+        });
+
+        this.renderResults();
+      }
+
+      renderResults() {
+        this.resultsEl.innerHTML = '';
+        this.state.options.forEach((opt, index) => {
+          const row = document.createElement('div');
+          row.className = 'result-row';
+
+          const label = document.createElement('div');
+          label.className = 'result-label';
+          label.textContent = opt;
+
+          const bar = document.createElement('div');
+          bar.className = 'bar';
+          const fill = document.createElement('div');
+          fill.className = 'bar-fill';
+          bar.appendChild(fill);
+
+          const count = document.createElement('div');
+          count.className = 'result-count';
+          count.textContent = '0';
+
+          row.appendChild(label);
+          row.appendChild(bar);
+          row.appendChild(count);
+
+          this.resultsEl.appendChild(row);
+        });
+        this.updateResults();
+      }
+
+      updateResults() {
+        const total = this.state.total || 0;
+        const rows = Array.from(this.resultsEl.querySelectorAll('.result-row'));
+        rows.forEach((row, index) => {
+          const count = this.state.counts[index] || 0;
+          const percent = total ? Math.round((count / total) * 100) : 0;
+          row.querySelector('.bar-fill').style.width = `${percent}%`;
+          row.querySelector('.result-count').textContent = `${count} (${percent}%)`;
+        });
+        this.responseCountEl.textContent = `Responses: ${total}`;
+      }
+
+      async closeQuestion() {
+        if (!this.state.questionId) return;
+        try {
+          await fetch(`/api/quick_question/${this.state.questionId}/close`, { method: 'POST' });
+          this.state.active = false;
+          this.setStatus('Closed');
+        } catch (error) {
+          console.error('Error closing question:', error);
+        }
+      }
+
+      resetToEditor() {
+        if (this.state.questionId && this.state.active) {
+          this.closeQuestion();
+        }
+        this.state = {
+          questionId: null,
+          url: null,
+          options: [],
+          counts: [],
+          total: 0,
+          active: false
+        };
+        this.editorEl.classList.remove('hidden');
+        this.liveEl.classList.add('hidden');
+        this.setStatus('Idle');
+      }
+
+      setStatus(text) {
+        this.statusEl.textContent = text;
+      }
+
+      updateConfig(newConfig) {
+        Object.assign(this.config, newConfig);
+        if (this.config.question) {
+          this.questionInput.value = this.config.question;
+        }
+        if (Array.isArray(this.config.options) && this.config.options.length) {
+          this.renderOptionsInputs(this.config.options);
+        }
+        if (this.config.autoStart) {
+          this.createQuestion();
+        }
+      }
+
+      destroy() {
+        if (this.socket) {
+          this.socket.disconnect();
+        }
+      }
+    }
+
+    const widget = new QuickQuestionWidget();
+
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'widget-config') {
+        widget.updateConfig(event.data.config);
+      } else if (event.data.type === 'widget-cleanup') {
+        widget.destroy();
+      }
+    });
+  </script>
+</body>
+</html>
