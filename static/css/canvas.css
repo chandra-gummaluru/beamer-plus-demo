@@ -1,40 +1,49 @@
 /* Beamer+ Canvas and Display Styles */
 
+#presentation-container {
+    background: #f0f0f0;
+}
+#my-div {
+    display: flex;
+    padding-left: 12%; /* because the width of the slide-navigator is 12% */
+}
+
 #pdf-container,
-#viewer-container {
-    width: 100%;
+#viewer-container, 
+#pdf-container-2 {
+    width: 50%;
     height: calc(100vh - 60px);
     position: relative;
     overflow: hidden;
     display: flex;
-    justify-content: center;
     align-items: center;
-    background: #f0f0f0;
+    justify-content: center;
 }
 
-#pdf-container video {
+#pdf-container video, #pdf-container-2 video {
     position: absolute;
     object-fit: contain;
     pointer-events: auto;
 }
 
-#pdf-canvas {
+#pdf-canvas, #pdf-canvas-2 {
     position: absolute;
     z-index: 1;
     background-color: #ffffff;
     border-radius: 4px;
     box-sizing: border-box;
-    height: 95%;
+    height: 55%;
     aspect-ratio: 4 / 3;
 }
 
-#pdf-canvas canvas {
+
+#pdf-canvas canvas, #pdf-canvas-2 canvas {
     width: 100% !important;
     height: 100% !important;
     display: block;
 }
 
-#ann-canvas {
+#ann-canvas, #ann-canvas-2 {
     position: absolute;
     z-index: 2;
     pointer-events: none;
@@ -43,7 +52,7 @@
     aspect-ratio: 4 / 3;
 }
 
-#ann-canvas canvas {
+#ann-canvas canvas, #ann-canvas-2 canvas {
     width: 100% !important;
     height: 100% !important;
     display: block;
@@ -72,4 +81,23 @@ model-viewer {
     position: absolute;
     border: none;
     background: transparent;
+}
+
+/* #playing {
+    border: 2px solid #000000;
+    width: 50%;
+    text-align: center;
+    padding: 3px;
+    box-sizing: border-box;
+} */
+
+#both-displays-container {
+    width: 100%;
+    height: calc(100vh - 60px);
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: safe;
+    border: 1px solid black;
+    overflow: hidden
 }

@@ -2,6 +2,7 @@ export class Canvas {
     constructor(container, drawable=true) {
         if (!container) throw new Error("Container element is required");
 
+        // creates an attribute for <this> object. the attribute is a html <canvas/> element
         this.canvas = document.createElement('canvas');
         
         // High-DPI canvas setup
@@ -13,7 +14,9 @@ export class Canvas {
         this.canvas.style.width = `${rect.width}px`;
         this.canvas.style.height = `${rect.height}px`;
         
+        // default pointer_mode: hand
         this.pointer_mode = 'hand';
+        // append the <canvas> html element to the parent container:
         container.appendChild(this.canvas);
 
         // Ensure clicks pass through when in hand mode by default
