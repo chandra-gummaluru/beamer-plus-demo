@@ -1822,15 +1822,15 @@ async function startScreenShare() {
         // We don't do the above check for Safari, because 'browser' screensharing
         // (i.e. tab screensharing) is not possible on Safari.
 
-        screenStream = stream;
-        isScreenSharing = true;
+        screenStream = stream;  // assign the global "state" variable <screenStream>
+        isScreenSharing = true; // assign the global "state" variable <isScreenSharing>
         
         // Update button appearance
         screenShareBtn.el.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
         
         // Create a hidden video element to capture the stream
         const video = document.createElement('video');
-        video.style.display = 'none';
+        video.style.display = 'none';  // -> not displayed. invisible.
         video.srcObject = stream;
         video.play();
         
@@ -1840,6 +1840,9 @@ async function startScreenShare() {
         const cropCanvas = document.createElement('canvas');
         const cropCtx = cropCanvas.getContext('2d');
         
+        // the <video> var captures the whole tab/window/monitor (whatever wass selected)
+        // the <cropCanvas> will hold the, well, just the slide
+
         // Get the canvas container dimensions
         const pdfContainer = document.getElementById('pdf-canvas');
         
@@ -1850,7 +1853,8 @@ async function startScreenShare() {
         const captureFrame = (currentTime) => {
             if (!isScreenSharing) return;
             
-            // Throttle frame rate
+            // Throttle frame rate: 
+            // if (not enough time has passed) {exit}
             if (currentTime - lastFrameTime < frameInterval) {
                 requestAnimationFrame(captureFrame);
                 return;
