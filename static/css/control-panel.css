@@ -12,6 +12,7 @@
     flex-wrap: wrap;
     position: relative;
     z-index: 200;
+    border-bottom: 2px solid #666;
 }
 
 /* Control panel sections */

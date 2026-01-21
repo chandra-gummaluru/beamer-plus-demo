@@ -42,8 +42,8 @@ export function renderWidgets(slideConfig, container, zipFile) {
         
         // Load widget HTML from zip
         try {
-            // Get the widget HTML file from zip
-            const widgetPath = w.src || `widgets/${w.type}.html`;
+            // Get the widget HTML file from zip (ignore query parameters)
+            const widgetPath = (w.src || `widgets/${w.type}.html`).split('?')[0];
             const widgetFile = zipFile.file(widgetPath);
             
             if (!widgetFile) {
@@ -54,10 +54,10 @@ export function renderWidgets(slideConfig, container, zipFile) {
             
             const htmlContent = await widgetFile.async("string");
             
-            // Set the iframe content directly
+            // Set the iframe content
             iframe.srcdoc = htmlContent;
             
-            // Pass config to widget once loaded
+            // Pass full widget config to iframe once loaded
             iframe.addEventListener('load', () => {
                 iframe.contentWindow.postMessage({
                     type: 'widget-config',

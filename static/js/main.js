@@ -95,6 +95,7 @@ const undoBtn = new Button(otherControlsContainer, {
     label: '<i class="fa-solid fa-rotate-left"></i>'
 });
 
+undoBtn.el.id = 'undo-btn';
 undoBtn.el.style.marginLeft = '15px';
 undoBtn.el.style.marginRight = '5px';
 
@@ -103,6 +104,7 @@ const redoBtn = new Button(otherControlsContainer, {
     label: '<i class="fa-solid fa-rotate-right"></i>'
 });
 
+redoBtn.el.id = 'redo-btn';
 redoBtn.el.style.marginRight = '5px';
 
 const clearBtn = new Button(otherControlsContainer, {
@@ -110,6 +112,7 @@ const clearBtn = new Button(otherControlsContainer, {
     label: '<i class="fa-solid fa-broom"></i>'
 });
 
+clearBtn.el.id = 'clear-btn';
 clearBtn.el.style.marginRight = '20px';
 
 const surveyBtn = new Button(otherControlsContainer, {
@@ -147,6 +150,19 @@ const screenShareBtn = new Button(screenShareContainer, {
 screenShareBtn.el.disabled = true;
 screenShareBtn.el.style.opacity = '0.5';
 screenShareBtn.el.style.cursor = 'not-allowed';
+
+// Create recording button
+const recordContainer = document.getElementById('record-container');
+
+const recordBtn = new Button(recordContainer, {
+    className: 'btn',
+    label: '<i class="fa-solid fa-circle"></i>',
+});
+
+// Initially disabled until presentation is loaded
+recordBtn.el.disabled = true;
+recordBtn.el.style.opacity = '0.5';
+recordBtn.el.style.cursor = 'not-allowed';
 
 // Create floating annotation panel toggle button for mobile
 const annotationToggleBtn = document.createElement('button');
@@ -204,12 +220,12 @@ function updateFloatingPanel() {
         // Undo/Redo/Clear section - move individual buttons from other-controls
         const actionSection = document.createElement('div');
         actionSection.className = 'panel-section';
-        const undoBtn = document.querySelector('#other-controls .btn:has(.fa-rotate-left)');
-        const redoBtn = document.querySelector('#other-controls .btn:has(.fa-rotate-right)');
-        const clearBtn = document.querySelector('#other-controls .btn:has(.fa-broom)');
-        if (undoBtn) actionSection.appendChild(undoBtn);
-        if (redoBtn) actionSection.appendChild(redoBtn);
-        if (clearBtn) actionSection.appendChild(clearBtn);
+        const undoBtnEl = document.getElementById('undo-btn');
+        const redoBtnEl = document.getElementById('redo-btn');
+        const clearBtnEl = document.getElementById('clear-btn');
+        if (undoBtnEl) actionSection.appendChild(undoBtnEl);
+        if (redoBtnEl) actionSection.appendChild(redoBtnEl);
+        if (clearBtnEl) actionSection.appendChild(clearBtnEl);
         if (actionSection.children.length > 0) floatingPanel.appendChild(actionSection);
         
         // Show toggle button on mobile
@@ -217,13 +233,21 @@ function updateFloatingPanel() {
     } else {
         // Move elements back to controls-right on desktop
         
-        // Move undo/redo/clear back to other-controls first
-        const undoBtn = floatingPanel.querySelector('.btn:has(.fa-rotate-left)');
-        const redoBtn = floatingPanel.querySelector('.btn:has(.fa-rotate-right)');
-        const clearBtn = floatingPanel.querySelector('.btn:has(.fa-broom)');
-        if (undoBtn && otherControls) otherControls.insertBefore(undoBtn, otherControls.firstChild);
-        if (redoBtn && otherControls) otherControls.insertBefore(redoBtn, otherControls.firstChild);
-        if (clearBtn && otherControls) otherControls.insertBefore(clearBtn, otherControls.firstChild);
+        // Move undo/redo/clear back to other-controls in the correct order
+        const undoBtnEl = document.getElementById('undo-btn');
+        const redoBtnEl = document.getElementById('redo-btn');
+        const clearBtnEl = document.getElementById('clear-btn');
+        
+        // Insert in correct order at the beginning of other-controls
+        if (undoBtnEl && otherControls && !otherControls.contains(undoBtnEl)) {
+            otherControls.insertBefore(undoBtnEl, otherControls.firstChild);
+        }
+        if (redoBtnEl && otherControls && !otherControls.contains(redoBtnEl)) {
+            otherControls.insertBefore(redoBtnEl, undoBtnEl ? undoBtnEl.nextSibling : otherControls.firstChild);
+        }
+        if (clearBtnEl && otherControls && !otherControls.contains(clearBtnEl)) {
+            otherControls.insertBefore(clearBtnEl, redoBtnEl ? redoBtnEl.nextSibling : otherControls.firstChild);
+        }
         
         // Insert elements back in correct order
         if (toolContainer && !controlsRight.contains(toolContainer)) {
@@ -975,6 +999,11 @@ folderInput.addEventListener('change', async (e) => {
     screenShareBtn.el.style.opacity = '1';
     screenShareBtn.el.style.cursor = 'pointer';
     
+    // Enable record button
+    recordBtn.el.disabled = false;
+    recordBtn.el.style.opacity = '1';
+    recordBtn.el.style.cursor = 'pointer';
+    
     updateHistoryButtons();
 });
 
@@ -1052,6 +1081,11 @@ zipInput.addEventListener('change', async (e) => {
         screenShareBtn.el.disabled = false;
         screenShareBtn.el.style.opacity = '1';
         screenShareBtn.el.style.cursor = 'pointer';
+        
+        // Enable record button
+        recordBtn.el.disabled = false;
+        recordBtn.el.style.opacity = '1';
+        recordBtn.el.style.cursor = 'pointer';
         
         updateHistoryButtons();
     };
@@ -1597,6 +1631,148 @@ document.addEventListener('fullscreenchange', () => {
 let screenStream = null;
 let isScreenSharing = false;
 
+// ==================== RECORDING ====================
+let isRecording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingCanvas = null;
+let recordingStream = null;
+let audioStream = null;
+let micStream = null;
+
+recordBtn.onClick(async () => {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        await startRecording();
+    }
+});
+
+async function startRecording() {
+    if (!isScreenSharing) {
+        Modal.error('Recording Error', 'Please start screen sharing before recording.');
+        return;
+    }
+    
+    try {
+        // Get the canvas that's being used for screen sharing
+        const pdfContainer = document.getElementById('pdf-canvas');
+        
+        // Create a new canvas for recording
+        recordingCanvas = document.createElement('canvas');
+        recordingCanvas.width = pdfContainer.getBoundingClientRect().width;
+        recordingCanvas.height = pdfContainer.getBoundingClientRect().height;
+        
+        // Create a stream from the canvas at 30 FPS
+        recordingStream = recordingCanvas.captureStream(30);
+        
+        // Request microphone audio
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream.getAudioTracks().forEach(track => recordingStream.addTrack(track));
+        } catch (error) {
+            console.warn('Microphone not captured:', error);
+        }
+        
+        // Request system audio (will prompt user)
+        try {
+            audioStream = await navigator.mediaDevices.getDisplayMedia({
+                video: false,
+                audio: true
+            });
+            audioStream.getAudioTracks().forEach(track => recordingStream.addTrack(track));
+        } catch (audioError) {
+            console.warn('System audio not captured:', audioError);
+        }
+        
+        // Create MediaRecorder to record in real-time
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(recordingStream, {
+            mimeType: 'video/webm;codecs=vp9',
+            videoBitsPerSecond: 2500000
+        });
+        
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                recordedChunks.push(e.data);
+            }
+        };
+        
+        mediaRecorder.start(100); // Collect data every 100ms
+        
+        isRecording = true;
+        
+        // Update button appearance
+        recordBtn.el.innerHTML = '<i class="fa-solid fa-stop"></i>';
+        recordBtn.el.style.backgroundColor = '#e74c3c';
+        
+        console.log('Recording started');
+    } catch (error) {
+        console.error('Error starting recording:', error);
+        Modal.error('Recording Error', 'Could not start recording: ' + error.message);
+    }
+}
+
+async function stopRecording() {
+    if (!isRecording || !mediaRecorder) return;
+    
+    isRecording = false;
+    
+    // Reset button appearance
+    recordBtn.el.innerHTML = '<i class="fa-solid fa-circle"></i>';
+    recordBtn.el.style.backgroundColor = '';
+    
+    console.log('Recording stopped. Processing video...');
+    
+    // Show processing modal with loading animation
+    const processingModal = Modal.loading('Processing Video', 'Please wait while your recording is being processed and downloaded...');
+    
+    return new Promise((resolve, reject) => {
+        mediaRecorder.onstop = () => {
+            try {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                
+                // Download the video
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `beamer-recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Clean up
+                recordedChunks = [];
+                if (micStream) {
+                    micStream.getTracks().forEach(track => track.stop());
+                    micStream = null;
+                }
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                }
+                if (recordingStream) {
+                    recordingStream.getTracks().forEach(track => track.stop());
+                    recordingStream = null;
+                }
+                recordingCanvas = null;
+                
+                processingModal.close();
+                Modal.success('Recording Complete', 'Your video has been downloaded successfully!');
+                resolve();
+            } catch (error) {
+                console.error('Error processing video:', error);
+                processingModal.close();
+                Modal.error('Recording Error', 'Failed to process video: ' + error.message);
+                reject(error);
+            }
+        };
+        
+        mediaRecorder.stop();
+    });
+}
+
 screenShareBtn.onClick(async () => {
     if (isScreenSharing) {
         stopScreenShare();
@@ -1640,8 +1816,7 @@ async function startScreenShare() {
         isScreenSharing = true;
         
         // Update button appearance
-        screenShareBtn.el.innerHTML = '<i class="fa-solid fa-stop"></i>';
-        screenShareBtn.el.style.backgroundColor = '#e74c3c';
+        screenShareBtn.el.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
         
         // Create a hidden video element to capture the stream
         const video = document.createElement('video');
@@ -1694,6 +1869,18 @@ async function startScreenShare() {
                 sourceX, sourceY, sourceWidth, sourceHeight,
                 0, 0, cropCanvas.width, cropCanvas.height
             );
+            
+            // If recording, draw to recording canvas in real-time
+            if (isRecording && recordingCanvas) {
+                const recordingCtx = recordingCanvas.getContext('2d');
+                // Update canvas size if needed
+                if (recordingCanvas.width !== cropCanvas.width || recordingCanvas.height !== cropCanvas.height) {
+                    recordingCanvas.width = cropCanvas.width;
+                    recordingCanvas.height = cropCanvas.height;
+                }
+                // Draw the current frame to the recording canvas
+                recordingCtx.drawImage(cropCanvas, 0, 0);
+            }
             
             // Convert canvas to blob and emit to server
             cropCanvas.toBlob((blob) => {
@@ -1758,6 +1945,11 @@ function stopScreenShare() {
     }
     
     isScreenSharing = false;
+    
+    // If recording is active, stop it
+    if (isRecording) {
+        stopRecording();
+    }
     
     // Reset button appearance
     screenShareBtn.el.innerHTML = '<i class="fa-solid fa-desktop"></i>';
