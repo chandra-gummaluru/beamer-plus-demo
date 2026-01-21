@@ -1,10 +1,4 @@
 /* Splash Screen Styles */
-@font-face {
-    font-family: "Computer Modern Serif";
-    src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunrm.otf");
-    font-display: swap;
-}
-
 #splash-screen {
     position: fixed;
     top: 0;
@@ -44,7 +38,7 @@
 }
 
 .splash-title {
-    font-family: "Computer Modern Serif", serif;
+    font-family: Georgia, serif;
     font-size: 36px;
     font-weight: 400;
     color: #333;
