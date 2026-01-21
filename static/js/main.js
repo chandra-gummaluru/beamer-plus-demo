@@ -21,6 +21,8 @@ const timer = new Timer(timerContainer);
 
 const toolContainer = document.getElementById('tool-container');
 
+const splitViewEnabled = false; // initialize
+
 // For the slide navigator
 const currentSlideContainer = document.getElementById("current-slide-container");
 const totalSlideContainer = document.getElementById("total-slide-container");
@@ -147,6 +149,11 @@ const splitViewBtn = new Button(splitViewButtonContainer, {
     className: 'btn'
 })
 
+splitViewBtn.onClick(() => {
+    // this just changes the state. to update the UI, you need CSS class toggling:
+    splitViewEnabled = !splitViewEnabled
+})
+
 const brushContainer = document.getElementById('brush-controls');
 
 const brushMinusBtn = new Button(brushContainer, {
@@ -242,6 +249,9 @@ const ann_canvas_container = document.getElementById('ann-canvas');
 const annCvs = new Canvas(ann_canvas_container);
 const slide_canvas_container = document.getElementById('pdf-canvas');
 const pdfCvs = new Canvas(slide_canvas_container, false);
+
+const slide_canvas_container2 = document.getElementById('pdf-canvas-2');
+const pdfCvs2 = new Canvas(slide_canvas_container2, false);
 
 const updateHistoryButtons = () => {
     undoBtn.el.disabled = !annCvs.canUndo();
@@ -505,6 +515,8 @@ async function renderSlide(slideIndex) {
     const page = await pdfDoc.getPage(slideIndex + 1);
 
     await pdfCvs.renderPDFPage(page);
+    // new:
+    await pdfCvs2.renderPDFPage(page);
 
     // Load per-slide annotations (clear then draw saved image if present)
     try {
