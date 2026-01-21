@@ -361,6 +361,7 @@ const __beamer_controls = [
     undoBtn, redoBtn,
     clearBtn, surveyBtn
 ];
+// QUESTION: Why aren't screenShareBtn and recordBtn in this array?^
 
 // Disable at startup
 setControlsEnabledAfterUpload(false, __beamer_controls);
