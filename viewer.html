@@ -3,7 +3,6 @@
     <head>
         <meta charset="utf-8" />
         <title>Beamer+ Viewer</title>
-        <link rel="stylesheet" href="static/css/viewer-panel.css" />
         <link rel="stylesheet" href="static/css/button.css" />
         <link rel="stylesheet" href="static/css/viewer.css" />
 
@@ -130,25 +129,6 @@
     <body>
         <span id="stream-info"></span>
 
-        <!-- <div id="control-panel">
-    <div class="controls-left">
-      <div id="display-controls"></div>
-      <input type="file" id="upload-zip" accept=".zip" style="display: none;">
-      <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
-      <div id="screen-share-container"></div>
-      <div id="record-container"></div>
-      <div id="nav-container"></div>
-    </div>
-
-    <div class="controls-right">
-      <div id="tool-container"></div>
-      <div id="color-picker"></div>
-      <div id="brush-controls"></div>
-      <div id="other-controls"></div>
-      <div id="timer-container"></div>
-    </div>
-  </div> -->
-
         <div id="viewer-panel">
             <div class="viewer-left">
                 <div id="switch-container"></div>
@@ -241,9 +221,6 @@
                 isScreenSharing = true;
                 waitingMessage.style.display = "none";
                 screenDisplay.style.display = "block";
-                console.log(
-                    `MATE MATE ${isScreenSharing} ${switchToPresentation}`,
-                );
             });
 
             socket.on("screen_share_stop", () => {
@@ -299,7 +276,6 @@
                 label: '<i class="fa-solid fa-display"></i>',
                 className: "btn",
             });
-            console.log("BUTTON: ", switchContainer.innerHTML);
 
             switchBtn.onClick(() => {
                 switchToPresentation = !switchToPresentation;
@@ -309,6 +285,5 @@
                 );
             });
         </script>
-        <!-- <script type="module" src="/static/js/viewer.js"></script> -->
     </body>
 </html>
