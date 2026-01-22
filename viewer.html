@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>Beamer+ Viewer</title>
+  <link rel="stylesheet" href="static/css/viewer-panel.css">
+  <link rel="stylesheet" href="static/css/button.css">
   
   <!-- Beamer+ Font -->
   <style>
@@ -111,6 +113,35 @@
 </head>
 <body>
   <span id="stream-info"></span>
+
+  <!-- <div id="control-panel">
+    <div class="controls-left">
+      <div id="display-controls"></div>
+      <input type="file" id="upload-zip" accept=".zip" style="display: none;">
+      <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
+      <div id="screen-share-container"></div>
+      <div id="record-container"></div>
+      <div id="nav-container"></div>
+    </div>
+
+    <div class="controls-right">
+      <div id="tool-container"></div>
+      <div id="color-picker"></div>
+      <div id="brush-controls"></div>
+      <div id="other-controls"></div>
+      <div id="timer-container"></div>
+    </div>
+  </div> -->
+
+  <div id="viewer-panel">
+    <div class="viewer-left">
+      <div id="switch-container"></div>
+    </div>
+    <div class="viewer-right">
+      <!-- note: there's nothing in viewer-right rn. -->
+    </div>
+    
+  </div>
   
   <div id="viewer-container">
     <div id="waiting-message">
@@ -119,6 +150,10 @@
       </svg>
     </div>
     <img id="screen-display" alt="Presentation Screen">
+  </div>
+
+  <div id="switch-presentation-container">
+    <h1>YO HOLLA</h1>
   </div>
 
   <script>
@@ -210,5 +245,6 @@
       // Image styling will handle scaling automatically
     });
   </script>
+  <script type="module" src="/static/js/viewer.js"></script>
 </body>
 </html>
