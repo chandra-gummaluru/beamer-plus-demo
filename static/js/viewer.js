@@ -127,4 +127,75 @@ switchBtn.onClick(() => {
     );
 });
 
+async function loadPresentation() {
+    const infoRes = await fetch('/api/presentation/info');
+    const info = await infoRes.json();
+
+    if (!info.loaded) {
+        console.log("No presentation loaded yet.");
+        // show some kind of waiting message maybe
+        return;
+    }
+    console.log("Presentation found:", info);
+    await downloadAndLoadZip();
+}
+
+async function downloadAndLoadZip() {
+    console.log("Downloading presentation...");
+
+    const res = await fetch('/api/presentation/current');
+    const blob = await res.blob();
+
+    console.log("ZIP downloaded:", blob);
+
+    await loadZip(blob);
+}
+
+async function loadZip(blob) {
+    const zip = await JSZip.loadAsync(blob);
+
+    console.log("ZIP contents:", Object.keys(zip.files));
+
+    window.viewerPresentation = zip; // store globally
+
+    // Example: load slides/index.html if it exists
+    if (zip.files["index.html"]) {
+        const html = await zip.files["index.html"].async("string");
+        document.getElementById("viewer-container").innerHTML = html;
+    }
+}
+
+loadPresentation();
+socket.on("presentation_loaded", () => {
+    console.log("New presentation uploaded — reloading...");
+    loadPresentation();
+});
+
+
+// ignore this:
+// // 1. Listen for the signal from the server
+// socket.on("presentation_loaded", async (data) => {
+//     console.log("The server says a new ZIP is ready!");
+
+//     // 2. Go to that Flask URL you pointed out to get the file
+//     // This is like typing the URL into your browser bar automatically
+//     const response = await fetch('/api/presentation/current');
+    
+//     // 3. Convert the response into a 'Blob' (which is just a web-file)
+//     const zipBlob = await response.blob();
+    
+//     // 4. Now the file is in the viewer's memory!
+//     console.log("I have the ZIP file now.", zipBlob);
+
+//     // 5. This is where you decide how to show it.
+//     // Since we are novices, let's start by just putting a message in your container.
+//     switchPresentationContainer.innerHTML = `
+//         <div style="padding: 20px; text-align: center;">
+//             <h2>Presentation Downloaded!</h2>
+//             <p>File size: ${Math.round(zipBlob.size / 1024)} KB</p>
+//             <p>Ready to display in your switch-presentation-container.</p>
+//         </div>
+//     `;
+// });
+
 });

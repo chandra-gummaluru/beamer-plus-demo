@@ -152,6 +152,20 @@ def get_current_presentation():
         return send_file(current_presentation['file'], as_attachment=True, download_name='presentation.zip')
     return jsonify({'error': 'No presentation loaded'}), 404
 
+@app.route('/api/presentation/info')
+def get_presentation_info():
+    if current_presentation['file'] and os.path.exists(current_presentation['file']):
+        return jsonify({
+            'loaded': True,
+            'models': current_presentation.get('available_models', []),
+            'filename': os.path.basename(current_presentation['file'])
+        })
+    
+    return jsonify({
+        'loaded': False
+    })
+
+
 # Model endpoints
 @app.route('/api/models')
 def get_models():
