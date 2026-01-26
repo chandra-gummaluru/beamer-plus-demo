@@ -915,7 +915,7 @@ folderInput.addEventListener('change', async (e) => {
     const uploadModal = Modal.loading('Uploading Presentation', 'Please wait while your presentation is uploaded...');
 
     // Create a ZIP file from the selected folder
-    const zip = new JSZip();
+    const zip = new JSZip(); // we can use JSZip because we have an HTML script for it (Cloudflare)
     
     // Add all files to the ZIP, preserving folder structure
     for (const file of files) {

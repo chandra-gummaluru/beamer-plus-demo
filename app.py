@@ -26,7 +26,10 @@ BASE_PATH = get_base_path()
 app = Flask("Beamer+", 
             static_folder=os.path.join(BASE_PATH, 'static'), 
             template_folder=BASE_PATH)
-socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+# socketio allows different webpages in our app (viewer, index, etc) to share data
+socketio = SocketIO(app, 
+                    cors_allowed_origins='*', # meaning of *: all webpages can communicate
+                    async_mode='threading')
 
 # Store active surveys and responses
 surveys = {}
@@ -34,7 +37,9 @@ survey_responses = defaultdict(list)
 
 # Store current presentation
 UPLOAD_FOLDER = 'uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  
+# exist_ok=True ensures that even if '/uploads' already exists,
+# the program shouldn't crash
 
 current_presentation = {
     'file': None,
@@ -146,13 +151,15 @@ def upload_presentation():
         'models': available_models
     })
 
-@app.route('/api/presentation/current')
+# Getter for upload.zip:
+@app.route('/api/presentation/current')  # by default: methods=['GET']
 def get_current_presentation():
     if current_presentation['file'] and os.path.exists(current_presentation['file']):
         return send_file(current_presentation['file'], as_attachment=True, download_name='presentation.zip')
     return jsonify({'error': 'No presentation loaded'}), 404
 
-@app.route('/api/presentation/info')
+# Getter for metadata about upload.zip
+@app.route('/api/presentation/info') # by default: methods=['GET']
 def get_presentation_info():
     if current_presentation['file'] and os.path.exists(current_presentation['file']):
         return jsonify({

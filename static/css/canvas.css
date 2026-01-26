@@ -1,7 +1,8 @@
 /* Beamer+ Canvas and Display Styles */
 
 #pdf-container,
-#viewer-container {
+#viewer-container,
+#switch-presentation-container {
     width: calc(100% - 75px);
     height: calc(100vh - 60px);
     position: relative;
@@ -11,15 +12,16 @@
     justify-content: center;
     align-items: center;
     background: #f0f0f0;
+    bordeR: 5px solid red;
 }
 
-#pdf-container video {
+#pdf-container video, #switch-presentation-container video {
     position: absolute;
     object-fit: contain;
     pointer-events: auto;
 }
 
-#pdf-canvas {
+#pdf-canvas, #viewer-pdf-canvas {
     position: absolute;
     z-index: 1;
     background-color: #ffffff;
@@ -29,7 +31,7 @@
     aspect-ratio: 4 / 3;
 }
 
-#pdf-canvas canvas {
+#pdf-canvas canvas, #viewer-pdf-canvas canvas {
     width: 100% !important;
     height: 100% !important;
     display: block;
