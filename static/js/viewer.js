@@ -37,24 +37,19 @@ window.addEventListener("DOMContentLoaded", () => {
     navControls.style.zIndex = '100';
     switchPresentationContainer.appendChild(navControls);
 
-    const prevBtn = document.createElement('button');
-    prevBtn.textContent = '◀ Prev';
-    prevBtn.className = 'btn';
-    // navControls.appendChild(prevBtn);
-    console.log("viewer-prev-button-div: ", viewerPrevBtnDiv);
-    viewerPrevBtnDiv.appendChild(prevBtn);
+    const prevBtn = new Button(viewerPrevBtnDiv, {
+        label: '<i class="fa-solid fa-arrow-left"></i>',
+        className: "btn",
+    });
 
-    const nextBtn = document.createElement('button');
-    nextBtn.textContent = 'Next ▶';
-    nextBtn.className = 'btn';
-    navControls.appendChild(nextBtn);
-    viewerNextBtnDiv.appendChild(nextBtn);
+    const nextBtn = new Button(viewerNextBtnDiv, {
+        label: '<i class="fa-solid fa-arrow-right"></i>',
+        className: "btn",
+    });
 
-    // viewerPanelLeft.appendChild(navControls);
+    prevBtn.onClick(() => goToViewerSlide(viewerCurrentSlide - 1));
+    nextBtn.onClick(() => goToViewerSlide(viewerCurrentSlide + 1));
 
-
-    prevBtn.onclick = () => goToViewerSlide(viewerCurrentSlide - 1);
-    nextBtn.onclick = () => goToViewerSlide(viewerCurrentSlide + 1);
 
     // note: loadSlideConfig also appears in main.js.
     // it's the same, except is uses <zipFile> rather than <viewerZip>
