@@ -29,7 +29,9 @@
     background-color: #bbbbbb;
 }
 
-.btn:disabled {
+
+.btn:disabled, .not-in-use  {  
+    /* .not-in-use applies to viewer-slide-navigator icons when switchToPresentation == false */
     opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;

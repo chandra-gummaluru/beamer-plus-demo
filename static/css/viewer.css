@@ -1,0 +1,110 @@
+@font-face {
+    font-family: "Computer Modern Sans";
+    src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunss.otf");
+    font-display: swap;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #fcfcfc;
+    font-family: "Computer Modern Sans", sans-serif;
+}
+
+/* Viewer container */
+#viewer-container {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #fcfcfc;
+    padding: 0;
+}
+
+#screen-display {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: none;
+}
+
+/* Waiting message */
+#waiting-message {
+    text-align: center;
+    color: #666;
+}
+
+#waiting-message h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+    margin-top: 20px;
+    font-weight: 700;
+    color: #333;
+}
+
+#waiting-message p {
+    font-size: 16px;
+    color: #666;
+}
+
+/* Scribble animation matching Beamer+ modal style */
+.viewer-squiggle {
+    width: 120px;
+    height: 40px;
+    display: block;
+    margin: 0 auto;
+}
+
+.viewer-squiggle path {
+    fill: none;
+    stroke: #666;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 150;
+    stroke-dashoffset: 150;
+    animation: draw-squiggle 1.6s ease-in-out infinite;
+}
+
+@keyframes draw-squiggle {
+    0% {
+        stroke-dashoffset: 150;
+        opacity: 0.6;
+    }
+    40% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+    }
+    100% {
+        stroke-dashoffset: -150;
+        opacity: 0.6;
+    }
+}
+
+/* FPS counter in corner */
+#stream-info {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    background: #eee;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid #999;
+    opacity: 0.9;
+    display: none;
+}
