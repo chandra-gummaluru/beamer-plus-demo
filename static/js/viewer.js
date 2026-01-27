@@ -23,6 +23,10 @@ window.addEventListener("DOMContentLoaded", () => {
     let frameCount = 0;
     let lastUpdateTime = Date.now();
 
+    const viewerPanelLeft = document.getElementById("viewer-left");
+    const viewerPrevBtnDiv = document.getElementById("viewer-prev-btn");
+    const viewerNextBtnDiv = document.getElementById("viewer-next-btn");
+
     const navControls = document.createElement('div');
     navControls.style.position = 'absolute';
     navControls.style.bottom = '20px';
@@ -36,12 +40,18 @@ window.addEventListener("DOMContentLoaded", () => {
     const prevBtn = document.createElement('button');
     prevBtn.textContent = '◀ Prev';
     prevBtn.className = 'btn';
-    navControls.appendChild(prevBtn);
+    // navControls.appendChild(prevBtn);
+    console.log("viewer-prev-button-div: ", viewerPrevBtnDiv);
+    viewerPrevBtnDiv.appendChild(prevBtn);
 
     const nextBtn = document.createElement('button');
     nextBtn.textContent = 'Next ▶';
     nextBtn.className = 'btn';
     navControls.appendChild(nextBtn);
+    viewerNextBtnDiv.appendChild(nextBtn);
+
+    // viewerPanelLeft.appendChild(navControls);
+
 
     prevBtn.onclick = () => goToViewerSlide(viewerCurrentSlide - 1);
     nextBtn.onclick = () => goToViewerSlide(viewerCurrentSlide + 1);
