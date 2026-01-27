@@ -22,7 +22,7 @@ input[type=file] {
 }
 
 /* Slide Navigator */
-#slide-navigator {
+#slide-navigator, #viewer-slide-navigator {
     position: fixed;
     left: 0;
     top: 60px;
@@ -40,7 +40,7 @@ input[type=file] {
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
-#slide-navigator::-webkit-scrollbar {
+#slide-navigator::-webkit-scrollbar, #viewer-slide-navigator::-webkit-scrollbar {
     display: none;
 }
 

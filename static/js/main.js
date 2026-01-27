@@ -592,9 +592,11 @@ window.addEventListener("DOMContentLoaded", () => {
         document.addEventListener("keydown", escHandler);
     }
 
+    // SLIDE NAVIGATOR STARTS ////////////////////////////////////////
+    const slideNavigator = document.getElementById("slide-navigator");
+
     function populateSlideNavigator() {
-        const navigator = document.getElementById("slide-navigator");
-        navigator.innerHTML = "";
+        slideNavigator.innerHTML = "";
 
         for (let i = 0; i < totalSlides; i++) {
             const item = document.createElement("div");
@@ -606,7 +608,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 goToSlide(i);
             };
 
-            navigator.appendChild(item);
+            slideNavigator.appendChild(item);
         }
 
         updateSlideNavigator();
@@ -624,6 +626,8 @@ window.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+    // SLIDE NAVIGATOR ENDS ////////////////////////////////////////
+
 
     let zipFile = null;
     let slideConfigs = {};
@@ -750,39 +754,6 @@ window.addEventListener("DOMContentLoaded", () => {
         socket.emit("slide_change", {
             slideIndex: currentSlide,
             annotations: annData,
-        });
-    }
-
-    function populateSlideNavigator() {
-        const navigator = document.getElementById("slide-navigator");
-        navigator.innerHTML = "";
-
-        for (let i = 0; i < totalSlides; i++) {
-            const item = document.createElement("div");
-            item.className = "slide-nav-item";
-            item.textContent = i + 1;
-            item.dataset.slideIndex = i;
-
-            item.onclick = () => {
-                goToSlide(i);
-            };
-
-            navigator.appendChild(item);
-        }
-
-        updateSlideNavigator();
-    }
-
-    function updateSlideNavigator() {
-        const items = document.querySelectorAll(".slide-nav-item");
-        items.forEach((item, index) => {
-            if (index === currentSlide) {
-                item.classList.add("active");
-                // Scroll into view
-                item.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            } else {
-                item.classList.remove("active");
-            }
         });
     }
 

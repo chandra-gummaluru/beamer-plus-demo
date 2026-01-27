@@ -11,6 +11,14 @@ window.addEventListener("DOMContentLoaded", () => {
     let viewerTotalSlides = 0;
     let viewerPDFDoc = null;
 
+    // when this is true, you show the viewer-controlled presentation.
+    // when this is false, you show the screen-shared presentation.
+    // important: if isScreenSharing == false then switchToPresentation must be false.
+    let switchToPresentation = false;
+
+    // this contains the screen-captured presentation:
+    const viewerContainer = document.getElementById("viewer-container");
+    // this contains the viewer's own copy of the presentation:
     const switchPresentationContainer = document.getElementById("switch-presentation-container");
     const slide_canvas_container = document.getElementById('viewer-pdf-canvas');
     const pdfCvs = new Canvas(slide_canvas_container, false);
@@ -23,19 +31,8 @@ window.addEventListener("DOMContentLoaded", () => {
     let frameCount = 0;
     let lastUpdateTime = Date.now();
 
-    const viewerPanelLeft = document.getElementById("viewer-left");
     const viewerPrevBtnDiv = document.getElementById("viewer-prev-btn");
     const viewerNextBtnDiv = document.getElementById("viewer-next-btn");
-
-    const navControls = document.createElement('div');
-    navControls.style.position = 'absolute';
-    navControls.style.bottom = '20px';
-    navControls.style.left = '50%';
-    navControls.style.transform = 'translateX(-50%)';
-    navControls.style.display = 'flex';
-    navControls.style.gap = '10px';
-    navControls.style.zIndex = '100';
-    switchPresentationContainer.appendChild(navControls);
 
     const prevBtn = new Button(viewerPrevBtnDiv, {
         label: '<i class="fa-solid fa-arrow-left"></i>',
@@ -47,6 +44,8 @@ window.addEventListener("DOMContentLoaded", () => {
         className: "btn",
     });
 
+    prevBtn.el.disabled = !switchToPresentation;
+    nextBtn.el.disabled = !switchToPresentation;
     prevBtn.onClick(() => goToViewerSlide(viewerCurrentSlide - 1));
     nextBtn.onClick(() => goToViewerSlide(viewerCurrentSlide + 1));
 
@@ -95,32 +94,6 @@ window.addEventListener("DOMContentLoaded", () => {
         return url;
     }
 
-    //
-    async function loadViewerZip(blob) {
-        // update the global state
-        viewerZip = await JSZip.loadAsync(blob);
-
-        // Get slides.pdf from the ZIP
-        const pdfFile = viewerZip.file("slides.pdf");
-        if (!pdfFile) {
-            console.error("No slides.pdf found in ZIP");
-            return;
-        }
-
-        // pdfData will store pdfFile as bytes of data
-        const pdfData = await pdfFile.async('arraybuffer');
-
-        // viewerPDFDoc (the global state) is your renderable PDF document, made by the pdfjs library
-        viewerPDFDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
-        // update global states:
-        viewerTotalSlides = viewerPDFDoc.numPages;
-        viewerCurrentSlide = 0;
-
-        console.log('Loaded PDF with', viewerTotalSlides, 'pages'); // <- debug
-
-        // render the first slide (because viewerCurrentSlide has been initialized to zero):
-        await renderViewerSlide(viewerCurrentSlide);
-    }
     //
     async function renderViewerSlide(slideIndex) {
 
@@ -318,8 +291,46 @@ window.addEventListener("DOMContentLoaded", () => {
 
         viewerCurrentSlide = slideIndex;
         await renderViewerSlide(slideIndex);
+
+        updateSlideNavigator();
     }
     //
+
+    // SLIDE NAVIGATOR STARTS ////////////////////////////////////////
+    const slideNavigator = document.getElementById("viewer-slide-navigator");
+
+    function populateSlideNavigator() {
+        slideNavigator.innerHTML = "";
+
+        for (let i = 0; i < viewerTotalSlides; i++) {
+            const item = document.createElement("div");
+            item.className = "slide-nav-item";
+            item.textContent = i + 1;
+            item.dataset.slideIndex = i;
+
+            item.onclick = () => {
+                goToViewerSlide(i);
+            };
+
+            slideNavigator.appendChild(item);
+        }
+
+        updateSlideNavigator();
+    }
+
+    function updateSlideNavigator() {
+        const items = document.querySelectorAll(".slide-nav-item");
+        items.forEach((item, index) => {
+            if (index === viewerCurrentSlide) {
+                item.classList.add("active");
+                // Scroll into view
+                item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            } else {
+                item.classList.remove("active");
+            }
+        });
+    }
+    // SLIDE NAVIGATOR ENDS ////////////////////////////////////////
 
     // Join viewer room
     socket.emit("join_viewer");
@@ -400,29 +411,6 @@ window.addEventListener("DOMContentLoaded", () => {
         // Image styling will handle scaling automatically
     });
 
-    // when this is true, you show the viewer-controlled presentation.
-    // when this is false, you show the screen-shared presentation.
-    // important: if isScreenSharing == false then switchToPresentation must be false.
-    let switchToPresentation = false;
-    const viewerContainer = document.getElementById("viewer-container");
-    // now switchPresentationContainer is defined near the start
-    // const switchPresentationContainer = document.getElementById(
-    //     "switch-presentation-container",
-    // );
-    // const performSwitch = () => {
-    //     console.log(`screensharing: HAHA ${isScreenSharing}`);
-    //     if (!isScreenSharing) {
-    //         return; // do nothing if it's not screensharing.
-    //     }
-
-    //     if (switchToPresentation) {
-    //         switchPresentationContainer.classList.remove("hidden");
-    //         viewerContainer.classList.add("hidden");
-    //     } else {
-    //         switchPresentationContainer.classList.add("hidden");
-    //         viewerContainer.classList.remove("hidden");
-    //     }
-    // };
     const performSwitch = () => {
         if (!isScreenSharing) return;
 
@@ -436,6 +424,9 @@ window.addEventListener("DOMContentLoaded", () => {
             switchPresentationContainer.classList.add("hidden");
             viewerContainer.classList.remove("hidden");
         }
+
+        prevBtn.el.disabled = !switchToPresentation;
+        nextBtn.el.disabled = !switchToPresentation;
     };
 
 
@@ -491,6 +482,34 @@ window.addEventListener("DOMContentLoaded", () => {
             const html = await zip.files["index.html"].async("string");
             document.getElementById("viewer-container").innerHTML = html;
         }
+    }
+
+    async function loadViewerZip(blob) {
+        // update the global state
+        viewerZip = await JSZip.loadAsync(blob);
+
+        // Get slides.pdf from the ZIP
+        const pdfFile = viewerZip.file("slides.pdf");
+        if (!pdfFile) {
+            console.error("No slides.pdf found in ZIP");
+            return;
+        }
+
+        // pdfData will store pdfFile as bytes of data
+        const pdfData = await pdfFile.async('arraybuffer');
+
+        // viewerPDFDoc (the global state) is your renderable PDF document, made by the pdfjs library
+        viewerPDFDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        // update global states:
+        viewerTotalSlides = viewerPDFDoc.numPages;
+        viewerCurrentSlide = 0;
+
+        console.log('Loaded PDF with', viewerTotalSlides, 'pages'); // <- debug
+
+        // render the first slide (because viewerCurrentSlide has been initialized to zero):
+        await renderViewerSlide(viewerCurrentSlide);
+        
+        populateSlideNavigator();
     }
 
     loadPresentation();
