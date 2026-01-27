@@ -144,6 +144,15 @@ window.addEventListener("DOMContentLoaded", () => {
         label: '<i class="fa-solid fa-chart-simple"></i>',
     });
 
+    const splitViewBtn = new Button(otherControlsContainer, {
+        className: "btn",
+        label: '<i class="fa-solid fa-compress"></i>'
+    })
+
+    splitViewBtn.onClick(() => {
+        // WRITE
+    });
+
     // Initially disable results button
     surveyResultsBtn.el.disabled = true;
     surveyResultsBtn.el.style.opacity = "0.5";
