@@ -304,7 +304,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
         for (let i = 0; i < viewerTotalSlides; i++) {
             const item = document.createElement("div");
-            item.className = "slide-nav-item";
+            const initialClassName = switchToPresentation ? "slide-nav-item" : "slide-nav-item not-in-use"
+            item.className = initialClassName;
             item.textContent = i + 1;
             item.dataset.slideIndex = i;
 
@@ -425,8 +426,28 @@ window.addEventListener("DOMContentLoaded", () => {
             viewerContainer.classList.remove("hidden");
         }
 
+        // toggle prev/next buttons:
         prevBtn.el.disabled = !switchToPresentation;
         nextBtn.el.disabled = !switchToPresentation;
+
+        // toggle all the icons inside viewer-slide-navigator:
+        const items = document.querySelectorAll(".slide-nav-item");
+        items.forEach((item, index) => {
+            if (switchToPresentation) {
+                item.classList.remove("not-in-use");
+            } else if (!item.classList.contains("not-in-use")){
+                item.classList.add("not-in-use");
+            }
+            
+            if (index === viewerCurrentSlide) {
+                item.classList.add("active");
+                // Scroll into view
+                item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            } else {
+                item.classList.remove("active");
+            }
+        });
+
     };
 
 
