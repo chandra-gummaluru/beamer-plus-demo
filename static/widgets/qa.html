@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+          crossorigin="anonymous"></script>
+  <style>
+    body { font-family: Arial; margin:0; padding:16px; background: transparent; }
+    #app {
+      border: 2px solid #999;
+      border-radius: 6px;
+      padding: 16px;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    #presenter-row { display: flex; gap: 16px; align-items: flex-start; }
+    #qr { min-width: 220px; }
+    #qr img { width:200px }
+    .btn { padding:10px; border:2px solid #333; margin:5px }
+    #stats-panel {
+      flex: 1;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 12px;
+      background: #fafafa;
+      min-height: 140px;
+    }
+    #stats-question { font-weight: 600; margin-bottom: 8px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+    .bar-label { width: 16px; text-align: right; font-weight: 600; }
+    .bar-track { flex: 1; height: 12px; background: #e6e6e6; border-radius: 6px; overflow: hidden; }
+    .bar-fill { height: 100%; background: #4a90e2; }
+    .bar-count { width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+
+<body>
+<div id="app"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        crossorigin="anonymous"></script>
+<script>
+const getBaseUrl = () => {
+  if (location.origin && location.origin !== "null" && location.origin !== "about:") {
+    return location.origin;
+  }
+  try {
+    if (window.parent && window.parent.location && window.parent.location.origin) {
+      return window.parent.location.origin;
+    }
+  } catch (e) {
+    // ignore cross-origin access errors
+  }
+  return "";
+};
+
+const baseUrl = getBaseUrl();
+const socket = baseUrl ? io(baseUrl) : io();
+const params = new URLSearchParams(location.search);
+const role = params.get("role") || "presenter";
+const surveyIdFromUrl = params.get("survey");
+let questions = [];
+let currentQuestionIndex = 0;
+let widgetConfig = null;
+let currentSurveyId = null;
+let currentQuestion = null;
+let pollingTimer = null;
+
+const app = document.getElementById("app");
+
+const sanitizeBase = (raw) => {
+  if (!raw) return "";
+  return raw.trim().replace(/\/$/, "");
+};
+
+const resolveJoinBaseUrl = (cfg = null) => {
+  if (cfg && typeof cfg.joinBaseUrl === "string" && cfg.joinBaseUrl.trim() !== "") {
+    return sanitizeBase(cfg.joinBaseUrl);
+  }
+  return sanitizeBase(baseUrl);
+};
+
+const parseOptions = (raw) => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch (e) {
+    // ignore
+  }
+  return null;
+};
+
+const parseResponsePayload = (text) => {
+  if (!text) return null;
+  try {
+    const payload = JSON.parse(text);
+    if (payload && typeof payload === "object") return payload;
+  } catch (e) {
+    // ignore
+  }
+  return { answer: text };
+};
+
+const buildJoinUrl = (joinBase, surveyId, q, options, duration, correct) => {
+  const params = new URLSearchParams();
+  params.set("role", "student");
+  params.set("survey", surveyId);
+  if (q) params.set("q", q);
+  if (options) params.set("opts", JSON.stringify(options));
+  if (duration) params.set("duration", String(duration));
+  if (correct) params.set("correct", String(correct));
+  return `${joinBase}/static/widgets/qa.html?${params.toString()}`;
+};
+
+if (role === "presenter") {
+  app.innerHTML = `
+    <h2>Live Q&A</h2>
+    <div id="presenter-row">
+      <div id="qr"></div>
+      <div id="stats-panel">
+        <div id="stats-question">No question running.</div>
+        <div id="stats-bars"></div>
+        <div id="stats-total"></div>
+      </div>
+    </div>
+    <div style="margin: 10px 0;">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:4px;">Join Base URL (edit if others cannot access)</label>
+      <input id="join-base" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;">
+    </div>
+    <button id="start" disabled>Start Question</button>
+    <div id="status"></div>
+  `;
+
+  socket.emit("join_presenter");
+
+  const qrEl = document.getElementById("qr");
+  const startBtn = document.getElementById("start");
+  const statusEl = document.getElementById("status");
+  const statsQuestionEl = document.getElementById("stats-question");
+  const statsBarsEl = document.getElementById("stats-bars");
+  const statsTotalEl = document.getElementById("stats-total");
+  const joinBaseInput = document.getElementById("join-base");
+  joinBaseInput.value = resolveJoinBaseUrl(widgetConfig) || "";
+
+  const renderStats = (question, counts, total) => {
+    statsQuestionEl.textContent = question || "No question running.";
+    statsBarsEl.innerHTML = "";
+    const ordered = ["A", "B", "C", "D"].filter(k => k in counts);
+    ordered.forEach(k => {
+      const count = counts[k] || 0;
+      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+      const row = document.createElement("div");
+      row.className = "bar-row";
+      row.innerHTML = `
+        <div class="bar-label">${k}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="bar-count">${count}</div>
+      `;
+      statsBarsEl.appendChild(row);
+    });
+    statsTotalEl.textContent = total ? `Total responses: ${total}` : "";
+  };
+
+  const updateQr = (joinUrl) => {
+    qrEl.innerHTML = "";
+    const label = document.createElement("div");
+    label.textContent = "Scan to join";
+    const urlEl = document.createElement("div");
+    urlEl.style.marginTop = "8px";
+    urlEl.innerHTML = `<a href="${joinUrl}" target="_blank" rel="noreferrer">${joinUrl}</a>`;
+    const qrBox = document.createElement("div");
+    qrEl.appendChild(label);
+    qrEl.appendChild(qrBox);
+    qrEl.appendChild(urlEl);
+    try {
+      new QRCode(qrBox, { text: joinUrl, width: 200, height: 200 });
+    } catch (e) {
+      qrBox.textContent = "QR unavailable.";
+    }
+  };
+
+  const normalizeQuestions = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.questions)) return data.questions;
+    return [data];
+  };
+
+  const loadQuestions = async (cfg = null) => {
+    try {
+      if (cfg && Array.isArray(cfg.questions)) {
+        questions = cfg.questions;
+      } else if (cfg && cfg.questionsUrl) {
+        const rawQuestionsUrl = cfg.questionsUrl;
+        const questionsUrl =
+          rawQuestionsUrl.startsWith("http") || rawQuestionsUrl.startsWith("/")
+            ? rawQuestionsUrl
+            : `${resolveJoinBaseUrl(cfg)}/${rawQuestionsUrl}`;
+        const res = await fetch(questionsUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Failed to load ${questionsUrl}`);
+        const data = await res.json();
+        questions = normalizeQuestions(data);
+      } else {
+        throw new Error("No questions configured. Provide widgetConfig.questions or widgetConfig.questionsUrl.");
+      }
+      if (!Array.isArray(questions) || questions.length === 0) {
+        throw new Error("No questions found.");
+      }
+      statusEl.textContent = `Loaded ${questions.length} question(s).`;
+      startBtn.disabled = false;
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+      startBtn.disabled = true;
+    }
+  };
+
+  const resetPolling = () => {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+  };
+
+  const startPolling = (surveyId, options) => {
+    resetPolling();
+    pollingTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`${resolveJoinBaseUrl(widgetConfig)}/api/survey/${surveyId}/responses`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const counts = {};
+        Object.keys(options || {}).forEach(k => { counts[k] = 0; });
+        (data.responses || []).forEach(r => {
+          const payload = parseResponsePayload(r.text);
+          const answer = payload && payload.answer;
+          if (answer in counts) counts[answer] += 1;
+        });
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        renderStats(currentQuestion ? currentQuestion.question : "Question", counts, total);
+      } catch (e) {
+        // ignore polling errors
+      }
+    }, 1000);
+  };
+
+  startBtn.onclick = async () => {
+    if (!questions.length || currentQuestionIndex >= questions.length) {
+      statusEl.textContent = "No more questions.";
+      return;
+    }
+
+    const q = questions[currentQuestionIndex];
+    currentQuestionIndex += 1;
+    currentQuestion = q;
+
+    const joinBase = sanitizeBase(joinBaseInput.value) || resolveJoinBaseUrl(widgetConfig);
+    if (!joinBase) {
+      statusEl.textContent = "Set a Join Base URL first.";
+      return;
+    }
+
+    let created = null;
+    try {
+      const res = await fetch(`${joinBase}/api/survey/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q.question, num_summaries: 1 })
+      });
+      if (!res.ok) throw new Error("Failed to create survey.");
+      created = await res.json();
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+      return;
+    }
+
+    currentSurveyId = created.survey_id;
+    const joinUrl = buildJoinUrl(joinBase, currentSurveyId, q.question, q.options, q.duration, q.correct);
+    updateQr(joinUrl);
+
+    const counts = q.options ? Object.keys(q.options).reduce((acc, k) => {
+      acc[k] = 0;
+      return acc;
+    }, {}) : {};
+    renderStats(q.question, counts, 0);
+
+    startPolling(currentSurveyId, q.options);
+    statusEl.textContent = "Question running.";
+  };
+
+  window.addEventListener("message", e => {
+    if (e.data?.type === "widget-config") {
+      widgetConfig = e.data.config || {};
+      joinBaseInput.value = resolveJoinBaseUrl(widgetConfig) || joinBaseInput.value;
+      loadQuestions(widgetConfig);
+      return;
+    }
+    if (e.data?.type === "widget-cleanup") {
+      resetPolling();
+    }
+  });
+
+  loadQuestions();
+}
+
+if (role === "student") {
+  const qText = params.get("q") || "Question";
+  const opts = parseOptions(params.get("opts")) || {};
+  const joinBase = resolveJoinBaseUrl(widgetConfig);
+  const surveyId = surveyIdFromUrl;
+
+  app.innerHTML = `
+    <input id="name" placeholder="Name">
+    <button id="join">Join</button>
+    <h3 id="q"></h3>
+    <div id="answers"></div>
+    <div id="status" style="margin-top:8px;color:#666;"></div>
+  `;
+
+  const nameInput = document.getElementById("name");
+  const joinBtn = document.getElementById("join");
+  const questionEl = document.getElementById("q");
+  const answersEl = document.getElementById("answers");
+  const statusEl = document.getElementById("status");
+
+  if (!surveyId) {
+    statusEl.textContent = "Missing survey id.";
+  }
+
+  joinBtn.onclick = () => {
+    questionEl.textContent = qText;
+    answersEl.innerHTML = "";
+    Object.keys(opts).forEach(k => {
+      const v = opts[k];
+      const b = document.createElement("button");
+      b.textContent = `${k}. ${v}`;
+      b.className = "btn";
+      b.onclick = async () => {
+        if (!surveyId) return;
+        try {
+          const payload = {
+            name: nameInput.value || "Student",
+            answer: k,
+            ts: Date.now()
+          };
+          const res = await fetch(`${joinBase}/api/survey/${surveyId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ response: JSON.stringify(payload) })
+          });
+          if (!res.ok) throw new Error("Failed to submit answer.");
+          statusEl.textContent = "Answer submitted.";
+          Array.from(answersEl.querySelectorAll("button")).forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = "0.6";
+          });
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+      };
+      answersEl.appendChild(b);
+    });
+  };
+}
+</script>
+</body>
+</html>

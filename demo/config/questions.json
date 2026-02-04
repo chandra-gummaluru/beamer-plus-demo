@@ -1,0 +1,9 @@
+﻿{
+    "question":  "1+1=2?",
+    "options":  {
+                    "A":  "y",
+                    "B":  "n"
+                },
+    "correct":  "A",
+    "duration":  15
+}
