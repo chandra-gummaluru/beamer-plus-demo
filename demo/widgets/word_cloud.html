@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Word Cloud Widget</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          font-family: "Computer Modern Sans", sans-serif;
+          background: transparent;
+        }
+
+
+        #widget-container {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          background: #ffffff;
+          border: 2px solid #666;
+          border-radius: 4px;
+        }
+
+        #setup-view {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: #f8f9fa;
+          padding: 2rem;
+        }
+
+
+        .setup-card {
+            background: #eeeeee;
+            border: 2px solid #666;
+            border-radius: 4px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            padding: 0.75rem;
+            font-family: inherit;
+            font-size: 1rem;
+            border: 2px solid #666;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            font-family: inherit;
+            font-size: 1rem;
+            background: #ffffff;
+            color: #333;
+            border: 2px solid #666;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover { background: #e0e0e0; }
+
+        #live-view {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #666;
+            display: grid;
+            grid-template-columns: 180px 1fr 180px;
+            align-items: center;
+        }
+
+        .header-left { display: flex; justify-content: flex-start; }
+        .header-center { text-align: center; }
+        .header-right { display: flex; justify-content: flex-end; font-size: 1rem; color: #666; }
+
+        #display-question {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .qr-sidebar {
+            width: 240px;
+            background: #fff;
+            border-right: 2px solid #666;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 15px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .qr-frame {
+            padding: 10px;
+            background: white;
+            border: 2px solid #666;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .join-url {
+            font-family: monospace;
+            background: #eee;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            text-align: center;
+            word-break: break-all;
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+
+        .cloud-area {
+            flex: 1;
+            position: relative;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #canvas { display: block; width: 100%; height: 100%; }
+
+        #placeholder-text {
+            position: absolute;
+            color: #999;
+            font-style: italic;
+            font-size: 1.4rem;
+            pointer-events: none;
+        }
+
+        #back-btn {
+            background: #fdfdfd;
+            border: 1px solid #999;
+            padding: 5px 12px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="widget-container">
+        <div id="setup-view">
+            <div class="setup-card">
+                <h2 style="font-weight: normal; margin-top: 0;">Create Word Cloud</h2>
+                <div class="input-group">
+                    <input type="text" id="question-input" placeholder="Enter your question...">
+                    <select id="mode-select">
+                        <option value="1">Mode: 1 Word Input</option>
+                        <option value="2">Mode: 2 Words Input</option>
+                    </select>
+                    <button onclick="startWordCloud()">
+                        <i class="fa-solid fa-play"></i> Generate & Start
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="live-view">
+            <header>
+                <div class="header-left">
+                    <button id="back-btn" onclick="goToSetup()">
+                        <i class="fa-solid fa-arrow-left"></i> Reset & Back
+                    </button>
+                </div>
+                <div class="header-center">
+                    <h2 id="display-question">Question</h2>
+                </div>
+                <div class="header-right">
+                    <span>Responses: <span id="response-count" style="font-weight: bold;">0</span></span>
+                </div>
+            </header>
+
+            <div class="main-content">
+                <div class="qr-sidebar">
+                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">Scan to join</div>
+                    <div class="qr-frame">
+                        <div id="qrcode"></div>
+                    </div>
+                    <div class="join-url" id="display-url">Generating...</div>
+                </div>
+                <div class="cloud-area">
+                    <div id="placeholder-text">Waiting for responses...</div>
+                    <canvas id="canvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Reload Protection
+        const navigationEntries = performance.getEntriesByType("navigation");
+        if (navigationEntries.length > 0 && navigationEntries[0].type === "reload") {
+            sessionStorage.clear();
+        }
+
+        let surveyId = sessionStorage.getItem('wc_surveyId');
+        let socket = null;
+        let wordFreq = JSON.parse(sessionStorage.getItem('wc_wordFreq') || '{}');
+        let wordColors = JSON.parse(sessionStorage.getItem('wc_wordColors') || '{}');
+        let currentQuestion = sessionStorage.getItem('wc_question') || "";
+        let currentUrl = sessionStorage.getItem('wc_url') || "";
+        let inputMode = parseInt(sessionStorage.getItem('wc_mode') || '1');
+
+        let totalResponses = parseInt(sessionStorage.getItem('wc_total') || '0', 10);
+        let lastSyncedTotal = parseInt(sessionStorage.getItem('wc_lastSyncedTotal') || '0', 10);
+
+
+        const colors = [
+            { r: 52, g: 152, b: 219 }, // #3498db
+            { r: 231, g: 76, b: 60 },  // #e74c3c
+            { r: 46, g: 204, b: 113 }, // #2ecc71
+            { r: 155, g: 89, b: 182 }, // #9b59b6
+            { r: 243, g: 156, b: 18 }, // #f39c12
+            { r: 52, g: 73, b: 94 },   // #34495e
+            { r: 22, g: 160, b: 133 }  // #16a085
+        ];
+
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'widget-config') {
+                const config = event.data.config;
+
+                if (surveyId) {
+                    showLiveView(currentQuestion, currentUrl);
+                    if (!socket) initSocket();
+                    renderCloud();
+                    syncMissedResponses();
+                } else if (config.question) {
+                    document.getElementById('question-input').value = config.question;
+                }
+            }
+        });
+
+        function goToSetup() {
+            if (surveyId) fetch(`/api/survey/${surveyId}/close`, { method: 'POST' });
+
+            sessionStorage.clear();
+
+            totalResponses = 0;
+            surveyId = null;
+            wordFreq = {};
+            wordColors = {};
+            currentQuestion = "";
+
+            document.getElementById('response-count').textContent = "0";
+            document.getElementById('placeholder-text').style.display = 'block';
+            document.getElementById('setup-view').style.display = 'flex';
+            document.getElementById('live-view').style.display = 'none';
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        async function startWordCloud() {
+            const question = document.getElementById('question-input').value.trim();
+            inputMode = parseInt(document.getElementById('mode-select').value);
+            if (!question) return alert("Please enter a question.");
+
+            try {
+                const res = await fetch('/api/survey/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: question, model: null, num_summaries: 0 })
+                });
+                const data = await res.json();
+                surveyId = data.survey_id;
+                currentQuestion = question;
+                currentUrl = data.url;
+
+                sessionStorage.setItem('wc_surveyId', surveyId);
+                sessionStorage.setItem('wc_question', currentQuestion);
+                sessionStorage.setItem('wc_url', currentUrl);
+                sessionStorage.setItem('wc_mode', inputMode);
+
+                showLiveView(question, data.url);
+                initSocket();
+            } catch (e) { console.error(e); }
+        }
+
+        async function syncMissedResponses() {
+            if (!surveyId) return;
+
+            try {
+            const res = await fetch(`/api/survey/${surveyId}/responses?after=${lastSyncedTotal}`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // update totals
+            totalResponses = data.total ?? totalResponses;
+            sessionStorage.setItem('wc_total', String(totalResponses));
+            document.getElementById('response-count').textContent = String(totalResponses);
+
+            // process missed texts
+            const responses = Array.isArray(data.responses) ? data.responses : [];
+            for (const r of responses) processResponse(r.text);
+
+            // move cursor forward
+            lastSyncedTotal = totalResponses;
+            sessionStorage.setItem('wc_lastSyncedTotal', String(lastSyncedTotal));
+            } catch (e) {
+            console.warn("syncMissedResponses failed:", e);
+            }
+        }
+
+        function showLiveView(question, urlPath) {
+            document.getElementById('setup-view').style.display = 'none';
+            document.getElementById('live-view').style.display = 'flex';
+            document.getElementById('display-question').textContent = question;
+
+            document.getElementById('response-count').textContent = String(totalResponses);
+
+            const fullUrl = window.parent.location.origin + urlPath;
+            document.getElementById('display-url').textContent = fullUrl;
+            document.getElementById("qrcode").innerHTML = "";
+            new QRCode(document.getElementById("qrcode"), {
+                text: fullUrl, width: 160, height: 160,
+                colorDark : "#333", colorLight : "#fff"
+            });
+            window.addEventListener('resize', renderCloud);
+        }
+
+        function initSocket() {
+            if (socket) return;
+            socket = io(window.parent.location.origin);
+            socket.emit('join_presenter');
+            socket.on('survey_response', (data) => {
+                if (data.survey_id === surveyId) {
+                    processResponse(data.response.text);
+
+                    totalResponses = data.total;
+                    sessionStorage.setItem('wc_total', String(totalResponses));
+
+                    document.getElementById('response-count').textContent = data.total;
+
+                    lastSyncedTotal = totalResponses;
+                    sessionStorage.setItem('wc_lastSyncedTotal', String(lastSyncedTotal));
+                }
+            });
+            socket.on('presentation_loaded', () => {
+                goToSetup();
+            });
+        }
+
+        function processResponse(text) {
+            if (!text) return;
+            document.getElementById('placeholder-text').style.display = 'none';
+
+            const tokens = text
+                .toLowerCase()
+                .replace(/,/g, " ")
+                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"")
+                .split(/\s+/)
+                .filter(t => t.length > 0);
+
+            const validPhrase = tokens.slice(0, inputMode).join(" ");
+
+            if (validPhrase) {
+                wordFreq[validPhrase] = (wordFreq[validPhrase] || 0) + 1;
+                if (!wordColors[validPhrase]) {
+                    wordColors[validPhrase] = colors[Math.floor(Math.random() * colors.length)];
+                }
+            }
+
+            sessionStorage.setItem('wc_wordFreq', JSON.stringify(wordFreq));
+            sessionStorage.setItem('wc_wordColors', JSON.stringify(wordColors));
+            renderCloud();
+        }
+
+        function renderCloud() {
+            const freqEntries = Object.entries(wordFreq);
+            if (freqEntries.length === 0) return;
+
+            document.getElementById('placeholder-text').style.display = 'none';
+
+            // Find the maximum frequency to calculate opacity
+            const maxFreq = Math.max(...freqEntries.map(e => e[1]));
+
+            const canvas = document.getElementById('canvas');
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            // Sort list descending so WordCloud2 places largest items near the center
+            const list = freqEntries
+                .sort((a, b) => b[1] - a[1])
+                .map(([w, count]) => [w, 30 + (Math.sqrt(count) * 20)]);
+
+            WordCloud(canvas, {
+                list: list,
+                fontFamily: 'Computer Modern Sans, sans-serif',
+                // Calculate opacity: most frequent = 1.0, least frequent scales down to 0.3
+                color: (word) => {
+                    const c = wordColors[word] || colors[0];
+                    const freq = wordFreq[word] || 1;
+                    const opacity = 0.3 + (0.7 * (freq / maxFreq));
+                    return `rgba(${c.r}, ${c.g}, ${c.b}, ${opacity})`;
+                },
+                rotateRatio: 0,
+                weightFactor: 1,
+                gridSize: Math.round(16 * canvas.width / 1024), // Adjust spacing
+                drawOutOfBound: false // Keep it within view
+            });
+        }
+
+        initSocket();
+    </script>
+</body>
+</html>

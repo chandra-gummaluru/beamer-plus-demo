@@ -217,9 +217,21 @@ def respond_survey(survey_id):
 def get_responses(survey_id):
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
+    after = request.args.get("after", default="0")
+    try:
+        after = int(after)
+    except ValueError:
+        after = 0
+
+    all_responses = survey_responses[survey_id]
+    total = len(all_responses)
+
+    # return only responses after index `after`
+    missed = all_responses[after:] if after < total else []
+
     return jsonify({
-        'responses': survey_responses[survey_id],
-        'total': len(survey_responses[survey_id])
+        'responses': missed,
+        'total': total
     })
 
 @app.route('/api/survey/<survey_id>/analyze', methods=['POST'])
