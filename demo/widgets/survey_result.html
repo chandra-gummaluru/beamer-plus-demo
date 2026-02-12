@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="/static/css/shared.css">
+  <link rel="stylesheet" href="/static/css/button.css">
+  <link rel="stylesheet" href="/static/css/control-panel.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="/static/css/survey.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Computer Modern Sans", sans-serif;
+      background: transparent;
+    }
+
+    /* Whole widget is the boundary box */
+    #widget-container {
+      width: 100%;
+      height: 100%;
+      background: #ffffff;
+      border: 2px solid #666;
+      border-radius: 4px;
+      overflow: hidden;
+
+      /* IMPORTANT: only ONE view is displayed at a time, so the container just holds it */
+      display: block;
+    }
+
+    /* Each view must fill the widget and manage its own header/stage/footer */
+    #view-setup, #view-qr, #view-results {
+      width: 100%;
+      height: 100%;
+      min-height: 0; /* critical for nested grid shrinking */
+      display: grid;
+      grid-template-rows: auto 1fr auto; /* header / stage / footer */
+    }
+
+    /* Force-hide always wins even if other CSS fights you */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Header */
+    .view-header {
+      padding: 14px 18px 10px;
+      border-bottom: 2px solid #666;
+      background: #f8f9fa;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      text-align: center;
+    }
+
+    .title {
+      font-size: 1.55rem;
+      color: #333;
+      font-weight: 300;
+      line-height: 1.15;
+    }
+
+    .sub {
+      color: #666;
+      font-size: 0.95rem;
+    }
+
+    /* Stage (the main area). DO NOT set height:100% (this is what caused footer cropping). */
+    .stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      padding: 18px;
+      min-height: 0;        /* lets it shrink within the view grid */
+      overflow: hidden;     /* avoid random 1px overflow */
+    }
+
+    /* Footer */
+    .view-footer {
+      padding: 10px 12px;
+      border-top: 2px solid #666;
+      background: #f8f9fa;
+
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 0.65rem;
+
+      /* keeps it compact and prevents the “too wide” look */
+      min-height: 44px;
+    }
+
+    /* Setup view has no buttons in footer */
+    #view-setup .view-footer {
+      padding: 0;
+      min-height: 0;
+      border-top: none;
+      background: transparent;
+    }
+
+    /* Cards */
+    .card {
+      width: min(720px, 94%);
+      padding: 1rem;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+      margin: 0 auto;
+    }
+
+    label { font-size: 0.93rem; color: #444; }
+
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-family: inherit;
+      background: #fff;
+    }
+
+    .row { display: flex; gap: 0.8rem; }
+    .row > div { flex: 1; }
+
+    .btn {
+      padding: 0.6rem 1.05rem;
+      border: 2px solid #666;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #f0f0f0; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* QR view layout */
+    .qr-wrap {
+      width: min(820px, 92%);
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 2rem;
+      align-items: center;
+      justify-items: center;
+    }
+
+    .qr-right {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.9rem;
+    }
+
+    #qr {
+      padding: 1rem;
+      background: #fff;
+      border-radius: 6px;
+      border: 2px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .urlbox input { font-size: 0.95rem; }
+
+    .pill {
+      border: 2px solid #e0e0e0;
+      padding: 0.6rem 1rem;
+      background: #fff;
+      color: #333;
+      font-size: 1rem;
+      border-radius: 6px;
+      display: inline-flex;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Results */
+    .results-shell {
+      width: min(900px, 96%);
+      min-height: 0;
+    }
+
+    .results-box {
+      width: 100%;
+      border: 2px solid #666;
+      border-radius: 6px;
+      background: #f8f9fa;
+      padding: 1.2rem;
+      line-height: 1.75;
+      color: #333;
+      font-size: 1.05rem;
+      text-align: center;
+      margin: 0 auto;
+
+      /* key: results can scroll INSIDE without breaking footer */
+      overflow: auto;
+      max-height: 100%;
+    }
+
+    .nav-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.9rem;
+      margin-top: 0.9rem;
+    }
+
+    @media (max-width: 620px) {
+      .qr-wrap {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        gap: 1.2rem;
+      }
+      .qr-right { width: 100%; }
+      .card { width: min(720px, 96%); }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="widget-container">
+
+    <!-- SETUP VIEW -->
+    <div id="view-setup">
+      <div class="view-header">
+        <div class="title">Survey</div>
+        <div class="sub">Create a question and start collecting responses</div>
+      </div>
+
+      <div class="stage">
+        <div class="card">
+          <div>
+            <label>Question</label>
+            <input id="q" type="text" placeholder="What do you think about...?" />
+          </div>
+
+          <div class="row">
+            <div>
+              <label>Summarizer Script</label>
+              <select id="model"></select>
+            </div>
+            <div>
+              <label># Summaries</label>
+              <input id="n" type="number" min="1" max="10" value="3" />
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end;">
+            <button id="btn-create" class="btn">
+              <i class="fa-solid fa-qrcode"></i>
+              Create & Show QR
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-footer"></div>
+    </div>
+
+    <!-- QR VIEW -->
+    <div id="view-qr" class="hidden">
+      <div class="view-header">
+        <div class="title" id="qr-title">Survey</div>
+        <div class="sub">Scan the QR code or open the URL to respond</div>
+      </div>
+
+      <div class="stage">
+        <div class="qr-wrap">
+          <div class="card" style="width:100%;">
+            <div class="urlbox">
+              <label>Response Link</label>
+              <input id="url" type="text" readonly />
+            </div>
+
+            <div class="pill">
+              <i class="fa-solid fa-comment-dots"></i>
+              Responses: <span id="count">0</span>
+            </div>
+
+            <div style="color:#777; font-size:0.92rem; text-align:center;">
+              You can navigate slides while students respond.
+            </div>
+          </div>
+
+          <div class="qr-right">
+            <div id="qr"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-footer">
+        <button id="btn-reset" class="btn" title="Reset and go back">
+          <i class="fa-solid fa-arrow-left"></i>
+          Reset
+        </button>
+
+        <button id="btn-generate" class="btn" disabled>
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          Generate Summaries
+        </button>
+      </div>
+    </div>
+
+    <!-- RESULTS VIEW -->
+    <div id="view-results" class="hidden">
+      <div class="view-header">
+        <div class="title" id="res-title">Summaries</div>
+        <div class="sub" id="res-sub"></div>
+      </div>
+
+      <div class="stage">
+        <div class="results-shell">
+          <div class="results-box" id="summary"></div>
+
+          <div class="nav-row">
+            <button id="prev" class="btn" title="Previous"><i class="fa-solid fa-arrow-left"></i></button>
+            <span id="idx" style="color:#666;">1 / 1</span>
+            <button id="next" class="btn" title="Next"><i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-footer">
+        <button id="btn-new" class="btn" title="Start a new survey">
+          <i class="fa-solid fa-rotate-left"></i>
+          New Survey
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const parentAPI = () => window.parent && window.parent.beamerSurvey;
+    const parentOrigin = () =>
+      (window.parent && window.parent.location && window.parent.location.origin)
+        ? window.parent.location.origin
+        : window.location.origin;
+
+    const setup = document.getElementById('view-setup');
+    const qrView = document.getElementById('view-qr');
+    const resView = document.getElementById('view-results');
+
+    const qEl = document.getElementById('q');
+    const modelEl = document.getElementById('model');
+    const nEl = document.getElementById('n');
+
+    const qrTitle = document.getElementById('qr-title');
+    const qrBox = document.getElementById('qr');
+    const urlEl = document.getElementById('url');
+    const countEl = document.getElementById('count');
+
+    const btnCreate = document.getElementById('btn-create');
+    const btnGenerate = document.getElementById('btn-generate');
+    const btnReset = document.getElementById('btn-reset');
+
+    const resTitle = document.getElementById('res-title');
+    const resSub = document.getElementById('res-sub');
+    const summaryEl = document.getElementById('summary');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const idxEl = document.getElementById('idx');
+    const btnNew = document.getElementById('btn-new');
+
+    let unsubscribe = null;
+    let current = 0;
+    let summaries = [];
+    let state = null;
+
+    function show(view) {
+      setup.classList.add('hidden');
+      qrView.classList.add('hidden');
+      resView.classList.add('hidden');
+      view.classList.remove('hidden');
+    }
+
+    function fillModels() {
+      const api = parentAPI();
+      const models = api ? api.getAvailableModels() : [];
+      modelEl.innerHTML = '';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m.replace(/_/g, ' ');
+        modelEl.appendChild(opt);
+      });
+    }
+
+    function renderQR(fullUrl, title) {
+      qrBox.innerHTML = '';
+      new QRCode(qrBox, { text: fullUrl, width: 180, height: 180, colorDark: "#333", colorLight: "#fff" });
+      urlEl.value = fullUrl;
+      qrTitle.textContent = title || 'Survey';
+    }
+
+    function attachCountSubscription() {
+      const api = parentAPI();
+      if (!api) return;
+
+      if (unsubscribe) unsubscribe();
+      unsubscribe = api.subscribeResponseCount((c) => {
+        countEl.textContent = String(c);
+        const needed = state?.survey?.num_summaries || 1;
+        btnGenerate.disabled = !(c >= needed);
+      });
+    }
+
+    function renderResults() {
+      if (!summaries.length) return;
+
+      const s = summaries[current];
+      summaryEl.textContent = s.summary || '';
+      idxEl.textContent = `${current + 1} / ${summaries.length}`;
+
+      prevBtn.disabled = current === 0;
+      nextBtn.disabled = current === summaries.length - 1;
+    }
+
+    async function refreshFromParentState() {
+      const api = parentAPI();
+      if (!api) return;
+
+      state = api.getState();
+
+      if (state.survey && !state.results) {
+        show(qrView);
+        renderQR(`${parentOrigin()}${state.survey.url}`, state.survey.question || 'Survey');
+        countEl.textContent = String(state.responseCount || 0);
+
+        const needed = state.survey.num_summaries || 1;
+        btnGenerate.disabled = !((state.responseCount || 0) >= needed);
+
+        attachCountSubscription();
+        return;
+      }
+
+      if (state.survey && state.results && state.results.summaries) {
+        show(resView);
+        resTitle.textContent = state.survey.question || 'Summaries';
+        resSub.textContent = `(based on ${state.results.num_responses || 0} response(s))`;
+        summaries = state.results.summaries;
+        current = 0;
+        renderResults();
+        return;
+      }
+
+      show(setup);
+    }
+
+    btnCreate.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return alert('Parent API not found.');
+
+      const question = qEl.value.trim();
+
+      if (!question) {
+        alert('Please enter a question.');
+        return;
+      }
+
+      const model = modelEl.value;
+      const numSummaries = parseInt(nEl.value, 10);
+
+      if (!model) return alert('Please select a model.');
+      if (isNaN(numSummaries) || numSummaries < 1 || numSummaries > 10) {
+        return alert('Number of summaries must be 1–10.');
+      }
+
+      btnCreate.disabled = true;
+
+      try {
+        const created = await api.createSurvey({ question, model, num_summaries: numSummaries });
+        show(qrView);
+        renderQR(`${parentOrigin()}${created.url}`, question);
+
+        state = api.getState();
+        attachCountSubscription();
+        btnGenerate.disabled = true;
+      } catch (e) {
+        alert(e.message || 'Failed to create survey');
+      } finally {
+        btnCreate.disabled = false;
+      }
+    };
+
+    btnGenerate.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return;
+
+      btnGenerate.disabled = true;
+
+      try {
+        const results = await api.generateSummaries();
+        summaries = results.summaries || [];
+        current = 0;
+
+        show(resView);
+        const st = api.getState();
+        resTitle.textContent = st.survey?.question || 'Summaries';
+        resSub.textContent = `(based on ${results.num_responses || 0} response(s))`;
+
+        renderResults();
+      } catch (e) {
+        alert(e.message || 'Failed to generate summaries');
+        await refreshFromParentState();
+      }
+    };
+
+    btnReset.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return;
+      if (unsubscribe) unsubscribe();
+      await api.reset();
+      await refreshFromParentState();
+    };
+
+    btnNew.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return;
+      if (unsubscribe) unsubscribe();
+      await api.reset();
+      await refreshFromParentState();
+    };
+
+    prevBtn.onclick = () => { if (current > 0) { current--; renderResults(); } };
+    nextBtn.onclick = () => { if (current < summaries.length - 1) { current++; renderResults(); } };
+
+    fillModels();
+    refreshFromParentState();
+  </script>
+</body>
+</html>

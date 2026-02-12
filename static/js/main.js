@@ -115,23 +115,6 @@ const clearBtn = new Button(otherControlsContainer, {
 clearBtn.el.id = 'clear-btn';
 clearBtn.el.style.marginRight = '20px';
 
-const surveyBtn = new Button(otherControlsContainer, {
-    className: 'btn',
-    label: '<i class="fa-solid fa-clipboard-list"></i>'
-});
-
-surveyBtn.el.style.marginRight = '10px';
-
-const surveyResultsBtn = new Button(otherControlsContainer, {
-    className: 'btn',
-    label: '<i class="fa-solid fa-chart-simple"></i>'
-});
-
-// Initially disable results button
-surveyResultsBtn.el.disabled = true;
-surveyResultsBtn.el.style.opacity = '0.5';
-surveyResultsBtn.el.style.cursor = 'not-allowed';
-
 const displayControls = document.getElementById('display-controls');
 
 const uploadBtn = new Button(displayControls, {
@@ -194,29 +177,29 @@ function updateFloatingPanel() {
     const brushControls = document.getElementById('brush-controls');
     const otherControls = document.getElementById('other-controls');
     const controlsRight = document.querySelector('.controls-right');
-    
+
     if (window.innerWidth <= 1300) {
         // Move elements to floating panel on mobile
         floatingPanel.innerHTML = '';
-        
+
         // Tools section
         const toolsSection = document.createElement('div');
         toolsSection.className = 'panel-section';
         if (toolContainer) toolsSection.appendChild(toolContainer);
         floatingPanel.appendChild(toolsSection);
-        
+
         // Colors section
         const colorsSection = document.createElement('div');
         colorsSection.className = 'panel-section';
         if (colorPicker) colorsSection.appendChild(colorPicker);
         floatingPanel.appendChild(colorsSection);
-        
+
         // Brush controls section
         const brushSection = document.createElement('div');
         brushSection.className = 'panel-section';
         if (brushControls) brushSection.appendChild(brushControls);
         floatingPanel.appendChild(brushSection);
-        
+
         // Undo/Redo/Clear section - move individual buttons from other-controls
         const actionSection = document.createElement('div');
         actionSection.className = 'panel-section';
@@ -227,17 +210,17 @@ function updateFloatingPanel() {
         if (redoBtnEl) actionSection.appendChild(redoBtnEl);
         if (clearBtnEl) actionSection.appendChild(clearBtnEl);
         if (actionSection.children.length > 0) floatingPanel.appendChild(actionSection);
-        
+
         // Show toggle button on mobile
         annotationToggleBtn.style.display = 'inline-flex';
     } else {
         // Move elements back to controls-right on desktop
-        
+
         // Move undo/redo/clear back to other-controls in the correct order
         const undoBtnEl = document.getElementById('undo-btn');
         const redoBtnEl = document.getElementById('redo-btn');
         const clearBtnEl = document.getElementById('clear-btn');
-        
+
         // Insert in correct order at the beginning of other-controls
         if (undoBtnEl && otherControls && !otherControls.contains(undoBtnEl)) {
             otherControls.insertBefore(undoBtnEl, otherControls.firstChild);
@@ -248,7 +231,7 @@ function updateFloatingPanel() {
         if (clearBtnEl && otherControls && !otherControls.contains(clearBtnEl)) {
             otherControls.insertBefore(clearBtnEl, redoBtnEl ? redoBtnEl.nextSibling : otherControls.firstChild);
         }
-        
+
         // Insert elements back in correct order
         if (toolContainer && !controlsRight.contains(toolContainer)) {
             controlsRight.insertBefore(toolContainer, otherControls || controlsRight.firstChild);
@@ -259,10 +242,10 @@ function updateFloatingPanel() {
         if (brushControls && !controlsRight.contains(brushControls)) {
             controlsRight.insertBefore(brushControls, otherControls || controlsRight.firstChild);
         }
-        
+
         // Clear floating panel after moving elements
         floatingPanel.innerHTML = '';
-        
+
         // Hide toggle button and floating panel on desktop
         annotationToggleBtn.style.display = 'none';
         floatingPanel.classList.remove('visible');
@@ -307,7 +290,7 @@ function dragStart(e) {
 function drag(e) {
     if (isDragging) {
         e.preventDefault();
-        
+
         if (e.type === 'touchmove') {
             currentX = e.touches[0].clientX - initialX;
             currentY = e.touches[0].clientY - initialY;
@@ -359,7 +342,7 @@ const __beamer_controls = [
     brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
     undoBtn, redoBtn,
-    clearBtn, surveyBtn
+    clearBtn
 ];
 // QUESTION: Why aren't screenShareBtn and recordBtn in this array?^
 
@@ -443,14 +426,14 @@ uploadBtn.onClick(() => {
 function showUploadModal() {
     const existingModal = document.querySelector('.upload-modal-overlay');
     if (existingModal) existingModal.remove();
-    
+
     const overlay = document.createElement('div');
     overlay.className = 'custom-modal-overlay';
-    
+
     const modal = document.createElement('div');
     modal.className = 'custom-modal-content';
     modal.style.maxWidth = '500px';
-    
+
     modal.innerHTML = `
         <div class="custom-modal-icon">
             <i class="fa-solid fa-upload"></i>
@@ -487,30 +470,30 @@ function showUploadModal() {
             <button class="custom-modal-btn custom-modal-btn-cancel">Cancel</button>
         </div>
     `;
-    
+
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    
+
     // Handle button clicks
     modal.querySelector('[data-type="zip"]').onclick = () => {
         overlay.remove();
         zipInput.click();
     };
-    
+
     modal.querySelector('[data-type="folder"]').onclick = () => {
         overlay.remove();
         folderInput.click();
     };
-    
+
     const cancelBtn = modal.querySelector('.custom-modal-btn-cancel');
     cancelBtn.onclick = () => {
         overlay.remove();
     };
-    
+
     overlay.onclick = (e) => {
         if (e.target === overlay) overlay.remove();
     };
-    
+
     // ESC key handler
     const escHandler = (e) => {
         if (e.key === 'Escape') {
@@ -524,20 +507,20 @@ function showUploadModal() {
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
     navigator.innerHTML = '';
-    
+
     for (let i = 0; i < totalSlides; i++) {
         const item = document.createElement('div');
         item.className = 'slide-nav-item';
         item.textContent = i + 1;
         item.dataset.slideIndex = i;
-        
+
         item.onclick = () => {
             goToSlide(i);
         };
-        
+
         navigator.appendChild(item);
     }
-    
+
     updateSlideNavigator();
 }
 
@@ -565,19 +548,19 @@ async function loadSlideConfig(slideIndex) {
     if (slideConfigs[slideIndex]) {
         return slideConfigs[slideIndex];
     }
-    
+
     const configFileName = `config/s${slideIndex}.json`;
     const configFile = zipFile.file(configFileName);
-    
+
     if (!configFile) {
         slideConfigs[slideIndex] = null;
         return null;
     }
-    
+
     const configText = await configFile.async("string");
     const config = JSON.parse(configText);
     slideConfigs[slideIndex] = config;
-    
+
     console.log(`Loaded config for slide ${slideIndex}:`, config);
     return config;
 }
@@ -586,17 +569,17 @@ async function loadMediaFromPath(path) {
     if (mediaCache[path]) {
         return mediaCache[path];
     }
-    
+
     const file = zipFile.file(path);
     if (!file) {
         console.error(`Media file not found: ${path}`);
         return null;
     }
-    
+
     const blob = await file.async("blob");
     const url = URL.createObjectURL(blob);
     mediaCache[path] = url;
-    
+
     console.log(`Loaded media: ${path}`);
     return url;
 }
@@ -622,7 +605,7 @@ function syncAnnotations() {
 function updateMediaPositions() {
     // Get the container's actual size on screen
     const rect = slide_canvas_container.getBoundingClientRect();
-    
+
     // Update videos using stored fractional positions
     const videos = slide_canvas_container.querySelectorAll('video');
     videos.forEach(video => {
@@ -630,7 +613,7 @@ function updateMediaPositions() {
         const y = parseFloat(video.dataset.videoY);
         const width = parseFloat(video.dataset.videoWidth);
         const height = parseFloat(video.dataset.videoHeight);
-        
+
         if (!isNaN(x) && !isNaN(y) && !isNaN(width) && !isNaN(height)) {
             video.style.left = `${x * rect.width}px`;
             video.style.top = `${y * rect.height}px`;
@@ -638,7 +621,7 @@ function updateMediaPositions() {
             video.style.height = `${height * rect.height}px`;
         }
     });
-    
+
     // Update 3D models using stored fractional positions
     const models = slide_canvas_container.querySelectorAll('model-viewer');
     models.forEach(mv => {
@@ -646,7 +629,7 @@ function updateMediaPositions() {
         const y = parseFloat(mv.dataset.modelY);
         const width = parseFloat(mv.dataset.modelWidth);
         const height = parseFloat(mv.dataset.modelHeight);
-        
+
         if (!isNaN(x) && !isNaN(y) && !isNaN(width) && !isNaN(height)) {
             mv.style.left = `${x * rect.width}px`;
             mv.style.top = `${y * rect.height}px`;
@@ -654,7 +637,7 @@ function updateMediaPositions() {
             mv.style.height = `${height * rect.height}px`;
         }
     });
-    
+
     // Update widgets
     updateWidgetPositions(slide_canvas_container);
 }
@@ -664,18 +647,17 @@ prevBtn.onClick(() => goToSlide(currentSlide - 1));
 nextBtn.onClick(() => goToSlide(currentSlide + 1));
 
 document.addEventListener('keydown', (e) => {
-    if (surveyOverlayVisible || resultsOverlayVisible) return;
     if (e.key === 'ArrowLeft') goToSlide(currentSlide - 1);
     if (e.key === 'ArrowRight') goToSlide(currentSlide + 1);
 });
 
 async function goToSlide(slideIndex) {
     if (slideIndex < 0 || slideIndex >= totalSlides) return;
-    
+
     currentSlide = slideIndex;
     await renderSlide(currentSlide);
     updateSlideNavigator();
-    
+
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
         slideIndex: currentSlide,
@@ -686,20 +668,20 @@ async function goToSlide(slideIndex) {
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
     navigator.innerHTML = '';
-    
+
     for (let i = 0; i < totalSlides; i++) {
         const item = document.createElement('div');
         item.className = 'slide-nav-item';
         item.textContent = i + 1;
         item.dataset.slideIndex = i;
-        
+
         item.onclick = () => {
             goToSlide(i);
         };
-        
+
         navigator.appendChild(item);
     }
-    
+
     updateSlideNavigator();
 }
 
@@ -718,22 +700,22 @@ function updateSlideNavigator() {
 
 async function renderSlide(slideIndex) {
     console.log('renderSlide called:', slideIndex);
-    
+
     if (!zipFile) {
         console.log('No ZIP file loaded');
         return;
     }
-    
+
     const pdfFile = zipFile.file("slides.pdf");
     if (!pdfFile) {
         console.error("No slides.pdf found in ZIP");
         return;
     }
-    
+
     const pdfData = await pdfFile.async("arraybuffer");
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
-    
+
     await pdfCvs.renderPDFPage(page);
 
     // Load per-slide annotations (clear then draw saved image if present)
@@ -747,42 +729,42 @@ async function renderSlide(slideIndex) {
     } catch (e) {
         console.warn('Error loading annotations for slide', slideIndex, e);
     }
-    
+
     const existingMedia = slide_canvas_container.querySelectorAll('video, audio, model-viewer');
     existingMedia.forEach(el => el.remove());
-    
+
     cleanupWidgets(slide_canvas_container);
-    
+
     const slideConfig = await loadSlideConfig(slideIndex);
-    
+
     if (!slideConfig) {
         console.log('No config for this slide');
         return;
     }
-    
+
     console.log('Videos to render:', slideConfig.videos?.length || 0);
     console.log('Models to render:', slideConfig.models?.length || 0);
     console.log('Widgets to render:', slideConfig.widgets?.length || 0);
-    
+
     // Get container's actual size for positioning all media elements
     const containerRect = slide_canvas_container.getBoundingClientRect();
-    
+
     if (slideConfig.videos) {
         for (const v of slideConfig.videos) {
             const videoURL = await loadMediaFromPath(v.path);
             if (!videoURL) continue;
-            
+
             const video = document.createElement("video");
             video.src = videoURL;
             video.volume = v.volume || 1.0;
             video.dataset.videoId = v.id;
-            
+
             // Store fractional positions for resize handling
             video.dataset.videoX = v.x;
             video.dataset.videoY = v.y;
             video.dataset.videoWidth = v.width;
             video.dataset.videoHeight = v.height;
-            
+
             video.style.position = "absolute";
             video.style.left = `${v.x * containerRect.width}px`;
             video.style.top = `${v.y * containerRect.height}px`;
@@ -790,7 +772,7 @@ async function renderSlide(slideIndex) {
             video.style.height = `${v.height * containerRect.height}px`;
             video.style.objectFit = "contain";
             video.style.zIndex = v.zIndex || 5;
-            
+
             if (v.playMode === "once") {
                 video.autoplay = true;
                 video.loop = false;
@@ -802,7 +784,7 @@ async function renderSlide(slideIndex) {
             if (v.playMode === "manual") {
                 video.controls = true;
             }
-            
+
             video.addEventListener('play', () => {
                 socket.emit('video_action', {
                     videoId: v.id,
@@ -811,7 +793,7 @@ async function renderSlide(slideIndex) {
                     currentTime: video.currentTime
                 });
             });
-            
+
             video.addEventListener('pause', () => {
                 socket.emit('video_action', {
                     videoId: v.id,
@@ -832,38 +814,38 @@ async function renderSlide(slideIndex) {
                 }
                 ev.stopPropagation();
             });
-            
+
             slide_canvas_container.appendChild(video);
         }
     }
-    
+
     if (slideConfig.models) {
         for (const m of slideConfig.models) {
             const modelURL = await loadMediaFromPath(m.path);
             if (!modelURL) continue;
-            
+
             const mv = document.createElement("model-viewer");
             mv.src = modelURL;
             mv.alt = m.alt || "3D model";
             mv.dataset.modelId = m.id;
-            
+
             // Store fractional positions for resize handling
             mv.dataset.modelX = m.x;
             mv.dataset.modelY = m.y;
             mv.dataset.modelWidth = m.width;
             mv.dataset.modelHeight = m.height;
-            
+
             mv.setAttribute("camera-controls", "");
             mv.setAttribute("shadow-intensity", "1");
             mv.setAttribute("auto-rotate", m.autoRotate ? "true" : "false");
-            
+
             mv.style.position = "absolute";
             mv.style.left = `${m.x * containerRect.width}px`;
             mv.style.top = `${m.y * containerRect.height}px`;
             mv.style.width = `${m.width * containerRect.width}px`;
             mv.style.height = `${m.height * containerRect.height}px`;
             mv.style.zIndex = m.zIndex || 5;
-            
+
             mv.addEventListener('camera-change', () => {
                 const camera = mv.getCameraOrbit();
                 const target = mv.getCameraTarget();
@@ -882,26 +864,26 @@ async function renderSlide(slideIndex) {
                     }
                 });
             });
-            
+
             slide_canvas_container.appendChild(mv);
         }
     }
-    
+
     if (slideConfig.audio) {
         for (const a of slideConfig.audio) {
             const audioURL = await loadMediaFromPath(a.path);
             if (!audioURL) continue;
-            
+
             const audio = document.createElement("audio");
             audio.src = audioURL;
             audio.volume = a.volume || 1.0;
             if (a.playMode === "auto") audio.play();
             if (a.playMode === "manual") audio.controls = true;
-            
+
             slide_canvas_container.appendChild(audio);
         }
     }
-    
+
     if (slideConfig.widgets) {
         renderWidgets(slideConfig, slide_canvas_container, zipFile);
     }
@@ -916,7 +898,7 @@ folderInput.addEventListener('change', async (e) => {
 
     // Create a ZIP file from the selected folder
     const zip = new JSZip();
-    
+
     // Add all files to the ZIP, preserving folder structure
     for (const file of files) {
         // Get the relative path from the file's webkitRelativePath
@@ -924,16 +906,16 @@ folderInput.addEventListener('change', async (e) => {
         // Remove the first folder name to get the path relative to the selected folder
         const pathParts = relativePath.split('/');
         const zipPath = pathParts.slice(1).join('/');
-        
+
         if (zipPath) {
             const fileData = await file.arrayBuffer();
             zip.file(zipPath, fileData);
         }
     }
-    
+
     console.log('Creating ZIP from folder...');
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    
+
     const formData = new FormData();
     formData.append('file', zipBlob, 'presentation.zip');
 
@@ -960,11 +942,11 @@ folderInput.addEventListener('change', async (e) => {
         Modal.error('Upload Failed', 'Failed to upload presentation. Please try again.');
         return;
     }
-    
+
     // Load the ZIP we just created into memory for frontend use
     zipFile = zip;
     console.log('ZIP loaded into memory');
-    
+
     const pdfFile = zipFile.file("slides.pdf");
     if (!pdfFile) {
         console.error("The uploaded package is not a valid Beamer+ presentation (no slides.pdf found).");
@@ -972,39 +954,42 @@ folderInput.addEventListener('change', async (e) => {
         Modal.error('Invalid Presentation', 'The uploaded package is not a valid Beamer+ presentation.');
         return;
     }
-    
+
     const pdfData = await pdfFile.async("arraybuffer");
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     totalSlides = pdfDoc.numPages;
-    
+
     console.log(`Total slides: ${totalSlides}`);
-    
+
     currentSlide = 0;
     slideConfigs = {};
     mediaCache = {};
-    
+
     await renderSlide(0);
-    
+
     // Populate slide navigator
     populateSlideNavigator();
-    
+
+    // Locate the slide that contains the survey_result widget (if any)
+    await locateSurveyWidgetSlide();
+
     socket.emit('presentation_loaded', {
         totalSlides: totalSlides
     });
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
-    
+
     // Enable screen share button
     screenShareBtn.el.disabled = false;
     screenShareBtn.el.style.opacity = '1';
     screenShareBtn.el.style.cursor = 'pointer';
-    
+
     // Enable record button
     recordBtn.el.disabled = false;
     recordBtn.el.style.opacity = '1';
     recordBtn.el.style.cursor = 'pointer';
-    
+
     updateHistoryButtons();
 });
 
@@ -1041,13 +1026,13 @@ zipInput.addEventListener('change', async (e) => {
         Modal.error('Upload Failed', 'Failed to upload presentation. Please try again.');
         return;
     }
-    
+
     // Load the ZIP into memory for frontend use
     const reader = new FileReader();
     reader.onload = async (event) => {
         zipFile = await JSZip.loadAsync(event.target.result);
         console.log('ZIP loaded into memory');
-        
+
         const pdfFile = zipFile.file("slides.pdf");
         if (!pdfFile) {
             console.error("The uploaded package is not a valid Beamer+ presentation (no slides.pdf found).");
@@ -1055,39 +1040,42 @@ zipInput.addEventListener('change', async (e) => {
             Modal.error('Invalid Presentation', 'The uploaded package is not a valid Beamer+ presentation.');
             return;
         }
-        
+
         const pdfData = await pdfFile.async("arraybuffer");
         const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
         totalSlides = pdfDoc.numPages;
-        
+
         console.log(`Total slides: ${totalSlides}`);
-        
+
         currentSlide = 0;
         slideConfigs = {};
         mediaCache = {};
-        
+
         await renderSlide(0);
-        
+
         // Populate slide navigator
         populateSlideNavigator();
-        
+
+        // Locate the slide that contains the survey_result widget (if any)
+        await locateSurveyWidgetSlide();
+
         socket.emit('presentation_loaded', {
             totalSlides: totalSlides
         });
         // Enable controls now that a presentation is loaded
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
-        
+
         // Enable screen share button
         screenShareBtn.el.disabled = false;
         screenShareBtn.el.style.opacity = '1';
         screenShareBtn.el.style.cursor = 'pointer';
-        
+
         // Enable record button
         recordBtn.el.disabled = false;
         recordBtn.el.style.opacity = '1';
         recordBtn.el.style.cursor = 'pointer';
-        
+
         updateHistoryButtons();
     };
     reader.readAsArrayBuffer(file);
@@ -1105,527 +1093,147 @@ async function loadAvailableModels() {
     }
 }
 
-// Survey functionality
-let currentSurveyResults = null;
-let currentSurveyData = null;
-let resultsOverlayVisible = false;
-let surveyOverlayVisible = false;
+// ==================== SURVEY/RESULTS WIDGET STATE (iframe widget) ====================
+// Previously Survey + Results were rendered as fullscreen overlays and we disabled most
+// controls, which prevented the presenter from navigating between slides.
+//
+// We now expose a small parent API (window.beamerSurvey) that the survey_result widget
+// can call. The widget lives inside the slide canvas (like word_cloud), so the toolbar
+// and slide navigation remain usable while responses are collected.
 
-// Survey Button - Opens creation modal
-surveyBtn.onClick(() => {
-    if (availableModels.length === 0) {
-        Modal.warning('No Presentation Loaded', 'Please upload a presentation.');
-        return;
-    }
-    
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 500px;">
-            <h2 style="margin-bottom: 1.5rem; font-family: 'Computer Modern Sans', sans-serif; color: #333;">Survey</h2>
-            
-            <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-family: 'Computer Modern Sans', sans-serif; color: #555;">Question (optional):</label>
-                <input 
-                    type="text" 
-                    id="survey-question"
-                    placeholder="What do you think about...?"
-                    style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; font-family: 'Computer Modern Sans', sans-serif; box-sizing: border-box;"
-                />
-                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666; font-family: 'Computer Modern Sans', sans-serif;">
-                    Leave blank for generic survey
-                </div>
-            </div>
-            
-            <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-family: 'Computer Modern Sans', sans-serif; color: #555;">Summarizer Script:</label>
-                <select 
-                    id="survey-model"
-                    style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; background: white; font-family: 'Computer Modern Sans', sans-serif; box-sizing: border-box;"
-                >
-                </select>
-                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666; font-family: 'Computer Modern Sans', sans-serif;">
-                    This script will be used to summarize survey responses
-                </div>
-            </div>
-            
-            <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-family: 'Computer Modern Sans', sans-serif; color: #555;">Number of Summaries:</label>
-                <input 
-                    type="number" 
-                    id="survey-num-summaries" 
-                    min="1" 
-                    max="10" 
-                    value="3"
-                    style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; font-family: 'Computer Modern Sans', sans-serif; box-sizing: border-box;"
-                />
-                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666; font-family: 'Computer Modern Sans', sans-serif;">
-                    Generate 1-10 different summary variations
-                </div>
-            </div>
-            
-            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                <button 
-                    id="cancel-survey-modal" 
-                    class="btn"
-                    style="font-family: 'Computer Modern Sans', sans-serif;"
-                >
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-                <button 
-                    id="create-survey-btn" 
-                    class="btn"
-                    style=" font-family: 'Computer Modern Sans', sans-serif;"
-                >
-                    <i class="fa-solid fa-share-from-square"></i>
-                </button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    
-    // Populate model dropdown
-    const modelSelect = document.getElementById('survey-model');
-    availableModels.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        modelSelect.appendChild(option);
-    });
-    
-    if (availableModels.length > 0) {
-        modelSelect.value = availableModels[0];
-    }
-    
-    document.getElementById('survey-question').focus();
-    
-    document.getElementById('cancel-survey-modal').onclick = () => {
-        document.body.removeChild(modal);
-    };
-    
-    document.getElementById('create-survey-btn').onclick = async () => {
-        const question = document.getElementById('survey-question').value.trim() || 'Survey';
-        const model = document.getElementById('survey-model').value;
-        const numSummaries = parseInt(document.getElementById('survey-num-summaries').value);
-        
-        if (!model) {
-            Modal.warning('No Model Selected', 'Please select an AI model.');
-            return;
+let currentSurveyResults = null; // { summaries, model, num_responses }
+let currentSurveyData = null;    // { survey_id, url, question, model, num_summaries, ... }
+let currentSurveyResponseCount = 0;
+
+// listeners used by the widget to live-update the response count
+const __surveyCountSubscribers = new Set();
+
+// caches the first slide index that contains the survey_result widget (if any)
+let surveyWidgetSlideIndex = null;
+
+// Find the first slide that contains a survey_result widget.
+async function locateSurveyWidgetSlide() {
+    surveyWidgetSlideIndex = null;
+    if (!zipFile || !totalSlides) return;
+
+    for (let i = 0; i < totalSlides; i++) {
+        const cfg = await loadSlideConfig(i);
+        const widgets = cfg?.widgets || [];
+        if (widgets.some(w => w.type === 'survey_result')) {
+            surveyWidgetSlideIndex = i;
+            break;
         }
-        
-        if (isNaN(numSummaries) || numSummaries < 1 || numSummaries > 10) {
-            Modal.warning('Invalid Number', 'Number of summaries must be between 1 and 10.');
-            return;
-        }
-        
+    }
+}
+
+function __notifySurveyCountSubscribers() {
+    for (const cb of __surveyCountSubscribers) {
+        try { cb(currentSurveyResponseCount); } catch (e) { /* ignore */ }
+    }
+}
+
+// Expose a parent API for the survey_result widget (iframe) to call.
+window.beamerSurvey = {
+    getAvailableModels: () => Array.isArray(availableModels) ? [...availableModels] : [],
+
+    getState: () => ({
+        survey: currentSurveyData,
+        responseCount: currentSurveyResponseCount,
+        results: currentSurveyResults
+    }),
+
+    subscribeResponseCount: (cb) => {
+        if (typeof cb !== 'function') return () => {};
+        __surveyCountSubscribers.add(cb);
+        // immediate sync
+        cb(currentSurveyResponseCount);
+        return () => __surveyCountSubscribers.delete(cb);
+    },
+
+    // Create survey and start collecting responses (does NOT block slide navigation).
+    createSurvey: async ({ question, model, num_summaries }) => {
+        if (!zipFile) throw new Error('Please upload a presentation first.');
+        if (!model) throw new Error('No model selected.');
+
+        const resp = await fetch('/api/survey/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, model, num_summaries })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to create survey');
+
+        currentSurveyData = { ...data, question, model, num_summaries };
+        currentSurveyResults = null;
+        currentSurveyResponseCount = 0;
+        __notifySurveyCountSubscribers();
+
+        socket.emit('survey_show', data);
+
+        return {
+            ...data,
+            full_url: `${window.location.origin}${data.url}`
+        };
+    },
+
+    // Close survey + generate summaries.
+    generateSummaries: async () => {
+        if (!currentSurveyData) throw new Error('No survey exists. Create one first.');
+
+        // close the survey server-side
         try {
-            const response = await fetch('/api/survey/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    question,
-                    model,
-                    num_summaries: numSummaries
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (!response.ok) {
-                Modal.error('Survey Creation Failed', data.error || 'Failed to create survey');
-                return;
-            }
-            
-            document.body.removeChild(modal);
-            
-            currentSurveyData = {
-                ...data,
-                model,
-                num_summaries: numSummaries,
-                question
-            };
-            
-            // Reset results when creating new survey
-            currentSurveyResults = null;
-            
-            // Disable results button until we have results
-            surveyResultsBtn.el.disabled = true;
-            surveyResultsBtn.el.style.opacity = '0.5';
-            surveyResultsBtn.el.style.cursor = 'not-allowed';
-            
-            socket.emit('survey_show', data);
-            showSurveyOverlay();
-            
-        } catch (error) {
-            console.error('Error creating survey:', error);
-            Modal.error('Survey Creation Failed', 'Failed to create survey. Please try again.');
+            await fetch(`/api/survey/${currentSurveyData.survey_id}/close`, { method: 'POST' });
+            socket.emit('survey_close', { survey_id: currentSurveyData.survey_id });
+        } catch (e) {
+            // non-fatal; continue
         }
-    };
-    
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            document.body.removeChild(modal);
+
+        // ensure there is at least one response (widget disables button until then)
+        const resResp = await fetch(`/api/survey/${currentSurveyData.survey_id}/responses`);
+        const resData = await resResp.json();
+        if (!resResp.ok) throw new Error(resData.error || 'Failed to load responses');
+        if (!Array.isArray(resData.responses) || resData.responses.length === 0) {
+            throw new Error('No responses yet.');
         }
-    };
-});
 
-function updateSurveyOverlayPosition() {
-    const overlay = document.getElementById('survey-overlay');
-    if (!overlay) return;
-    
-    const pdfContainer = document.getElementById('pdf-canvas');
-    const containerRect = pdfContainer.getBoundingClientRect();
-    
-    overlay.style.top = `${containerRect.top}px`;
-    overlay.style.left = `${containerRect.left}px`;
-    overlay.style.width = `${containerRect.width}px`;
-    overlay.style.height = `${containerRect.height}px`;
-}
-
-function showSurveyOverlay() {
-    if (!currentSurveyData) return;
-    
-    surveyOverlayVisible = true;
-    disableControlButtons(true, __beamer_all_buttons, surveyResultsBtn);
-    
-    const pdfContainer = document.getElementById('pdf-canvas');
-    const containerRect = pdfContainer.getBoundingClientRect();
-    
-    const surveyUrl = `${window.location.origin}${currentSurveyData.url}`;
-    
-    const overlay = document.createElement('div');
-    overlay.id = 'survey-overlay';
-    overlay.style.position = 'fixed';
-    overlay.style.top = `${containerRect.top}px`;
-    overlay.style.left = `${containerRect.left}px`;
-    overlay.style.width = `${containerRect.width}px`;
-    overlay.style.height = `${containerRect.height}px`;
-    overlay.style.backgroundColor = '#ffffff';
-    overlay.style.zIndex = '1000';
-    overlay.style.display = 'flex';
-    overlay.style.flexDirection = 'column';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.padding = '2rem';
-    overlay.style.boxSizing = 'border-box';
-    overlay.style.overflow = 'auto';
-    overlay.style.fontFamily = "'Computer Modern Sans', sans-serif";
-    
-    overlay.innerHTML = `
-        <div style="max-width: 600px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2rem;">
-            <h2 style="font-family: 'Computer Modern Sans', sans-serif; color: #333; font-size: 2rem; margin: 0; text-align: center; font-weight: 300;">
-                ${currentSurveyData.question || 'Survey'}
-                <br>
-                <span style="font-size: 0.9rem; color: #666; font-weight: normal;">(scan the QR code below or navigate to the URL to respond)</span>
-            </h2>
-            
-            <div style="background: #f8f9fa; padding: 2rem; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; width: 100%;">
-                <div id="qrcode" style="padding: 1rem; background: white; border-radius: 4px;"></div>
-                
-                <div style="width: 100%;">
-                    <input 
-                        type="text" 
-                        readonly 
-                        value="${surveyUrl}" 
-                        onclick="this.select()"
-                        style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-family: 'Computer Modern Sans', sans-serif; text-align: center; background: white; font-size: 0.9rem; box-sizing: border-box;"
-                    />
-                </div>
-            </div>
-            
-            <div style="font-family: 'Computer Modern Sans', sans-serif; color: #666; font-size: 1rem; border: 2px solid #e0e0e0; padding: 0.75rem 1.5rem; background: white;">
-                <span style="font-weight: 500; color: #333;">Responses:</span> <span id="response-count" style="font-weight: 600; color: #333;">0</span>
-            </div>
-            
-
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    
-    new QRCode(document.getElementById("qrcode"), {
-        text: surveyUrl,
-        width: 200,
-        height: 200,
-        colorDark: "#333333",
-        colorLight: "#ffffff"
-    });
-    
-    socket.on('survey_response', (data) => {
-        if (data.survey_id === currentSurveyData.survey_id) {
-            document.getElementById('response-count').textContent = data.total;
-        }
-    });
-}
-
-function hideSurveyOverlay() {
-    surveyOverlayVisible = false;
-    disableControlButtons(false, __beamer_all_buttons, surveyResultsBtn);
-    
-    const overlay = document.getElementById('survey-overlay');
-    if (overlay) {
-        document.body.removeChild(overlay);
-    }
-}
-
-// Results Button - Toggle between show/hide results
-surveyResultsBtn.onClick(async () => {
-    // If results are already showing, just hide them
-    if (resultsOverlayVisible) {
-        hideSurveyResultsOverlay();
-        return;
-    }
-    
-    // Check if we have a survey
-    if (!currentSurveyData) {
-        Modal.info('No Survey', 'Please create a survey first.');
-        return;
-    }
-    
-    // If we already have results, just show them
-    if (currentSurveyResults) {
-        showSurveyResultsOverlay();
-        return;
-    }
-    
-    // Close the survey if it's still open
-    if (surveyOverlayVisible) {
-        await fetch(`/api/survey/${currentSurveyData.survey_id}/close`, { method: 'POST' });
-        socket.emit('survey_close', { survey_id: currentSurveyData.survey_id });
-        hideSurveyOverlay();
-    }
-    
-    // Show loading modal
-    const loadingModal = Modal.loading('Generating Summaries', 'Please wait while the responses are analyzed...');
-    
-    try {
-        const response = await fetch(`/api/survey/${currentSurveyData.survey_id}/responses`);
-        const data = await response.json();
-        
-        if (data.responses.length === 0) {
-            loadingModal.close();
-            // No responses — survey already closed above; do nothing further.
-            return;
-        }
-        
         const analyzeResponse = await fetch(`/api/survey/${currentSurveyData.survey_id}/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
-        
-        if (!analyzeResponse.ok) {
-            const errorData = await analyzeResponse.json();
-            throw new Error(errorData.error || 'Analysis failed');
-        }
-        
         const analysisData = await analyzeResponse.json();
-        
+        if (!analyzeResponse.ok) throw new Error(analysisData.error || 'Analysis failed');
+
         currentSurveyResults = {
             summaries: analysisData.summaries,
             model: analysisData.model,
             num_responses: analysisData.num_responses
         };
-        
-        console.log('Analysis complete:', currentSurveyResults);
-        
-        // Close loading modal
-        loadingModal.close();
-        
-        // Enable the results button for future clicks
-        surveyResultsBtn.el.disabled = false;
-        surveyResultsBtn.el.style.opacity = '1';
-        surveyResultsBtn.el.style.cursor = 'pointer';
-        
-        // Show results overlay
-        showSurveyResultsOverlay();
-        
-    } catch (error) {
-        console.error('Error processing responses:', error);
-        loadingModal.close();
-        Modal.error('Analysis Failed', "There was an error summarizing the responses.");
-    }
-});
 
-let currentResultIndex = 0;
+        return currentSurveyResults;
+    },
 
-// Use UI helper `disableControlButtons` from beamer_ui.js
-
-function updateSurveyResultsOverlayPosition() {
-    const overlay = document.getElementById('survey-results-overlay');
-    if (!overlay) return;
-    
-    const pdfContainer = document.getElementById('pdf-canvas');
-    const containerRect = pdfContainer.getBoundingClientRect();
-    
-    overlay.style.top = `${containerRect.top}px`;
-    overlay.style.left = `${containerRect.left}px`;
-    overlay.style.width = `${containerRect.width}px`;
-    overlay.style.height = `${containerRect.height}px`;
-}
-
-function showSurveyResultsOverlay() {
-    if (!currentSurveyResults || !currentSurveyResults.summaries || currentSurveyResults.summaries.length === 0) {
-        Modal.info('No Results', 'No survey results available.');
-        return;
-    }
-    
-    // Set this BEFORE disabling buttons to prevent flash
-    resultsOverlayVisible = true;
-    currentResultIndex = 0;
-    
-    disableControlButtons(true, __beamer_all_buttons, surveyResultsBtn);
-    
-    const pdfContainer = document.getElementById('pdf-canvas');
-    const containerRect = pdfContainer.getBoundingClientRect();
-    
-    const overlay = document.createElement('div');
-    overlay.id = 'survey-results-overlay';
-    overlay.style.position = 'fixed';
-    overlay.style.top = `${containerRect.top}px`;
-    overlay.style.left = `${containerRect.left}px`;
-    overlay.style.width = `${containerRect.width}px`;
-    overlay.style.height = `${containerRect.height}px`;
-    overlay.style.backgroundColor = '#ffffff';
-    overlay.style.zIndex = '1000';
-    overlay.style.display = 'flex';
-    overlay.style.flexDirection = 'column';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.padding = '2rem';
-    overlay.style.boxSizing = 'border-box';
-    overlay.style.overflow = 'auto';
-    overlay.style.fontFamily = "'Computer Modern Sans', sans-serif";
-    
-    const numSummaries = currentSurveyResults.summaries.length;
-    
-    overlay.innerHTML = `
-        <div style="max-width: 800px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2rem;">
-            <div id="result-content" style="text-align: center; min-height: 300px; display: flex; flex-direction: column; justify-content: center; gap: 1rem; width: 100%;">
-                <!-- Content will be inserted here -->
-            </div>
-            
-            <div style="display: flex; gap: 1rem; align-items: center;">
-                <button id="prev-result" class="btn">
-                    <i class="fa-solid fa-arrow-left"></i>
-                </button>
-                <span id="result-counter" style="font-family: 'Computer Modern Sans', sans-serif; color: #666; font-size: 1rem;">
-                    1 / ${numSummaries}
-                </span>
-                <button id="next-result" class="btn">
-                    <i class="fa-solid fa-arrow-right"></i>
-                </button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    
-    document.getElementById('prev-result').addEventListener('click', () => {
-        if (currentResultIndex > 0) {
-            currentResultIndex--;
-            updateResultDisplay();
+    // Optional reset helper (not currently used by the widget UI)
+    reset: async () => {
+        if (currentSurveyData?.survey_id) {
+            try { await fetch(`/api/survey/${currentSurveyData.survey_id}/close`, { method: 'POST' }); } catch (e) {}
         }
-    });
-    
-    document.getElementById('next-result').addEventListener('click', () => {
-        if (currentResultIndex < currentSurveyResults.summaries.length - 1) {
-            currentResultIndex++;
-            updateResultDisplay();
-        }
-    });
-    
-    updateResultDisplay();
-}
+        currentSurveyData = null;
+        currentSurveyResults = null;
+        currentSurveyResponseCount = 0;
+        __notifySurveyCountSubscribers();
+    }
+};
 
-function hideSurveyResultsOverlay() {
-    resultsOverlayVisible = false;
-    
-    disableControlButtons(false, __beamer_all_buttons, surveyResultsBtn);
-    
-    const overlay = document.getElementById('survey-results-overlay');
-    if (overlay) {
-        document.body.removeChild(overlay);
-    }
-}
+// Update response counts globally (for the widget), without creating any overlays.
+socket.on('survey_response', (data) => {
+    if (!currentSurveyData) return;
+    if (data.survey_id !== currentSurveyData.survey_id) return;
 
-function updateResultDisplay() {
-    const contentDiv = document.getElementById('result-content');
-    const counterSpan = document.getElementById('result-counter');
-    const prevBtn = document.getElementById('prev-result');
-    const nextBtn = document.getElementById('next-result');
-    
-    if (!contentDiv || !currentSurveyResults || !currentSurveyResults.summaries) return;
-    
-    const summaryData = currentSurveyResults.summaries[currentResultIndex];
-    const totalSummaries = currentSurveyResults.summaries.length;
-    
-    contentDiv.innerHTML = `
-        <h2 style="font-family: 'Computer Modern Sans', sans-serif; color: #333; font-size: 2rem; margin: 0; font-weight: 300;">
-            ${currentSurveyData.question || 'Survey Response Summaries'}
-            <br>
-            <span style="font-size: 0.9rem; color: #666; font-weight: normal;">(based on ${summaryData.num_respondents} response${summaryData.num_respondents !== 1 ? 's' : ''})</span>
-        </h2>
-        <div style="font-family: 'Computer Modern Sans', sans-serif; color: #333; font-size: 1.1rem; line-height: 1.8; margin: 1.5rem 0; text-align: center; max-width: 700px; padding: 2rem; background: #f8f9fa; border: 2px solid #666; border-radius: 4px;">
-            ${summaryData.summary}
-        </div>
-    `;
-    
-    counterSpan.textContent = `${currentResultIndex + 1} / ${totalSummaries}`;
-    
-    prevBtn.disabled = currentResultIndex === 0;
-    nextBtn.disabled = currentResultIndex === totalSummaries - 1;
-    
-    prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
-    nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
-    prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
-    nextBtn.style.cursor = nextBtn.disabled ? 'not-allowed' : 'pointer';
-}
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && resultsOverlayVisible) {
-        hideSurveyResultsOverlay();
+    // server sends a running total
+    if (typeof data.total === 'number') {
+        currentSurveyResponseCount = data.total;
+        __notifySurveyCountSubscribers();
     }
-});
-
-// Add resize listener to update overlay positions
-window.addEventListener('resize', () => {
-    if (surveyOverlayVisible) {
-        updateSurveyOverlayPosition();
-    }
-    if (resultsOverlayVisible) {
-        updateSurveyResultsOverlayPosition();
-    }
-    
-    // Resize annotation canvas to maintain proper mouse coordinate mapping
-    if (annCvs) {
-        annCvs.resize();
-    }
-    
-    // Update positions of all media elements (videos, models, widgets)
-    if (zipFile && slideConfigs[currentSlide]) {
-        updateMediaPositions();
-    }
-});
-
-// Add fullscreen change listener to handle fullscreen transitions
-document.addEventListener('fullscreenchange', () => {
-    // Need a small delay for the browser to finish the fullscreen transition
-    setTimeout(() => {
-        if (surveyOverlayVisible) {
-            updateSurveyOverlayPosition();
-        }
-        if (resultsOverlayVisible) {
-            updateSurveyResultsOverlayPosition();
-        }
-        
-        if (annCvs) {
-            annCvs.resize();
-        }
-        
-        if (zipFile && slideConfigs[currentSlide]) {
-            updateMediaPositions();
-        }
-    }, 100);
 });
 
 // ==================== SCREEN SHARING ====================
@@ -1654,19 +1262,19 @@ async function startRecording() {
         Modal.error('Recording Error', 'Please start screen sharing before recording.');
         return;
     }
-    
+
     try {
         // Get the canvas that's being used for screen sharing
         const pdfContainer = document.getElementById('pdf-canvas');
-        
+
         // Create a new canvas for recording
         recordingCanvas = document.createElement('canvas');
         recordingCanvas.width = pdfContainer.getBoundingClientRect().width;
         recordingCanvas.height = pdfContainer.getBoundingClientRect().height;
-        
+
         // Create a stream from the canvas at 30 FPS
         recordingStream = recordingCanvas.captureStream(30);
-        
+
         // Request microphone audio
         try {
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1674,7 +1282,7 @@ async function startRecording() {
         } catch (error) {
             console.warn('Microphone not captured:', error);
         }
-        
+
         // Request system audio (will prompt user)
         try {
             audioStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1685,28 +1293,28 @@ async function startRecording() {
         } catch (audioError) {
             console.warn('System audio not captured:', audioError);
         }
-        
+
         // Create MediaRecorder to record in real-time
         recordedChunks = [];
         mediaRecorder = new MediaRecorder(recordingStream, {
             mimeType: 'video/webm;codecs=vp9',
             videoBitsPerSecond: 2500000
         });
-        
+
         mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) {
                 recordedChunks.push(e.data);
             }
         };
-        
+
         mediaRecorder.start(100); // Collect data every 100ms
-        
+
         isRecording = true;
-        
+
         // Update button appearance
         recordBtn.el.innerHTML = '<i class="fa-solid fa-stop"></i>';
         recordBtn.el.style.backgroundColor = '#e74c3c';
-        
+
         console.log('Recording started');
     } catch (error) {
         console.error('Error starting recording:', error);
@@ -1716,24 +1324,24 @@ async function startRecording() {
 
 async function stopRecording() {
     if (!isRecording || !mediaRecorder) return;
-    
+
     isRecording = false;
-    
+
     // Reset button appearance
     recordBtn.el.innerHTML = '<i class="fa-solid fa-circle"></i>';
     recordBtn.el.style.backgroundColor = '';
-    
+
     console.log('Recording stopped. Processing video...');
-    
+
     // Show processing modal with loading animation
     const processingModal = Modal.loading('Processing Video', 'Please wait while your recording is being processed and downloaded...');
-    
+
     return new Promise((resolve, reject) => {
         mediaRecorder.onstop = () => {
             try {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
-                
+
                 // Download the video
                 const a = document.createElement('a');
                 a.href = url;
@@ -1742,7 +1350,7 @@ async function stopRecording() {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                
+
                 // Clean up
                 recordedChunks = [];
                 if (micStream) {
@@ -1758,7 +1366,7 @@ async function stopRecording() {
                     recordingStream = null;
                 }
                 recordingCanvas = null;
-                
+
                 processingModal.close();
                 Modal.success('Recording Complete', 'Your video has been downloaded successfully!');
                 resolve();
@@ -1769,7 +1377,7 @@ async function stopRecording() {
                 reject(error);
             }
         };
-        
+
         mediaRecorder.stop();
     });
 }
@@ -1796,13 +1404,13 @@ async function startScreenShare() {
             surfaceSwitching: 'exclude',
             systemAudio: 'exclude'
         });
-        
+
         // Check if the user selected the correct surface type
         const videoTrack = stream.getVideoTracks()[0];
         const settings = videoTrack.getSettings();
-        
+
         // check by regex if the user is on Safari:
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent); 
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         console.log(`isSafari: ${isSafari}`);
 
         if (!isSafari) {
@@ -1810,9 +1418,9 @@ async function startScreenShare() {
             if (settings.displaySurface && settings.displaySurface !== 'browser') {
                 // Stop the stream immediately
                 stream.getTracks().forEach(track => track.stop());
-                
+
                 Modal.error(
-                    'Wrong Source Selected', 
+                    'Wrong Source Selected',
                     'Please select the Beamer+ browser tab (not a window or entire screen). Click the screen share button again and choose "This Tab" or the Beamer+ tab from the list.'
                 );
                 isScreenSharing = false;
@@ -1824,62 +1432,62 @@ async function startScreenShare() {
 
         screenStream = stream;
         isScreenSharing = true;
-        
+
         // Update button appearance
         screenShareBtn.el.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
-        
+
         // Create a hidden video element to capture the stream
         const video = document.createElement('video');
         video.style.display = 'none';
         video.srcObject = stream;
         video.play();
-        
+
         document.body.appendChild(video);
-        
+
         // Create canvas for cropping
         const cropCanvas = document.createElement('canvas');
         const cropCtx = cropCanvas.getContext('2d');
-        
+
         // Get the canvas container dimensions
         const pdfContainer = document.getElementById('pdf-canvas');
-        
+
         let lastFrameTime = 0;
         const frameInterval = 100; // Reduced to 10 FPS to prevent flashing
-        
+
         // Start capturing and cropping frames
         const captureFrame = (currentTime) => {
             if (!isScreenSharing) return;
-            
+
             // Throttle frame rate
             if (currentTime - lastFrameTime < frameInterval) {
                 requestAnimationFrame(captureFrame);
                 return;
             }
             lastFrameTime = currentTime;
-            
+
             const containerRect = pdfContainer.getBoundingClientRect();
-            
+
             // Set canvas size to match the container
             cropCanvas.width = containerRect.width;
             cropCanvas.height = containerRect.height;
-            
+
             // Calculate the position and size to crop from the video
             // This assumes the video is capturing the full screen
             const scaleX = video.videoWidth / window.innerWidth;
             const scaleY = video.videoHeight / window.innerHeight;
-            
+
             const sourceX = containerRect.left * scaleX;
             const sourceY = containerRect.top * scaleY;
             const sourceWidth = containerRect.width * scaleX;
             const sourceHeight = containerRect.height * scaleY;
-            
+
             // Draw the cropped region onto the canvas
             cropCtx.drawImage(
                 video,
                 sourceX, sourceY, sourceWidth, sourceHeight,
                 0, 0, cropCanvas.width, cropCanvas.height
             );
-            
+
             // If recording, draw to recording canvas in real-time
             if (isRecording && recordingCanvas) {
                 const recordingCtx = recordingCanvas.getContext('2d');
@@ -1891,7 +1499,7 @@ async function startScreenShare() {
                 // Draw the current frame to the recording canvas
                 recordingCtx.drawImage(cropCanvas, 0, 0);
             }
-            
+
             // Convert canvas to blob and emit to server
             cropCanvas.toBlob((blob) => {
                 if (blob && isScreenSharing) {
@@ -1908,32 +1516,32 @@ async function startScreenShare() {
                     reader.readAsDataURL(blob);
                 }
             }, 'image/jpeg', 0.75); // Reduced quality to 75% for less bandwidth
-            
+
             // Request next frame
             if (isScreenSharing) {
                 requestAnimationFrame(captureFrame);
             }
         };
-        
+
         // Wait for video to be ready
         video.onloadedmetadata = () => {
             requestAnimationFrame(captureFrame);
         };
-        
+
         // Handle stream end (user clicks "Stop sharing" in browser)
         stream.getVideoTracks()[0].onended = () => {
             stopScreenShare();
         };
-        
+
         // Notify viewers that screen sharing has started
         socket.emit('screen_share_start');
-        
+
         // Show a helper message
         console.log('Screen sharing started. Sharing Beamer+ tab.');
-        
+
     } catch (error) {
         console.error('Error starting screen share:', error);
-        
+
         let errorMessage = 'Could not start screen sharing.';
         if (error.name === 'NotAllowedError') {
             errorMessage = 'Screen sharing permission was denied. Please allow screen sharing and select the Beamer+ tab (choose "This Tab" option).';
@@ -1942,7 +1550,7 @@ async function startScreenShare() {
         } else if (error.name === 'NotSupportedError') {
             errorMessage = 'Screen sharing is not supported in this browser. Please use Chrome, Firefox, or Edge.';
         }
-        
+
         Modal.error('Screen Share Error', errorMessage);
         isScreenSharing = false;
     }
@@ -1953,22 +1561,22 @@ function stopScreenShare() {
         screenStream.getTracks().forEach(track => track.stop());
         screenStream = null;
     }
-    
+
     isScreenSharing = false;
-    
+
     // If recording is active, stop it
     if (isRecording) {
         stopRecording();
     }
-    
+
     // Reset button appearance
     screenShareBtn.el.innerHTML = '<i class="fa-solid fa-desktop"></i>';
     screenShareBtn.el.style.backgroundColor = '';
-    
+
     // Remove the hidden video element
     const videos = document.querySelectorAll('video[style*="display: none"]');
     videos.forEach(v => v.remove());
-    
+
     // Notify viewers that screen sharing has stopped
     socket.emit('screen_share_stop');
 }

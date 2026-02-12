@@ -1,0 +1,15 @@
+{
+  "widgets": [
+    {
+      "id": "sr1",
+      "type": "survey_result",
+      "src": "widgets/survey_result.html",
+      "x": 0.1,
+      "y": 0.15,
+      "width": 0.8,
+      "height": 0.7,
+      "interactive": true
+    }
+  ]
+}
+
