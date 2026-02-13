@@ -242,15 +242,15 @@
         let totalResponses = parseInt(sessionStorage.getItem('wc_total') || '0', 10);
         let lastSyncedTotal = parseInt(sessionStorage.getItem('wc_lastSyncedTotal') || '0', 10);
 
-
         const colors = [
-            { r: 52, g: 152, b: 219 }, // #3498db
-            { r: 231, g: 76, b: 60 },  // #e74c3c
-            { r: 46, g: 204, b: 113 }, // #2ecc71
-            { r: 155, g: 89, b: 182 }, // #9b59b6
-            { r: 243, g: 156, b: 18 }, // #f39c12
-            { r: 52, g: 73, b: 94 },   // #34495e
-            { r: 22, g: 160, b: 133 }  // #16a085
+            { r: 59,  g: 130, b: 246 },  // #3b82f6  Blue (primary anchor)
+            { r: 16,  g: 185, b: 129 },  // #10b981  Emerald
+            { r: 139, g: 92,  b: 246 },  // #8b5cf6  Violet
+            { r: 245, g: 158, b: 11 },   // #f59e0b  Amber
+            { r: 239, g: 68,  b: 68 },   // #ef4444  Soft Red
+            { r: 14,  g: 165, b: 233 },  // #0ea5e9  Sky Blue
+            { r: 75,  g: 85,  b: 99 },   // #4b5563  Slate (neutral depth)
+            { r: 20,  g: 184, b: 166 }   // #14b8a6  Teal
         ];
 
         window.addEventListener('message', (event) => {

@@ -178,9 +178,13 @@ function updateFloatingPanel() {
     const otherControls = document.getElementById('other-controls');
     const controlsRight = document.querySelector('.controls-right');
 
+    const undoBtnEl = document.getElementById('undo-btn');
+    const redoBtnEl = document.getElementById('redo-btn');
+    const clearBtnEl = document.getElementById('clear-btn');
+
     if (window.innerWidth <= 1300) {
         // Move elements to floating panel on mobile
-        floatingPanel.innerHTML = '';
+        floatingPanel.replaceChildren();
 
         // Tools section
         const toolsSection = document.createElement('div');
@@ -203,9 +207,6 @@ function updateFloatingPanel() {
         // Undo/Redo/Clear section - move individual buttons from other-controls
         const actionSection = document.createElement('div');
         actionSection.className = 'panel-section';
-        const undoBtnEl = document.getElementById('undo-btn');
-        const redoBtnEl = document.getElementById('redo-btn');
-        const clearBtnEl = document.getElementById('clear-btn');
         if (undoBtnEl) actionSection.appendChild(undoBtnEl);
         if (redoBtnEl) actionSection.appendChild(redoBtnEl);
         if (clearBtnEl) actionSection.appendChild(clearBtnEl);
@@ -217,9 +218,11 @@ function updateFloatingPanel() {
         // Move elements back to controls-right on desktop
 
         // Move undo/redo/clear back to other-controls in the correct order
-        const undoBtnEl = document.getElementById('undo-btn');
-        const redoBtnEl = document.getElementById('redo-btn');
-        const clearBtnEl = document.getElementById('clear-btn');
+        if (otherControls) {
+            const undoBtnEl = document.getElementById('undo-btn');
+            const redoBtnEl = document.getElementById('redo-btn');
+            const clearBtnEl = document.getElementById('clear-btn');
+        }
 
         // Insert in correct order at the beginning of other-controls
         if (undoBtnEl && otherControls && !otherControls.contains(undoBtnEl)) {
@@ -244,7 +247,7 @@ function updateFloatingPanel() {
         }
 
         // Clear floating panel after moving elements
-        floatingPanel.innerHTML = '';
+        floatingPanel.replaceChildren();
 
         // Hide toggle button and floating panel on desktop
         annotationToggleBtn.style.display = 'none';
