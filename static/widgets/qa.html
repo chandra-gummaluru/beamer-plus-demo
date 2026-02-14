@@ -102,14 +102,10 @@ const parseResponsePayload = (text) => {
   return { answer: text };
 };
 
-const buildJoinUrl = (joinBase, surveyId, q, options, duration, correct) => {
+const buildJoinUrl = (joinBase, surveyId) => {
   const params = new URLSearchParams();
   params.set("role", "student");
   params.set("survey", surveyId);
-  if (q) params.set("q", q);
-  if (options) params.set("opts", JSON.stringify(options));
-  if (duration) params.set("duration", String(duration));
-  if (correct) params.set("correct", String(correct));
   return `${joinBase}/static/widgets/qa.html?${params.toString()}`;
 };
 let studentTimerInterval = null;
@@ -221,7 +217,8 @@ if (role === "presenter") {
          style="width:100%;padding:6px;font-family:monospace;">
 </div>
 
-    <button id="start" disabled>Start Question</button>
+    <button id="prepare" disabled>Show Join QR</button>
+    <button id="start" disabled style="margin-left:8px;">Start Questions</button>
     <button id="stop" disabled style="margin-left:8px;">Stop Question</button>
     <div id="status"></div>
 
@@ -231,6 +228,7 @@ if (role === "presenter") {
   const timerInput = document.getElementById("timer-input");
   const studentUrlInput = document.getElementById("student-url");
   const qrEl = document.getElementById("qr");
+  const prepareBtn = document.getElementById("prepare");
   const startBtn = document.getElementById("start");
   const statusEl = document.getElementById("status");
   const stopBtn = document.getElementById("stop");
@@ -306,9 +304,11 @@ if (role === "presenter") {
         throw new Error("No questions found.");
       }
       statusEl.textContent = `Loaded ${questions.length} question(s).`;
-      startBtn.disabled = false;
+      prepareBtn.disabled = false;
+      startBtn.disabled = true;
     } catch (err) {
       statusEl.textContent = `Error: ${err.message}`;
+      prepareBtn.disabled = true;
       startBtn.disabled = true;
     }
   };
@@ -365,26 +365,28 @@ if (role === "presenter") {
 
 
   stopBtn.disabled = true;
-  startBtn.disabled = false;
+  startBtn.disabled = true;
+  prepareBtn.disabled = currentQuestionIndex >= questions.length;
 
 
   if (currentSurveyId) {
     socket.emit("end_question", { surveyId: currentSurveyId });
   }
 
+  currentSurveyId = null;
+  currentQuestion = null;
+
   statusEl.textContent = "Question ended.";
 };
 
 
-  startBtn.onclick = async () => {
+  prepareBtn.onclick = async () => {
     if (!questions.length || currentQuestionIndex >= questions.length) {
       statusEl.textContent = "No more questions.";
       return;
     }
 
     const q = questions[currentQuestionIndex];
-    currentQuestionIndex += 1;
-    currentQuestion = q;
 
     const joinBase = sanitizeBase(joinBaseInput.value) || resolveJoinBaseUrl(widgetConfig);
     if (!joinBase) {
@@ -407,30 +409,39 @@ if (role === "presenter") {
     }
 
     currentSurveyId = created.survey_id;
-    const duration = parseInt(timerInput.value || q.duration || 10, 10);
-
-
-
-
-    const joinUrl = buildJoinUrl(
-    joinBase,
-    currentSurveyId,
-    q.question,
-    q.options,
-    duration,
-    q.correct
-  );
+    currentQuestion = q;
+    currentQuestionIndex += 1;
+    const joinUrl = buildJoinUrl(joinBase, currentSurveyId);
     studentUrlInput.value = joinUrl;  
     updateQr(joinUrl);
+
+    prepareBtn.disabled = true;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    statusEl.textContent = "QR ready. Students can scan and join.";
+  };
+
+  startBtn.onclick = async () => {
+    if (!currentSurveyId || !currentQuestion) {
+      statusEl.textContent = "Show Join QR first.";
+      return;
+    }
+
+    const q = currentQuestion;
+    const duration = parseInt(timerInput.value || q.duration || 10, 10);
+
+    socket.emit("start_question", {
+      surveyId: currentSurveyId,
+      question: q.question || "Question",
+      options: q.options || {},
+      duration: duration
+    });
 
     startBtn.disabled = true;
     stopBtn.disabled = false;
 
-
     const presenterTimerEl = document.getElementById("presenter-timer");
     startPresenterTimer(presenterTimerEl, duration);
-    
-    startCountdown(timerEl, duration);
     const counts = q.options ? Object.keys(q.options).reduce((acc, k) => {
       acc[k] = 0;
       return acc;
@@ -461,16 +472,9 @@ if (role === "presenter") {
 
 }
 
-const duration = parseInt(params.get("duration") || "10", 10);
 if (role === "student") {
-  const qText = params.get("q") || "Question";
-  const opts = parseOptions(params.get("opts")) || {};
   const joinBase = resolveJoinBaseUrl(widgetConfig);
   const surveyId = surveyIdFromUrl;
-
-  if (surveyId) {
-  socket.emit("join_survey", { survey_id: surveyId });
-}
 
 
   app.innerHTML = `
@@ -488,52 +492,68 @@ if (role === "student") {
   const answersEl = document.getElementById("answers");
   const statusEl = document.getElementById("status");
 
-  let studentTimerStarted = false;
+  let joined = false;
 
   if (!surveyId) {
     statusEl.textContent = "Missing survey id.";
+  } else {
+    statusEl.textContent = "Join first, then wait for instructor to start.";
   }
 
   joinBtn.onclick = () => {
-  questionEl.textContent = qText;
-  answersEl.innerHTML = "";
+    if (!surveyId) return;
+    socket.emit("join_survey", { survey_id: surveyId });
+    joined = true;
+    joinBtn.disabled = true;
+    nameInput.disabled = true;
+    statusEl.textContent = "Joined. Waiting for question to start...";
+  };
 
+  socket.on("start_question", data => {
+    if (!joined) return;
+    if (!data || data.surveyId !== surveyId) return;
 
-  Object.keys(opts).forEach(k => {
-    const v = opts[k];
-    const b = document.createElement("button");
-    b.textContent = `${k}. ${v}`;
-    b.className = "btn";
+    const qText = data.question || "Question";
+    const opts = data.options || {};
+    const duration = parseInt(data.duration || "10", 10);
 
-    b.onclick = async () => {
-      if (!surveyId) return;
-      try {
-        const payload = {
-          name: nameInput.value || "Student",
-          answer: k,
-          ts: Date.now()
-        };
-        const res = await fetch(`${joinBase}/api/survey/${surveyId}/respond`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ response: JSON.stringify(payload) })
-        });
-        if (!res.ok) throw new Error("Failed to submit answer.");
+    questionEl.textContent = qText;
+    answersEl.innerHTML = "";
+    studentQuestionActive = true;
 
-        statusEl.textContent = "Answer submitted.";
-        Array.from(answersEl.querySelectorAll("button")).forEach(btn => {
-          btn.disabled = true;
-          btn.style.opacity = "0.6";
-        });
-      } catch (err) {
-        statusEl.textContent = `Error: ${err.message}`;
-      }
-    };
+    Object.keys(opts).forEach(k => {
+      const v = opts[k];
+      const b = document.createElement("button");
+      b.textContent = `${k}. ${v}`;
+      b.className = "btn";
 
-    answersEl.appendChild(b);
-  });
-  if (!studentTimerStarted) {
-    studentTimerStarted = true;
+      b.onclick = async () => {
+        if (!surveyId || !studentQuestionActive) return;
+        try {
+          const payload = {
+            name: nameInput.value || "Student",
+            answer: k,
+            ts: Date.now()
+          };
+          const res = await fetch(`${joinBase}/api/survey/${surveyId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ response: JSON.stringify(payload) })
+          });
+          if (!res.ok) throw new Error("Failed to submit answer.");
+
+          statusEl.textContent = "Answer submitted.";
+          Array.from(answersEl.querySelectorAll("button")).forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = "0.6";
+          });
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+      };
+
+      answersEl.appendChild(b);
+    });
 
     const timerEl = document.getElementById("student-timer");
     startStudentTimer(timerEl, duration, () => {
@@ -542,12 +562,12 @@ if (role === "student") {
         btn.style.opacity = "0.6";
       });
     });
-  }
-};
+    statusEl.textContent = "Question started.";
+  });
 
 
 socket.on("end_question", data => {
-  if (!data || data.surveyId !== surveyIdFromUrl) return;
+  if (!data || data.surveyId !== surveyId) return;
 
 
   if (!studentQuestionActive) return;
