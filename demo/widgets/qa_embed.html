@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: transparent;
+    }
+    #host {
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <iframe id="host" title="Q&A Presenter" src="/static/widgets/qa.html?role=presenter"></iframe>
+
+  <script>
+  const frame = document.getElementById("host");
+  let pendingConfig = null;
+
+  const forwardMessage = (data) => {
+    if (!frame || !frame.contentWindow) return;
+    frame.contentWindow.postMessage(data, "*");
+  };
+
+  window.addEventListener("message", (e) => {
+    if (e.data?.type === "widget-config") {
+      pendingConfig = e.data;
+      forwardMessage(e.data);
+      return;
+    }
+    if (e.data?.type === "widget-cleanup") {
+      forwardMessage(e.data);
+    }
+  });
+
+  frame.addEventListener("load", () => {
+    if (pendingConfig) {
+      forwardMessage(pendingConfig);
+    }
+  });
+  </script>
+</body>
+</html>

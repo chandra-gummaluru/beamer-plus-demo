@@ -383,5 +383,55 @@ def handle_screen_frame(data):
     # Broadcast screen frame to all viewers
     emit("screen_frame", data, room='viewer')
 
+@socketio.on("end_question")
+def handle_end_question(data):
+    """
+    Presenter manually or automatically ends a question.
+    """
+    survey_id = data.get("surveyId") or data.get("survey_id")
+
+    print("end_question received:", survey_id)
+
+    if not survey_id or survey_id not in surveys:
+        return
+
+
+    surveys[survey_id]["active"] = False
+
+ 
+    socketio.emit(
+        "end_question",
+        {"surveyId": survey_id},
+        room=f"survey_{survey_id}"
+    )
+
+@socketio.on("start_question")
+def handle_start_question(data):
+    """
+    Presenter starts a prepared question for students already in the survey room.
+    """
+    survey_id = data.get("surveyId") or data.get("survey_id")
+    if not survey_id or survey_id not in surveys:
+        return
+
+    duration = data.get("duration", 10)
+    try:
+        duration = int(duration)
+    except (TypeError, ValueError):
+        duration = 10
+
+    socketio.emit(
+        "start_question",
+        {
+            "surveyId": survey_id,
+            "question": data.get("question", surveys[survey_id].get("question", "Question")),
+            "options": data.get("options", {}),
+            "duration": duration
+        },
+        room=f"survey_{survey_id}"
+    )
+
+
+
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5002, debug=True)

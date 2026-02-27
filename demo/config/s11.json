@@ -1,0 +1,26 @@
+{
+  "widgets": [
+    {
+      "id": "qa_widget",
+      "type": "qa",
+      "src": "widgets/qa_embed.html",
+      "x": 0.05,
+      "y": 0.1,
+      "width": 0.9,
+      "height": 0.8,
+      "zIndex": 10,
+      "interactive": true,
+      "questions": [
+        {
+          "question": "1+1=2?",
+          "options": {
+            "A": "y",
+            "B": "n"
+          },
+          "correct": "A",
+          "duration": 15
+        }
+      ]
+    }
+  ]
+}
