@@ -162,9 +162,12 @@ window.addEventListener("DOMContentLoaded", () => {
         } else {
             pdfContainer.classList.remove("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
-            // Clean up widgets in both slots when leaving split view
             cleanupWidgets(slotPdfContainer1);
             cleanupWidgets(slotPdfContainer2);
+            // Re-render the current slide back into the main canvas
+            if (zipFile) {
+                await renderSlide(currentSlide);
+            }
         }
     });
 
