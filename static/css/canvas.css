@@ -87,7 +87,7 @@ model-viewer {
 .slide-slot {
     position: relative;
     flex-shrink: 0;
-    height: 75%;
+    height: 66%;
     aspect-ratio: 4 / 3;
     display: none; /* hidden until split-view is active */
 }
