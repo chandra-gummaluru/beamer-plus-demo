@@ -829,6 +829,13 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    async function goToSlide2(slideIndex) {
+        if (slideIndex < 0 || slideIndex >= totalSlides) return;
+        currentSlide2 = slideIndex;
+        await renderSlot2(currentSlide2);
+        updateSlideNavigator2();
+    }
+
     async function renderSlideIntoSlots(slideIndex) {
         if (!zipFile) return;
 
