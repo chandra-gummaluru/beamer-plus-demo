@@ -156,15 +156,24 @@ window.addEventListener("DOMContentLoaded", () => {
         if (isSplitView) {
             pdfContainer.classList.add("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-expand"></i>';
+            // Show the right navigator
+            document.getElementById("slide-navigator-2").classList.add("visible");
+
             if (zipFile) {
-                await renderSlideIntoSlots(currentSlide);
+                // Sync View 2 to current slide on first entry
+                currentSlide2 = currentSlide;
+                updateSlideNavigator2();
+                await renderSlot1(currentSlide);
+                await renderSlot2(currentSlide2);
             }
         } else {
             pdfContainer.classList.remove("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
+            // Hide the right navigator
+            document.getElementById("slide-navigator-2").classList.remove("visible");
+
             cleanupWidgets(slotPdfContainer1);
             cleanupWidgets(slotPdfContainer2);
-            // Re-render the current slide back into the main canvas
             if (zipFile) {
                 await renderSlide(currentSlide);
             }
