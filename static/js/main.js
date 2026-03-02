@@ -673,6 +673,18 @@ window.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    function updateSlideNavigator2() {
+        const items = document.querySelectorAll("#slide-navigator-2 .slide-nav-item");
+        items.forEach((item, index) => {
+            if (index === currentSlide2) {
+                item.classList.add("active");
+                item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            } else {
+                item.classList.remove("active");
+            }
+        });
+    }
     // SLIDE NAVIGATOR ENDS ////////////////////////////////////////
 
 
