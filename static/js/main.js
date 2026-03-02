@@ -156,7 +156,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (isSplitView) {
             pdfContainer.classList.add("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-expand"></i>';
-            // Show the right navigator
+            // Show the right-side slide-navigator
             document.getElementById("slide-navigator-2").classList.add("visible");
 
             if (zipFile) {
@@ -169,7 +169,7 @@ window.addEventListener("DOMContentLoaded", () => {
         } else {
             pdfContainer.classList.remove("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
-            // Hide the right navigator
+            // Hide the right-side slide-navigator
             document.getElementById("slide-navigator-2").classList.remove("visible");
 
             cleanupWidgets(slotPdfContainer1);
