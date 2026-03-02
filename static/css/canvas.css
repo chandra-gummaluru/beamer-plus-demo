@@ -75,3 +75,80 @@ model-viewer {
     border: none;
     background: transparent;
 }
+
+/* ===== SPLIT VIEW ===== */
+
+/*
+  Each "slot" is a relative-positioned wrapper that holds a
+  pdf-canvas and ann-canvas stacked on top of each other.
+  Slots are hidden by default and only shown in split-view mode.
+*/
+
+.slide-slot {
+    position: relative;
+    flex-shrink: 0;
+    height: 88%;
+    aspect-ratio: 4 / 3;
+    display: none; /* hidden until split-view is active */
+}
+
+.slide-slot .slot-pdf-canvas,
+.slide-slot .slot-ann-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.slide-slot .slot-pdf-canvas {
+    z-index: 1;
+    background-color: #ffffff;
+    border-radius: 4px;
+}
+
+.slide-slot .slot-ann-canvas {
+    z-index: 2;
+    pointer-events: none;
+}
+
+.slide-slot .slot-pdf-canvas canvas,
+.slide-slot .slot-ann-canvas canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+/* When split-view is active on #pdf-container */
+#pdf-container.split-view {
+    flex-direction: row;
+    gap: 1.5%;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Hide the original canvases in split-view mode */
+#pdf-container.split-view > #pdf-canvas,
+#pdf-container.split-view > #ann-canvas {
+    display: none;
+}
+
+/* Show both slots in split-view mode */
+#pdf-container.split-view .slide-slot {
+    display: block;
+}
+
+/* Slot labels */
+.slide-slot-label {
+    position: absolute;
+    bottom: -1.4rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    color: #999;
+    font-family: 'Computer Modern Sans', sans-serif;
+    pointer-events: none;
+    user-select: none;
+    white-space: nowrap;
+}
