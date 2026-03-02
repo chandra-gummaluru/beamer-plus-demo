@@ -636,21 +636,29 @@ window.addEventListener("DOMContentLoaded", () => {
 
     function populateSlideNavigator() {
         slideNavigator.innerHTML = "";
+        const slideNavigator2 = document.getElementById("slide-navigator-2");
+        slideNavigator2.innerHTML = "";
 
         for (let i = 0; i < totalSlides; i++) {
+            // Left navigator item (controls View 1 / main view)
             const item = document.createElement("div");
             item.className = "slide-nav-item";
             item.textContent = i + 1;
             item.dataset.slideIndex = i;
-
-            item.onclick = () => {
-                goToSlide(i);
-            };
-
+            item.onclick = () => goToSlide(i);
             slideNavigator.appendChild(item);
+
+            // Right navigator item (controls View 2 only)
+            const item2 = document.createElement("div");
+            item2.className = "slide-nav-item";
+            item2.textContent = i + 1;
+            item2.dataset.slideIndex = i;
+            item2.onclick = () => goToSlide2(i);
+            slideNavigator2.appendChild(item2);
         }
 
         updateSlideNavigator();
+        updateSlideNavigator2();
     }
 
     function updateSlideNavigator() {
@@ -674,6 +682,7 @@ window.addEventListener("DOMContentLoaded", () => {
     let annotations = {};
     let currentSlide = 0;
     let totalSlides = 0;
+    let currentSlide2 = 0;
 
     async function loadSlideConfig(slideIndex) {
         if (slideConfigs[slideIndex]) {
