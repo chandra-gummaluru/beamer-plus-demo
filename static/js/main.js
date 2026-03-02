@@ -725,6 +725,14 @@ window.addEventListener("DOMContentLoaded", () => {
                 annotations: annData,
                 slideIndex: currentSlide,
             });
+            if (isSplitView) {
+            slotAnnCvs1.clear();
+            slotAnnCvs2.clear();
+            if (annotations[currentSlide]) {
+                slotAnnCvs1.loadAnnotations(annotations[currentSlide]);
+                slotAnnCvs2.loadAnnotations(annotations[currentSlide]);
+            }
+            }
         }, 100);
     }
 
@@ -790,8 +798,35 @@ window.addEventListener("DOMContentLoaded", () => {
             slideIndex: currentSlide,
             annotations: annData,
         });
+
+        if (isSplitView) {
+        await renderSlideIntoSlots(currentSlide);
+        }
     }
 
+    async function renderSlideIntoSlots(slideIndex) {
+    if (!zipFile) return;
+
+    const pdfFile = zipFile.file("slides.pdf");
+    if (!pdfFile) return;
+
+    const pdfData = await pdfFile.async("arraybuffer");
+    const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    const page = await pdfDoc.getPage(slideIndex + 1);
+
+    // Render the same page into both slot pdf canvases
+    await slotPdfCvs1.renderPDFPage(page);
+    await slotPdfCvs2.renderPDFPage(page);
+
+    // Mirror current annotations into slot ann canvases
+    slotAnnCvs1.clear();
+    slotAnnCvs2.clear();
+
+    if (annotations[slideIndex]) {
+        await slotAnnCvs1.loadAnnotations(annotations[slideIndex]);
+        await slotAnnCvs2.loadAnnotations(annotations[slideIndex]);
+    }
+}
     async function renderSlide(slideIndex) {
         console.log("renderSlide called:", slideIndex);
 
@@ -1755,6 +1790,13 @@ window.addEventListener("DOMContentLoaded", () => {
             annCvs.resize();
         }
 
+        if (isSplitView) {
+            slotAnnCvs1.resize();
+            slotAnnCvs2.resize();
+            // Re-render PDF into slots after resize so they scale correctly
+            if (zipFile) renderSlideIntoSlots(currentSlide);
+        }
+
         // Update positions of all media elements (videos, models, widgets)
         if (zipFile && slideConfigs[currentSlide]) {
             updateMediaPositions();
@@ -1774,6 +1816,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
             if (annCvs) {
                 annCvs.resize();
+            }
+
+            if (isSplitView) {
+                slotAnnCvs1.resize();
+                slotAnnCvs2.resize();
+                if (zipFile) renderSlideIntoSlots(currentSlide);
             }
 
             if (zipFile && slideConfigs[currentSlide]) {
