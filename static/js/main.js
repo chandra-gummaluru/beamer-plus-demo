@@ -836,146 +836,136 @@ window.addEventListener("DOMContentLoaded", () => {
         updateSlideNavigator2();
     }
 
-    async function renderSlideIntoSlots(slideIndex) {
+    // Helper: render a PDF page + media into one slot container
+    async function renderIntoSlot(slideIndex, slotPdfCvs, slotAnnCvs, container) {
         if (!zipFile) return;
 
         const pdfFile = zipFile.file("slides.pdf");
         if (!pdfFile) return;
 
         const pdfData = await pdfFile.async("arraybuffer");
+        const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        const page = await pdfDoc.getPage(slideIndex + 1);
 
-        // Two independent PDF document instances to avoid the
-        // "Cannot use the same canvas during multiple render() operations" error.
-        const [pdfDoc1, pdfDoc2] = await Promise.all([
-            pdfjsLib.getDocument({ data: pdfData.slice(0) }).promise,
-            pdfjsLib.getDocument({ data: pdfData.slice(0) }).promise,
-        ]);
-
-        const [page1, page2] = await Promise.all([
-            pdfDoc1.getPage(slideIndex + 1),
-            pdfDoc2.getPage(slideIndex + 1),
-        ]);
-
-        await slotPdfCvs1.renderPDFPage(page1);
-        await slotPdfCvs2.renderPDFPage(page2);
+        await slotPdfCvs.renderPDFPage(page);
 
         // Mirror annotations
-        slotAnnCvs1.clear();
-        slotAnnCvs2.clear();
+        slotAnnCvs.clear();
         if (annotations[slideIndex]) {
-            await slotAnnCvs1.loadAnnotations(annotations[slideIndex]);
-            await slotAnnCvs2.loadAnnotations(annotations[slideIndex]);
+            await slotAnnCvs.loadAnnotations(annotations[slideIndex]);
         }
 
-        // FIX 2: Always clean up old media and widgets from both slots first,
-        // regardless of whether the incoming slide has any of these.
-        const existingMedia1 = slotPdfContainer1.querySelectorAll("video, audio, model-viewer");
-        existingMedia1.forEach((el) => el.remove());
-        const existingMedia2 = slotPdfContainer2.querySelectorAll("video, audio, model-viewer");
-        existingMedia2.forEach((el) => el.remove());
-        cleanupWidgets(slotPdfContainer1);
-        cleanupWidgets(slotPdfContainer2);
+        // Always clear old media + widgets before rendering new ones
+        const existingMedia = container.querySelectorAll("video, audio, model-viewer");
+        existingMedia.forEach((el) => el.remove());
+        cleanupWidgets(container);
 
         const slideConfig = await loadSlideConfig(slideIndex);
         if (!slideConfig) return;
 
-        // FIX 3: Render videos, models, and audio into each slot container,
-        // using that slot's own bounding rect for correct pixel positioning.
-        const containers = [slotPdfContainer1, slotPdfContainer2];
+        const containerRect = container.getBoundingClientRect();
 
-        for (const container of containers) {
-            const containerRect = container.getBoundingClientRect();
+        if (slideConfig.videos) {
+            for (const v of slideConfig.videos) {
+                const videoURL = await loadMediaFromPath(v.path);
+                if (!videoURL) continue;
 
-            if (slideConfig.videos) {
-                for (const v of slideConfig.videos) {
-                    const videoURL = await loadMediaFromPath(v.path);
-                    if (!videoURL) continue;
+                const video = document.createElement("video");
+                video.src = videoURL;
+                video.volume = v.volume || 1.0;
+                video.dataset.videoId = v.id;
+                video.dataset.videoX = v.x;
+                video.dataset.videoY = v.y;
+                video.dataset.videoWidth = v.width;
+                video.dataset.videoHeight = v.height;
 
-                    const video = document.createElement("video");
-                    video.src = videoURL;
-                    video.volume = v.volume || 1.0;
-                    video.dataset.videoId = v.id;
-                    video.dataset.videoX = v.x;
-                    video.dataset.videoY = v.y;
-                    video.dataset.videoWidth = v.width;
-                    video.dataset.videoHeight = v.height;
+                video.style.position = "absolute";
+                video.style.left = `${v.x * containerRect.width}px`;
+                video.style.top = `${v.y * containerRect.height}px`;
+                video.style.width = `${v.width * containerRect.width}px`;
+                video.style.height = `${v.height * containerRect.height}px`;
+                video.style.objectFit = "contain";
+                video.style.zIndex = v.zIndex || 5;
 
-                    video.style.position = "absolute";
-                    video.style.left = `${v.x * containerRect.width}px`;
-                    video.style.top = `${v.y * containerRect.height}px`;
-                    video.style.width = `${v.width * containerRect.width}px`;
-                    video.style.height = `${v.height * containerRect.height}px`;
-                    video.style.objectFit = "contain";
-                    video.style.zIndex = v.zIndex || 5;
+                if (v.playMode === "once") { video.autoplay = true; video.loop = false; }
+                if (v.playMode === "loop") { video.autoplay = true; video.loop = true; }
+                if (v.playMode === "manual") { video.controls = true; }
 
-                    if (v.playMode === "once") { video.autoplay = true; video.loop = false; }
-                    if (v.playMode === "loop") { video.autoplay = true; video.loop = true; }
-                    if (v.playMode === "manual") { video.controls = true; }
+                video.addEventListener("click", (ev) => {
+                    try {
+                        if (video.paused) video.play();
+                        else video.pause();
+                    } catch (e) {
+                        console.error("Error toggling slot video:", e);
+                    }
+                    ev.stopPropagation();
+                });
 
-                    // No socket events for slot videos — they're mirror views only.
-                    video.addEventListener("click", (ev) => {
-                        try {
-                            if (video.paused) video.play();
-                            else video.pause();
-                        } catch (e) {
-                            console.error("Error toggling slot video:", e);
-                        }
-                        ev.stopPropagation();
-                    });
-
-                    container.appendChild(video);
-                }
-            }
-
-            if (slideConfig.models) {
-                for (const m of slideConfig.models) {
-                    const modelURL = await loadMediaFromPath(m.path);
-                    if (!modelURL) continue;
-
-                    const mv = document.createElement("model-viewer");
-                    mv.src = modelURL;
-                    mv.alt = m.alt || "3D model";
-                    mv.dataset.modelId = m.id;
-                    mv.dataset.modelX = m.x;
-                    mv.dataset.modelY = m.y;
-                    mv.dataset.modelWidth = m.width;
-                    mv.dataset.modelHeight = m.height;
-
-                    mv.setAttribute("camera-controls", "");
-                    mv.setAttribute("shadow-intensity", "1");
-                    mv.setAttribute("auto-rotate", m.autoRotate ? "true" : "false");
-
-                    mv.style.position = "absolute";
-                    mv.style.left = `${m.x * containerRect.width}px`;
-                    mv.style.top = `${m.y * containerRect.height}px`;
-                    mv.style.width = `${m.width * containerRect.width}px`;
-                    mv.style.height = `${m.height * containerRect.height}px`;
-                    mv.style.zIndex = m.zIndex || 5;
-
-                    // No socket sync for slot models — mirror views only.
-                    container.appendChild(mv);
-                }
-            }
-
-            if (slideConfig.audio) {
-                for (const a of slideConfig.audio) {
-                    const audioURL = await loadMediaFromPath(a.path);
-                    if (!audioURL) continue;
-
-                    const audio = document.createElement("audio");
-                    audio.src = audioURL;
-                    audio.volume = a.volume || 1.0;
-                    if (a.playMode === "auto") audio.play();
-                    if (a.playMode === "manual") audio.controls = true;
-
-                    container.appendChild(audio);
-                }
-            }
-
-            if (slideConfig.widgets) {
-                renderWidgets(slideConfig, container, zipFile);
+                container.appendChild(video);
             }
         }
+
+        if (slideConfig.models) {
+            for (const m of slideConfig.models) {
+                const modelURL = await loadMediaFromPath(m.path);
+                if (!modelURL) continue;
+
+                const mv = document.createElement("model-viewer");
+                mv.src = modelURL;
+                mv.alt = m.alt || "3D model";
+                mv.dataset.modelId = m.id;
+                mv.dataset.modelX = m.x;
+                mv.dataset.modelY = m.y;
+                mv.dataset.modelWidth = m.width;
+                mv.dataset.modelHeight = m.height;
+
+                mv.setAttribute("camera-controls", "");
+                mv.setAttribute("shadow-intensity", "1");
+                mv.setAttribute("auto-rotate", m.autoRotate ? "true" : "false");
+
+                mv.style.position = "absolute";
+                mv.style.left = `${m.x * containerRect.width}px`;
+                mv.style.top = `${m.y * containerRect.height}px`;
+                mv.style.width = `${m.width * containerRect.width}px`;
+                mv.style.height = `${m.height * containerRect.height}px`;
+                mv.style.zIndex = m.zIndex || 5;
+
+                container.appendChild(mv);
+            }
+        }
+
+        if (slideConfig.audio) {
+            for (const a of slideConfig.audio) {
+                const audioURL = await loadMediaFromPath(a.path);
+                if (!audioURL) continue;
+
+                const audio = document.createElement("audio");
+                audio.src = audioURL;
+                audio.volume = a.volume || 1.0;
+                if (a.playMode === "auto") audio.play();
+                if (a.playMode === "manual") audio.controls = true;
+
+                container.appendChild(audio);
+            }
+        }
+
+        if (slideConfig.widgets) {
+            renderWidgets(slideConfig, container, zipFile);
+        }
+    }
+
+    async function renderSlot1(slideIndex) {
+        await renderIntoSlot(slideIndex, slotPdfCvs1, slotAnnCvs1, slotPdfContainer1);
+    }
+
+    async function renderSlot2(slideIndex) {
+        await renderIntoSlot(slideIndex, slotPdfCvs2, slotAnnCvs2, slotPdfContainer2);
+    }
+
+    // Kept for backward-compat with resize/fullscreen handlers
+    async function renderSlideIntoSlots(slideIndex) {
+        await renderSlot1(slideIndex);
+        await renderSlot2(currentSlide2);
     }
 
     async function renderSlide(slideIndex) {
