@@ -761,10 +761,15 @@ window.addEventListener("DOMContentLoaded", () => {
             });
             if (isSplitView) {
                 slotAnnCvs1.clear();
-                slotAnnCvs2.clear();
                 if (annotations[currentSlide]) {
                     slotAnnCvs1.loadAnnotations(annotations[currentSlide]);
-                    slotAnnCvs2.loadAnnotations(annotations[currentSlide]);
+                }
+                // Sync slot 2 annotations only if View 2 happens to be on the same slide
+                if (currentSlide2 === currentSlide) {
+                    slotAnnCvs2.clear();
+                    if (annotations[currentSlide]) {
+                        slotAnnCvs2.loadAnnotations(annotations[currentSlide]);
+                    }
                 }
             }
         }, 100);
@@ -834,7 +839,7 @@ window.addEventListener("DOMContentLoaded", () => {
         });
 
         if (isSplitView) {
-            await renderSlideIntoSlots(currentSlide);
+            await renderSlot1(currentSlide); // View 2 is independent, so it is NOT updated here!
         }
     }
 
