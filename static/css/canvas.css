@@ -152,3 +152,41 @@ model-viewer {
     user-select: none;
     white-space: nowrap;
 }
+
+/* ===== SPLIT VIEW SLIDE NAVIGATOR ===== */
+
+.slide-navigator-right {
+    position: fixed;
+    right: 0;
+    top: 60px;                          /* below the top toolbar               */
+    width: 60px;
+    height: calc(100vh - 60px);
+    background: #e8e8e8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 0;
+    gap: 4px;
+    z-index: 100;
+
+    /* Hidden by default — revealed when split view is active */
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+}
+
+.slide-navigator-right.visible {
+    transform: translateX(0);
+}
+
+/* In split view, shrink the pdf-container's right edge to make room */
+#pdf-container.split-view {
+    width: calc(100% - 75px - 60px);   /* subtract left nav + right nav */
+}
+
+/* Match existing slide-nav-item styles (copy from your existing CSS) */
+.slide-navigator-right .slide-nav-item {
+    /* These should already be defined globally for .slide-nav-item.
+       If not, copy whatever styles your left navigator uses here. */
+}
