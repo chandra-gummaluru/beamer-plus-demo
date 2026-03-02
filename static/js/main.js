@@ -150,21 +150,22 @@ window.addEventListener("DOMContentLoaded", () => {
     })
 
     splitViewBtn.onClick(async () => {
-    isSplitView = !isSplitView;
-    const pdfContainer = document.getElementById("pdf-container");
+        isSplitView = !isSplitView;
+        const pdfContainer = document.getElementById("pdf-container");
 
-    if (isSplitView) {
-        pdfContainer.classList.add("split-view");
-        splitViewBtn.el.innerHTML = '<i class="fa-solid fa-expand"></i>';
-
-        // Re-render current slide into both slots if a presentation is loaded
-        if (zipFile) {
-            await renderSlideIntoSlots(currentSlide);
+        if (isSplitView) {
+            pdfContainer.classList.add("split-view");
+            splitViewBtn.el.innerHTML = '<i class="fa-solid fa-expand"></i>';
+            if (zipFile) {
+                await renderSlideIntoSlots(currentSlide);
+            }
+        } else {
+            pdfContainer.classList.remove("split-view");
+            splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
+            // Clean up widgets in both slots when leaving split view
+            cleanupWidgets(slotPdfContainer1);
+            cleanupWidgets(slotPdfContainer2);
         }
-    } else {
-        pdfContainer.classList.remove("split-view");
-        splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
-    }
     });
 
     // Initially disable results button
@@ -726,12 +727,12 @@ window.addEventListener("DOMContentLoaded", () => {
                 slideIndex: currentSlide,
             });
             if (isSplitView) {
-            slotAnnCvs1.clear();
-            slotAnnCvs2.clear();
-            if (annotations[currentSlide]) {
-                slotAnnCvs1.loadAnnotations(annotations[currentSlide]);
-                slotAnnCvs2.loadAnnotations(annotations[currentSlide]);
-            }
+                slotAnnCvs1.clear();
+                slotAnnCvs2.clear();
+                if (annotations[currentSlide]) {
+                    slotAnnCvs1.loadAnnotations(annotations[currentSlide]);
+                    slotAnnCvs2.loadAnnotations(annotations[currentSlide]);
+                }
             }
         }, 100);
     }
@@ -800,33 +801,54 @@ window.addEventListener("DOMContentLoaded", () => {
         });
 
         if (isSplitView) {
-        await renderSlideIntoSlots(currentSlide);
+            await renderSlideIntoSlots(currentSlide);
         }
     }
 
     async function renderSlideIntoSlots(slideIndex) {
-    if (!zipFile) return;
+        if (!zipFile) return;
 
-    const pdfFile = zipFile.file("slides.pdf");
-    if (!pdfFile) return;
+        const pdfFile = zipFile.file("slides.pdf");
+        if (!pdfFile) return;
 
-    const pdfData = await pdfFile.async("arraybuffer");
-    const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
-    const page = await pdfDoc.getPage(slideIndex + 1);
+        const pdfData = await pdfFile.async("arraybuffer");
 
-    // Render the same page into both slot pdf canvases
-    await slotPdfCvs1.renderPDFPage(page);
-    await slotPdfCvs2.renderPDFPage(page);
+        // FIX: Load the PDF document TWICE so we get two independent page objects.
+        // PDF.js does not allow concurrent render() calls on the same page object,
+        // so fetching the page separately for each slot prevents the
+        // "Cannot use the same canvas during multiple render() operations" error.
+        const [pdfDoc1, pdfDoc2] = await Promise.all([
+            pdfjsLib.getDocument({ data: pdfData.slice(0) }).promise,
+            pdfjsLib.getDocument({ data: pdfData.slice(0) }).promise,
+        ]);
 
-    // Mirror current annotations into slot ann canvases
-    slotAnnCvs1.clear();
-    slotAnnCvs2.clear();
+        const [page1, page2] = await Promise.all([
+            pdfDoc1.getPage(slideIndex + 1),
+            pdfDoc2.getPage(slideIndex + 1),
+        ]);
 
-    if (annotations[slideIndex]) {
-        await slotAnnCvs1.loadAnnotations(annotations[slideIndex]);
-        await slotAnnCvs2.loadAnnotations(annotations[slideIndex]);
+        // Render sequentially to avoid any shared-state issues inside PDF.js
+        await slotPdfCvs1.renderPDFPage(page1);
+        await slotPdfCvs2.renderPDFPage(page2);
+
+        // Mirror annotations
+        slotAnnCvs1.clear();
+        slotAnnCvs2.clear();
+        if (annotations[slideIndex]) {
+            await slotAnnCvs1.loadAnnotations(annotations[slideIndex]);
+            await slotAnnCvs2.loadAnnotations(annotations[slideIndex]);
+        }
+
+        // Render widgets into each slot
+        const slideConfig = await loadSlideConfig(slideIndex);
+        if (slideConfig && slideConfig.widgets) {
+            cleanupWidgets(slotPdfContainer1);
+            cleanupWidgets(slotPdfContainer2);
+            renderWidgets(slideConfig, slotPdfContainer1, zipFile);
+            renderWidgets(slideConfig, slotPdfContainer2, zipFile);
+        }
     }
-}
+
     async function renderSlide(slideIndex) {
         console.log("renderSlide called:", slideIndex);
 
@@ -1793,7 +1815,6 @@ window.addEventListener("DOMContentLoaded", () => {
         if (isSplitView) {
             slotAnnCvs1.resize();
             slotAnnCvs2.resize();
-            // Re-render PDF into slots after resize so they scale correctly
             if (zipFile) renderSlideIntoSlots(currentSlide);
         }
 
