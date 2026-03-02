@@ -139,7 +139,7 @@ model-viewer {
     position: fixed;
     z-index: 200;
     background: transparent;
-    pointer-events: auto;
+    pointer-events: none;
     height: auto;
     aspect-ratio: unset;
 }
