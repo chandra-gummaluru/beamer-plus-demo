@@ -156,27 +156,40 @@ window.addEventListener("DOMContentLoaded", () => {
         if (isSplitView) {
             pdfContainer.classList.add("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-expand"></i>';
-            // Show the right-side slide-navigator
             document.getElementById("slide-navigator-2").classList.add("visible");
 
             if (zipFile) {
-                // Sync View 2 to current slide on first entry
+                // Flush current annCvs content into the store BEFORE rendering
+                // slots, so View 1 picks up whatever was drawn in singular view.
+                annotations[currentSlide] = annCvs.canvas.toDataURL("image/png");
+
                 currentSlide2 = currentSlide;
                 updateSlideNavigator2();
                 await renderSlot1(currentSlide);
                 await renderSlot2(currentSlide2);
             }
+
+            // Position the live ann-canvas over slot 1 and resize it to match.
+            // This must happen AFTER renderSlot1 so the slot has its final size.
+            positionAnnCanvasOverSlot1();
+            annCvs.resize();
+
         } else {
             pdfContainer.classList.remove("split-view");
             splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
-            // Hide the right-side slide-navigator
             document.getElementById("slide-navigator-2").classList.remove("visible");
+
+            // Restore ann-canvas to its normal CSS-driven position
+            resetAnnCanvasPosition();
 
             cleanupWidgets(slotPdfContainer1);
             cleanupWidgets(slotPdfContainer2);
+
             if (zipFile) {
                 await renderSlide(currentSlide);
             }
+
+            annCvs.resize();
         }
     });
 
@@ -974,6 +987,23 @@ window.addEventListener("DOMContentLoaded", () => {
 
     async function renderSlot2(slideIndex) {
         await renderIntoSlot(slideIndex, slotPdfCvs2, slotAnnCvs2, slotPdfContainer2);
+    }
+
+    function positionAnnCanvasOverSlot1() {
+        const rect = slotPdfContainer1.getBoundingClientRect();
+        const annEl = ann_canvas_container;
+        annEl.style.left   = `${rect.left}px`;
+        annEl.style.top    = `${rect.top}px`;
+        annEl.style.width  = `${rect.width}px`;
+        annEl.style.height = `${rect.height}px`;
+    }
+
+    function resetAnnCanvasPosition() {
+        const annEl = ann_canvas_container;
+        annEl.style.left   = "";
+        annEl.style.top    = "";
+        annEl.style.width  = "";
+        annEl.style.height = "";
     }
 
     // Kept for backward-compat with resize/fullscreen handlers
@@ -1932,7 +1962,7 @@ window.addEventListener("DOMContentLoaded", () => {
     });
 
     // Add resize listener to update overlay positions
-    window.addEventListener("resize", () => {
+    window.addEventListener("resize", async () => {
         if (surveyOverlayVisible) {
             updateSurveyOverlayPosition();
         }
@@ -1948,7 +1978,13 @@ window.addEventListener("DOMContentLoaded", () => {
         if (isSplitView) {
             slotAnnCvs1.resize();
             slotAnnCvs2.resize();
-            if (zipFile) renderSlideIntoSlots(currentSlide);
+            if (zipFile) {
+                await renderSlot1(currentSlide);
+                await renderSlot2(currentSlide2);
+            }
+            // Re-position the live ann-canvas since the slot may have moved
+            positionAnnCanvasOverSlot1();
+            annCvs.resize();
         }
 
         // Update positions of all media elements (videos, models, widgets)
@@ -1958,9 +1994,9 @@ window.addEventListener("DOMContentLoaded", () => {
     });
 
     // Add fullscreen change listener to handle fullscreen transitions
-    document.addEventListener("fullscreenchange", () => {
+    document.addEventListener("fullscreenchange",() => {
         // Need a small delay for the browser to finish the fullscreen transition
-        setTimeout(() => {
+        setTimeout(async () => {
             if (surveyOverlayVisible) {
                 updateSurveyOverlayPosition();
             }
@@ -1975,7 +2011,12 @@ window.addEventListener("DOMContentLoaded", () => {
             if (isSplitView) {
                 slotAnnCvs1.resize();
                 slotAnnCvs2.resize();
-                if (zipFile) renderSlideIntoSlots(currentSlide);
+                if (zipFile) {
+                    await renderSlot1(currentSlide);
+                    await renderSlot2(currentSlide2);
+                }
+                positionAnnCanvasOverSlot1();
+                annCvs.resize();
             }
 
             if (zipFile && slideConfigs[currentSlide]) {

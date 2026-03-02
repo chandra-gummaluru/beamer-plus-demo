@@ -76,12 +76,14 @@ model-viewer {
     background: transparent;
 }
 
-/* ===== SPLIT VIEW ===== */
+/* 
+    SPLIT VIEW 
 
-/*
-  Each "slot" is a relative-positioned wrapper that holds a
-  pdf-canvas and ann-canvas stacked on top of each other.
-  Slots are hidden by default and only shown in split-view mode.
+    Note: each "slot" is a relative-positioned wrapper which holds a
+    pdf-canvas and ann-canvas stacked on top of each other.
+
+    Slots are hidden by default.
+    They are only shown when split-view is active.
 */
 
 .slide-slot {
@@ -128,10 +130,18 @@ model-viewer {
     align-items: center;
 }
 
-/* Hide the original canvases in split-view mode */
-#pdf-container.split-view > #pdf-canvas,
-#pdf-container.split-view > #ann-canvas {
+#pdf-container.split-view > #pdf-canvas {
     display: none;
+}
+
+#pdf-container.split-view > #ann-canvas {
+    display: block;
+    position: fixed;
+    z-index: 200;
+    background: transparent;
+    pointer-events: auto;
+    height: auto;
+    aspect-ratio: unset;
 }
 
 /* Show both slots in split-view mode */
