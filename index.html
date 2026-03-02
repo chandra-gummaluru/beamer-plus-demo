@@ -58,10 +58,25 @@
   </div>
 </div>
 
-  <div id="pdf-container">
-      <div id="ann-canvas"></div>
-      <div id="pdf-canvas"></div>
-  </div>
+   <div id="pdf-container">
+     <!-- existing canvases (used in normal mode) -->
+     <div id="pdf-canvas"></div>
+     <div id="ann-canvas"></div>
+
+     <!-- split view slot 1 (left) -->
+     <div class="slide-slot" id="slide-slot-1">
+       <div class="slot-pdf-canvas" id="slot-pdf-canvas-1"></div>
+       <div class="slot-ann-canvas" id="slot-ann-canvas-1"></div>
+       <span class="slide-slot-label">View 1</span>
+     </div>
+
+     <!-- split view slot 2 (right) -->
+     <div class="slide-slot" id="slide-slot-2">
+       <div class="slot-pdf-canvas" id="slot-pdf-canvas-2"></div>
+       <div class="slot-ann-canvas" id="slot-ann-canvas-2"></div>
+       <span class="slide-slot-label">View 2</span>
+     </div>
+   </div>
 
   <script>
     // Hide splash screen after 2 seconds

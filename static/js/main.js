@@ -149,8 +149,22 @@ window.addEventListener("DOMContentLoaded", () => {
         label: '<i class="fa-solid fa-compress"></i>'
     })
 
-    splitViewBtn.onClick(() => {
-        // WRITE
+    splitViewBtn.onClick(async () => {
+    isSplitView = !isSplitView;
+    const pdfContainer = document.getElementById("pdf-container");
+
+    if (isSplitView) {
+        pdfContainer.classList.add("split-view");
+        splitViewBtn.el.innerHTML = '<i class="fa-solid fa-expand"></i>';
+
+        // Re-render current slide into both slots if a presentation is loaded
+        if (zipFile) {
+            await renderSlideIntoSlots(currentSlide);
+        }
+    } else {
+        pdfContainer.classList.remove("split-view");
+        splitViewBtn.el.innerHTML = '<i class="fa-solid fa-compress"></i>';
+    }
     });
 
     // Initially disable results button
@@ -453,6 +467,18 @@ window.addEventListener("DOMContentLoaded", () => {
     const annCvs = new Canvas(ann_canvas_container);
     const slide_canvas_container = document.getElementById("pdf-canvas");
     const pdfCvs = new Canvas(slide_canvas_container, false);
+
+    const slotPdfContainer1 = document.getElementById("slot-pdf-canvas-1");
+    const slotAnnContainer1 = document.getElementById("slot-ann-canvas-1");
+    const slotPdfContainer2 = document.getElementById("slot-pdf-canvas-2");
+    const slotAnnContainer2 = document.getElementById("slot-ann-canvas-2");
+
+    const slotPdfCvs1 = new Canvas(slotPdfContainer1, false);
+    const slotAnnCvs1 = new Canvas(slotAnnContainer1, false);
+    const slotPdfCvs2 = new Canvas(slotPdfContainer2, false);
+    const slotAnnCvs2 = new Canvas(slotAnnContainer2, false);
+
+    let isSplitView = false;
 
     const updateHistoryButtons = () => {
         undoBtn.el.disabled = !annCvs.canUndo();
