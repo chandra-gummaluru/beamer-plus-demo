@@ -421,6 +421,7 @@ const __beamer_controls = [
     undoBtn, redoBtn,
     clearBtn, surveyBtn
 ];
+// QUESTION: Why aren't screenShareBtn and recordBtn in this array?^
 
 // Disable at startup
 setControlsEnabledAfterUpload(false, __beamer_controls);
@@ -2017,8 +2018,9 @@ async function startScreenShare() {
         // Request screen capture - restrict to current tab only
         const stream = await navigator.mediaDevices.getDisplayMedia({
             video: {
-                cursor: 'always',
-                displaySurface: 'browser'
+                cursor: 'always', // always show cursor (other options: 'moving', 'never')
+                displaySurface: 'browser' // this determines which displaySurface
+                //  (tab/window/monitor) the picker defaults to. 'browser' means 'tab'.
             },
             audio: false,
             selfBrowserSurface: 'include',
@@ -2030,19 +2032,27 @@ async function startScreenShare() {
         const videoTrack = stream.getVideoTracks()[0];
         const settings = videoTrack.getSettings();
         
-        // Verify that a browser tab was selected (not window or monitor)
-        if (settings.displaySurface && settings.displaySurface !== 'browser') {
-            // Stop the stream immediately
-            stream.getTracks().forEach(track => track.stop());
-            
-            Modal.error(
-                'Wrong Source Selected', 
-                'Please select the Beamer+ browser tab (not a window or entire screen). Click the screen share button again and choose "This Tab" or the Beamer+ tab from the list.'
-            );
-            isScreenSharing = false;
-            return;
+        // check by regex if the user is on Safari:
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent); 
+        console.log(`isSafari: ${isSafari}`);
+
+        if (!isSafari) {
+            // Verify that a browser tab was selected (not window or monitor)
+            if (settings.displaySurface && settings.displaySurface !== 'browser') {
+                // Stop the stream immediately
+                stream.getTracks().forEach(track => track.stop());
+                
+                Modal.error(
+                    'Wrong Source Selected', 
+                    'Please select the Beamer+ browser tab (not a window or entire screen). Click the screen share button again and choose "This Tab" or the Beamer+ tab from the list.'
+                );
+                isScreenSharing = false;
+                return;
+            }
         }
-        
+        // We don't do the above check for Safari, because 'browser' screensharing
+        // (i.e. tab screensharing) is not possible on Safari.
+
         screenStream = stream;
         isScreenSharing = true;
         
