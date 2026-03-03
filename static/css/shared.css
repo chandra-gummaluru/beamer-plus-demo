@@ -75,6 +75,59 @@ input[type=file] {
     font-weight: 700;
 }
 
+/* Right slide navigator for split view */
+#slide-navigator-right {
+    position: fixed;
+    right: 0;
+    top: 60px;
+    bottom: 0;
+    width: 75px;
+    background: #ddd;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 100;
+    padding: 10px 0;
+    border-left: 2px solid #666;
+    display: none;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+#slide-navigator-right::-webkit-scrollbar {
+    display: none;
+}
+
+#slide-navigator-right .slide-nav-item {
+    width: 55px;
+    height: 50px;
+    margin: 8px auto;
+    background: #eee;
+    border: 2px solid #666;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-weight: 600;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    user-select: none;
+    font-family: "Computer Modern Sans", sans-serif;
+}
+
+#slide-navigator-right .slide-nav-item:hover {
+    background: #ccc;
+    border-color: #444;
+}
+
+#slide-navigator-right .slide-nav-item.active {
+    background: #bbb;
+    border-color: #333;
+    color: #000;
+    font-weight: 700;
+}
+
 /* Accessibility */
 *:focus-visible {
     outline: 2px solid #3498db;

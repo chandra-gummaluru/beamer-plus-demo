@@ -3,10 +3,10 @@
     {
       "id": "exponential_demo",
       "type": "function-plotter",
-      "x": 0.05,
-      "y": 0.1,
-      "width": 0.9,
-      "height": 0.8,
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
       "zIndex": 10,
       "functions": [
         "e^x",

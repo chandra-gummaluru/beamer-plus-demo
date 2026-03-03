@@ -2,7 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Interactive presentation tool with live annotations, widgets, and audience engagement">
+  <meta name="theme-color" content="#333333">
   <title>Beamer+</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  
+  <!-- iOS PWA Support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Beamer+">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/icon-16x16.png">
 
   <!-- Beamer+ Modular CSS -->
   <link rel="stylesheet" href="/static/css/shared.css">
@@ -37,16 +53,15 @@
     </svg>
   </div>
 
-  <div id="slide-navigator"></div>
-
   <div id="control-panel">
     <div class="controls-left">
-    <div id="display-controls"></div>
-    <input type="file" id="upload-zip" accept=".zip" style="display: none;">
-    <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
-    <div id="screen-share-container"></div>
-    <div id="record-container"></div>
-    <div id="nav-container"></div>
+      <div id="display-controls"></div>
+      <input type="file" id="upload-zip" accept=".zip" style="display: none;">
+      <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
+      <div id="screen-share-container"></div>
+      <div id="record-container"></div>
+      <div id="nav-container"></div>
+      <div id="split-view-button-container"></div>
     </div>
 
   <div class="controls-right">
@@ -59,10 +74,21 @@
   </div>
 </div>
 
-  <div id="pdf-container">
-      <div id="ann-canvas"></div>
-      <div id="pdf-canvas"></div>
+  <div id="slide-navigator"></div>
+
+  <div id="main-content">
+    <div id="pdf-container">
+        <div id="ann-canvas"></div>
+        <div id="pdf-canvas"></div>
+    </div>
+
+    <div id="pdf-container-2">
+        <div id="ann-canvas-2"></div>
+        <div id="pdf-canvas-2"></div>
+    </div>
   </div>
+
+  <div id="slide-navigator-right"></div>
 
   <script>
     // Hide splash screen after 2 seconds
@@ -72,6 +98,121 @@
         splashScreen.style.display = 'none';
       }, 2000);
     });
+    
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+          .then((registration) => {
+            console.log('[PWA] Service Worker registered successfully');
+            console.log('[PWA] Scope:', registration.scope);
+            console.log('[PWA] Active:', !!registration.active);
+            
+            // Wait for service worker to be ready
+            return navigator.serviceWorker.ready;
+          })
+          .then((registration) => {
+            console.log('[PWA] Service Worker is ready and active');
+            
+            // Check for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              console.log('[PWA] New service worker installing...');
+              newWorker.addEventListener('statechange', () => {
+                console.log('[PWA] Service Worker state:', newWorker.state);
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('[PWA] New version available! Refresh to update.');
+                }
+              });
+            });
+          })
+          .catch((error) => {
+            console.error('[PWA] Service Worker registration failed:', error);
+            console.error('[PWA] Error details:', error.message);
+          });
+      });
+    } else {
+      console.warn('[PWA] Service Workers not supported in this browser');
+    }
+    
+    // Handle installation prompt
+    let deferredPrompt;
+    let installButton;
+    
+    window.addEventListener('beforeinstallprompt', (e) => {
+      console.log('[PWA] beforeinstallprompt event fired');
+      e.preventDefault();
+      deferredPrompt = e;
+      
+      // Show install button
+      showInstallButton();
+    });
+    
+    function showInstallButton() {
+      // Create install button if it doesn't exist
+      if (!installButton) {
+        installButton = document.createElement('button');
+        installButton.id = 'pwa-install-btn';
+        installButton.innerHTML = '<i class="fa-solid fa-download"></i> Install App';
+        installButton.style.cssText = `
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          z-index: 10000;
+          padding: 12px 24px;
+          background: #333;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-family: 'Computer Modern Sans', sans-serif;
+          font-size: 14px;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        `;
+        
+        installButton.addEventListener('click', async () => {
+          if (!deferredPrompt) {
+            console.log('[PWA] No install prompt available');
+            return;
+          }
+          
+          console.log('[PWA] Showing install prompt');
+          deferredPrompt.prompt();
+          
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log('[PWA] Install outcome:', outcome);
+          
+          if (outcome === 'accepted') {
+            console.log('[PWA] User accepted installation');
+          } else {
+            console.log('[PWA] User dismissed installation');
+          }
+          
+          deferredPrompt = null;
+          installButton.style.display = 'none';
+        });
+        
+        document.body.appendChild(installButton);
+      }
+      
+      installButton.style.display = 'flex';
+    }
+    
+    window.addEventListener('appinstalled', () => {
+      console.log('[PWA] App installed successfully');
+      deferredPrompt = null;
+      if (installButton) {
+        installButton.style.display = 'none';
+      }
+    });
+    
+    // Log if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+      console.log('[PWA] App is running in standalone mode (already installed)');
+    }
   </script>
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
   <script type="module" src="/static/js/main.js"></script>

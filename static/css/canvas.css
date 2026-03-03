@@ -1,11 +1,18 @@
 /* Beamer+ Canvas and Display Styles */
 
+/* Main content wrapper */
+#main-content {
+    display: flex;
+    margin-left: 75px;
+    height: calc(100vh - 60px);
+}
+
+/* Default single-view layout */
 #pdf-container,
 #viewer-container {
-    width: calc(100% - 75px);
-    height: calc(100vh - 60px);
+    width: 100%;
+    height: 100%;
     position: relative;
-    margin-left: 75px;
     overflow: hidden;
     display: flex;
     justify-content: center;
@@ -13,13 +20,43 @@
     background: #f0f0f0;
 }
 
-#pdf-container video {
+/* Second PDF container - hidden by default */
+#pdf-container-2 {
+    display: none;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    justify-content: center;
+    align-items: center;
+    background: #f0f0f0;
+}
+
+/* Split view active state */
+body.split-view-active #main-content {
+    margin-right: 75px;
+}
+
+body.split-view-active #pdf-container {
+    width: 50%;
+}
+
+body.split-view-active #pdf-container-2 {
+    display: flex;
+    width: 50%;
+}
+
+body.split-view-active #slide-navigator-right {
+    display: block;
+}
+
+#pdf-container video, #pdf-container-2 video {
     position: absolute;
     object-fit: contain;
     pointer-events: auto;
 }
 
-#pdf-canvas {
+#pdf-canvas, #pdf-canvas-2 {
     position: absolute;
     z-index: 1;
     background-color: #ffffff;
@@ -27,24 +64,42 @@
     box-sizing: border-box;
     height: 95%;
     aspect-ratio: 4 / 3;
+    max-width: 95%;
 }
 
-#pdf-canvas canvas {
+/* In split view, reduce the height to fit better */
+body.split-view-active #pdf-canvas,
+body.split-view-active #pdf-canvas-2 {
+    height: auto;
+    width: 98%;
+    max-height: 98%;
+}
+
+#pdf-canvas canvas, #pdf-canvas-2 canvas {
     width: 100% !important;
     height: 100% !important;
     display: block;
 }
 
-#ann-canvas {
+#ann-canvas, #ann-canvas-2 {
     position: absolute;
     z-index: 2;
     pointer-events: none;
     box-sizing: border-box;
     height: 95%;
     aspect-ratio: 4 / 3;
+    max-width: 95%;
 }
 
-#ann-canvas canvas {
+/* In split view, reduce the height to fit better */
+body.split-view-active #ann-canvas,
+body.split-view-active #ann-canvas-2 {
+    height: auto;
+    width: 98%;
+    max-height: 98%;
+}
+
+#ann-canvas canvas, #ann-canvas-2 canvas {
     width: 100% !important;
     height: 100% !important;
     display: block;
@@ -73,4 +128,15 @@ model-viewer {
     position: absolute;
     border: none;
     background: transparent;
+}
+
+#both-displays-container {
+    width: 100%;
+    height: calc(100vh - 60px);
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: safe;
+    border: 1px solid black;
+    overflow: hidden
 }

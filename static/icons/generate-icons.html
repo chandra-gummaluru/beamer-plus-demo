@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Generate Beamer+ Icons</title>
+</head>
+<body>
+    <h1>Icon Generator for Beamer+</h1>
+    <p>This page generates all required PWA icons. Right-click each canvas and "Save image as..."</p>
+    
+    <script>
+        const sizes = [16, 32, 72, 96, 128, 144, 152, 192, 384, 512];
+        const bgColor = '#333333';
+        const fgColor = '#ffffff';
+        
+        sizes.forEach(size => {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            canvas.style.margin = '10px';
+            canvas.style.border = '1px solid #ccc';
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Draw "B+" text
+            ctx.fillStyle = fgColor;
+            ctx.font = `bold ${size * 0.5}px "Arial", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('B+', size / 2, size / 2);
+            
+            const label = document.createElement('div');
+            label.textContent = `icon-${size}x${size}.png`;
+            label.style.textAlign = 'center';
+            label.style.fontFamily = 'monospace';
+            
+            const container = document.createElement('div');
+            container.style.display = 'inline-block';
+            container.style.margin = '10px';
+            container.appendChild(label);
+            container.appendChild(canvas);
+            
+            document.body.appendChild(container);
+            
+            // Auto-download
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `icon-${size}x${size}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        });
+    </script>
+</body>
+</html>

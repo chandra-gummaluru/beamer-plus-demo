@@ -120,6 +120,24 @@ def survey_page(survey_id):
         return render_template("survey_not_found.html"), 404
     return render_template("survey_response.html", survey_id=survey_id)
 
+# PWA routes
+@app.route('/manifest.json')
+def manifest():
+    response = send_file('manifest.json', mimetype='application/manifest+json')
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+@app.route('/service-worker.js')
+def service_worker():
+    response = send_file('service-worker.js', mimetype='application/javascript')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
+
+@app.route('/offline.html')
+def offline():
+    return send_file('offline.html')
+
 # Presentation endpoints
 @app.route('/api/presentation/upload', methods=['POST'])
 def upload_presentation():

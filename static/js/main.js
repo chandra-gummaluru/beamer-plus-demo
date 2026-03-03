@@ -21,6 +21,9 @@ const timer = new Timer(timerContainer);
 
 const toolContainer = document.getElementById('tool-container');
 
+let splitViewEnabled = false; // initialize
+let rightSlideIndex = 0; // track which slide is shown on the right
+
 const hand = new Button(toolContainer, {
     label: '<i class="fa-solid fa-hand-pointer"></i>',
     className: 'btn'
@@ -68,6 +71,62 @@ const prevBtn = new Button(navContainer, {
 const nextBtn = new Button(navContainer, {
     label: '<i class="fa-solid fa-arrow-right"></i>',
     className: 'btn'
+});
+
+const splitViewButtonContainer = document.getElementById('split-view-button-container');
+
+const splitViewBtn = new Button(splitViewButtonContainer, {
+    label: '<i class="fa-solid fa-columns"></i>',
+    className: 'btn'
+});
+
+splitViewBtn.onClick(() => {
+    splitViewEnabled = !splitViewEnabled;
+    document.body.classList.toggle('split-view-active', splitViewEnabled);
+    
+    if (splitViewEnabled) {
+        // Update button icon to show it's active
+        splitViewBtn.el.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        
+        // Initialize second canvases now that container is visible
+        setTimeout(() => {
+            initializeSecondCanvases();
+            
+            // Populate right navigator
+            populateSlideNavigatorRight();
+            
+            // Resize all canvases after layout settles
+            setTimeout(() => {
+                annCvs.resize();
+                pdfCvs.resize();
+                if (annCvs2) annCvs2.resize();
+                if (pdfCvs2) pdfCvs2.resize();
+                
+                // Re-render slides at new sizes
+                if (zipFile) {
+                    renderSlide(currentSlide);
+                    renderSlideRight(rightSlideIndex);
+                }
+                
+                // Restore the current pointer mode on both canvases
+                setPointerModeAll(annCvs.pointer_mode);
+            }, 100);
+        }, 50);
+    } else {
+        // Reset button icon
+        splitViewBtn.el.innerHTML = '<i class="fa-solid fa-columns"></i>';
+        
+        // Resize canvases back to full size
+        setTimeout(() => {
+            annCvs.resize();
+            pdfCvs.resize();
+            
+            // Re-render main slide at full size
+            if (zipFile) {
+                renderSlide(currentSlide);
+            }
+        }, 100);
+    }
 });
 
 const brushContainer = document.getElementById('brush-controls');
@@ -358,6 +417,7 @@ const __beamer_controls = [
     ...colorBtns,
     brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
+    splitViewBtn,
     undoBtn, redoBtn,
     clearBtn, surveyBtn
 ];
@@ -373,22 +433,50 @@ const annCvs = new Canvas(ann_canvas_container);
 const slide_canvas_container = document.getElementById('pdf-canvas');
 const pdfCvs = new Canvas(slide_canvas_container, false);
 
+const ann_canvas_container2 = document.getElementById('ann-canvas-2');
+let annCvs2 = null;  // Lazily initialized when split view is activated
+const slide_canvas_container2 = document.getElementById('pdf-canvas-2');
+let pdfCvs2 = null;  // Lazily initialized when split view is activated
+
+// Initialize the second set of canvases (called when split view is first activated)
+function initializeSecondCanvases() {
+    if (!annCvs2) {
+        annCvs2 = new Canvas(ann_canvas_container2);
+        annCvs2.setHistoryChangeHandler(updateHistoryButtons);
+        // Copy current settings from first canvas
+        annCvs2.setStrokeColor(annCvs.strokeColor);
+        annCvs2.setStrokeWidth(annCvs.strokeWidth);
+        annCvs2.setPointerMode(annCvs.pointer_mode);
+    }
+    if (!pdfCvs2) {
+        pdfCvs2 = new Canvas(slide_canvas_container2, false);
+    }
+}
+
 const updateHistoryButtons = () => {
-    undoBtn.el.disabled = !annCvs.canUndo();
-    redoBtn.el.disabled = !annCvs.canRedo();
+    const canUndo = annCvs.canUndo() || (annCvs2 && annCvs2.canUndo());
+    const canRedo = annCvs.canRedo() || (annCvs2 && annCvs2.canRedo());
+    undoBtn.el.disabled = !canUndo;
+    redoBtn.el.disabled = !canRedo;
 };
 annCvs.setHistoryChangeHandler(updateHistoryButtons);
 updateHistoryButtons();
 
-hand.onClick(() => annCvs.setPointerMode('hand'));
-pen.onClick(() => annCvs.setPointerMode('draw'));
-highlighter.onClick(() => annCvs.setPointerMode('highlight'));
-eraser.onClick(() => annCvs.setPointerMode('erase'));
+// Set pointer mode on both canvases
+function setPointerModeAll(mode) {
+    annCvs.setPointerMode(mode);
+    if (annCvs2) annCvs2.setPointerMode(mode);
+}
+
+hand.onClick(() => setPointerModeAll('hand'));
+pen.onClick(() => setPointerModeAll('draw'));
+highlighter.onClick(() => setPointerModeAll('highlight'));
+eraser.onClick(() => setPointerModeAll('erase'));
 
 function onToolSelected(selected) {
-    if (selected === pen) annCvs.setPointerMode('draw');
-    else if (selected === highlighter) annCvs.setPointerMode('highlight');
-    else if (selected === eraser) annCvs.setPointerMode('erase');
+    if (selected === pen) setPointerModeAll('draw');
+    else if (selected === highlighter) setPointerModeAll('highlight');
+    else if (selected === eraser) setPointerModeAll('erase');
 }
 
 toolSelector.buttons.forEach(item => {
@@ -397,7 +485,9 @@ toolSelector.buttons.forEach(item => {
 
 colorBtns.forEach(btn => {
   btn.onClick(() => {
-    annCvs.setStrokeColor(getComputedStyle(btn.el).backgroundColor);
+    const color = getComputedStyle(btn.el).backgroundColor;
+    annCvs.setStrokeColor(color);
+    if (annCvs2) annCvs2.setStrokeColor(color);
   });
 });
 
@@ -406,6 +496,7 @@ brushMinusBtn.onClick(() => {
     if (val > 1) val--;
     brushSizeLbl.set(String(val));
     annCvs.setStrokeWidth(val);
+    if (annCvs2) annCvs2.setStrokeWidth(val);
 });
 
 brushPlusBtn.onClick(() => {
@@ -413,6 +504,7 @@ brushPlusBtn.onClick(() => {
     if (val < 9) val++;
     brushSizeLbl.set(String(val));
     annCvs.setStrokeWidth(val);
+    if (annCvs2) annCvs2.setStrokeWidth(val);
 });
 
 clearBtn.onClick(() => {
@@ -538,14 +630,54 @@ function populateSlideNavigator() {
     }
     
     updateSlideNavigator();
+    
+    // Also populate right navigator if split view is active
+    if (splitViewEnabled) {
+        populateSlideNavigatorRight();
+    }
 }
 
 function updateSlideNavigator() {
-    const items = document.querySelectorAll('.slide-nav-item');
+    const items = document.querySelectorAll('#slide-navigator .slide-nav-item');
     items.forEach((item, index) => {
         if (index === currentSlide) {
             item.classList.add('active');
-            // Scroll into view
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            item.classList.remove('active');
+        }
+    });
+}
+
+function populateSlideNavigatorRight() {
+    const navigator = document.getElementById('slide-navigator-right');
+    navigator.innerHTML = '';
+    
+    for (let i = 0; i < totalSlides; i++) {
+        const item = document.createElement('div');
+        item.className = 'slide-nav-item';
+        item.textContent = i + 1;
+        item.dataset.slideIndex = i;
+        
+        item.onclick = () => {
+            // Save current annotations before switching
+            saveRightAnnotations();
+            rightSlideIndex = i;
+            renderSlideRight(i);
+            updateSlideNavigatorRight();
+        };
+        
+        navigator.appendChild(item);
+    }
+    
+    updateSlideNavigatorRight();
+}
+
+function updateSlideNavigatorRight() {
+    const items = document.querySelectorAll('#slide-navigator-right .slide-nav-item');
+    items.forEach((item, index) => {
+        if (index === rightSlideIndex) {
+            item.classList.add('active');
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
             item.classList.remove('active');
@@ -557,6 +689,7 @@ let zipFile = null;
 let slideConfigs = {};
 let mediaCache = {};
 let annotations = {};
+let annotationsRight = {};
 let currentSlide = 0;
 let totalSlides = 0;
 
@@ -679,39 +812,6 @@ async function goToSlide(slideIndex) {
     socket.emit('slide_change', {
         slideIndex: currentSlide,
         annotations: annData
-    });
-}
-
-function populateSlideNavigator() {
-    const navigator = document.getElementById('slide-navigator');
-    navigator.innerHTML = '';
-    
-    for (let i = 0; i < totalSlides; i++) {
-        const item = document.createElement('div');
-        item.className = 'slide-nav-item';
-        item.textContent = i + 1;
-        item.dataset.slideIndex = i;
-        
-        item.onclick = () => {
-            goToSlide(i);
-        };
-        
-        navigator.appendChild(item);
-    }
-    
-    updateSlideNavigator();
-}
-
-function updateSlideNavigator() {
-    const items = document.querySelectorAll('.slide-nav-item');
-    items.forEach((item, index) => {
-        if (index === currentSlide) {
-            item.classList.add('active');
-            // Scroll into view
-            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else {
-            item.classList.remove('active');
-        }
     });
 }
 
@@ -903,6 +1003,137 @@ async function renderSlide(slideIndex) {
     
     if (slideConfig.widgets) {
         renderWidgets(slideConfig, slide_canvas_container, zipFile);
+    }
+}
+
+// Render a slide on the right (split view) canvas - full featured with widgets and annotations
+async function renderSlideRight(slideIndex) {
+    if (!zipFile || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
+    
+    const pdfFile = zipFile.file("slides.pdf");
+    if (!pdfFile) return;
+    
+    const pdfData = await pdfFile.async("arraybuffer");
+    const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    const page = await pdfDoc.getPage(slideIndex + 1);
+    
+    await pdfCvs2.renderPDFPage(page);
+    
+    // Load per-slide annotations for right canvas
+    try {
+        annCvs2.clear();
+        if (annotationsRight[slideIndex]) {
+            await annCvs2.loadAnnotations(annotationsRight[slideIndex]);
+        } else {
+            annCvs2.resetHistory();
+        }
+    } catch (e) {
+        console.warn('Error loading right annotations for slide', slideIndex, e);
+    }
+    
+    // Remove existing media from right container
+    const existingMedia = slide_canvas_container2.querySelectorAll('video, audio, model-viewer');
+    existingMedia.forEach(el => el.remove());
+    
+    cleanupWidgets(slide_canvas_container2);
+    
+    const slideConfig = await loadSlideConfig(slideIndex);
+    
+    if (!slideConfig) {
+        return;
+    }
+    
+    // Get container's actual size for positioning all media elements
+    const containerRect = slide_canvas_container2.getBoundingClientRect();
+    
+    if (slideConfig.videos) {
+        for (const v of slideConfig.videos) {
+            const videoURL = await loadMediaFromPath(v.path);
+            if (!videoURL) continue;
+            
+            const video = document.createElement("video");
+            video.src = videoURL;
+            video.volume = v.volume || 1.0;
+            video.dataset.videoId = v.id + '-right';
+            
+            video.dataset.videoX = v.x;
+            video.dataset.videoY = v.y;
+            video.dataset.videoWidth = v.width;
+            video.dataset.videoHeight = v.height;
+            
+            video.style.position = "absolute";
+            video.style.left = `${v.x * containerRect.width}px`;
+            video.style.top = `${v.y * containerRect.height}px`;
+            video.style.width = `${v.width * containerRect.width}px`;
+            video.style.height = `${v.height * containerRect.height}px`;
+            video.style.objectFit = "contain";
+            video.style.zIndex = v.zIndex || 5;
+            
+            if (v.playMode === "once") {
+                video.autoplay = true;
+                video.loop = false;
+            }
+            if (v.playMode === "loop") {
+                video.autoplay = true;
+                video.loop = true;
+            }
+            if (v.playMode === "manual") {
+                video.controls = true;
+            }
+            
+            video.addEventListener('click', (ev) => {
+                try {
+                    if (video.paused) video.play();
+                    else video.pause();
+                } catch (e) {
+                    console.error('Error toggling video playback:', e);
+                }
+                ev.stopPropagation();
+            });
+            
+            slide_canvas_container2.appendChild(video);
+        }
+    }
+    
+    if (slideConfig.models) {
+        for (const m of slideConfig.models) {
+            const modelURL = await loadMediaFromPath(m.path);
+            if (!modelURL) continue;
+            
+            const mv = document.createElement("model-viewer");
+            mv.src = modelURL;
+            mv.alt = m.alt || "3D model";
+            mv.dataset.modelId = m.id + '-right';
+            
+            mv.dataset.modelX = m.x;
+            mv.dataset.modelY = m.y;
+            mv.dataset.modelWidth = m.width;
+            mv.dataset.modelHeight = m.height;
+            
+            mv.setAttribute("camera-controls", "");
+            mv.setAttribute("shadow-intensity", "1");
+            mv.setAttribute("auto-rotate", m.autoRotate ? "true" : "false");
+            
+            mv.style.position = "absolute";
+            mv.style.left = `${m.x * containerRect.width}px`;
+            mv.style.top = `${m.y * containerRect.height}px`;
+            mv.style.width = `${m.width * containerRect.width}px`;
+            mv.style.height = `${m.height * containerRect.height}px`;
+            mv.style.zIndex = m.zIndex || 5;
+            
+            slide_canvas_container2.appendChild(mv);
+        }
+    }
+    
+    if (slideConfig.widgets) {
+        renderWidgets(slideConfig, slide_canvas_container2, zipFile);
+    }
+}
+
+// Save right annotations when switching slides
+function saveRightAnnotations() {
+    if (splitViewEnabled && annCvs2 && annCvs2.canvas) {
+        annotationsRight[rightSlideIndex] = annCvs2.canvas.toDataURL('image/png');
     }
 }
 
