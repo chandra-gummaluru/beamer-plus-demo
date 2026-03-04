@@ -1,0 +1,17 @@
+{
+    "slides": [
+        {
+            "title": "Word Cloud Demo",
+            "elements": [
+                {
+                    "type": "widget",
+                    "url": "widgets/word_cloud.html",
+                    "x": "5%",
+                    "y": "5%",
+                    "width": "90%",
+                    "height": "90%"
+                }
+            ]
+        }
+    ]
+}

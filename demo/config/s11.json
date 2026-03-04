@@ -1,0 +1,17 @@
+{
+  "widgets": [
+    {
+      "id": "survey_widget",
+      "type": "survey",
+      "x": 0.1,
+      "y": 0.1,
+      "width": 0.8,
+      "height": 0.8,
+      "zIndex": 10,
+      "interactive": true,
+      "question": "What did you learn today?",
+      "model": "openai_model",
+      "numSummaries": 3
+    }
+  ]
+}

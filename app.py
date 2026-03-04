@@ -7,6 +7,7 @@ import importlib.util
 import sys
 import tempfile
 import zipfile
+import subprocess
 from collections import defaultdict
 from typing import List
 import shutil
@@ -42,6 +43,9 @@ current_presentation = {
     'models': {},  # Store loaded model functions
     'available_models': []  # List of available model names
 }
+
+# Track the survey server subprocess
+survey_server_process = None
 
 def extract_and_load_models(zip_path):
     """
@@ -222,12 +226,14 @@ def respond_survey(survey_id):
     }
     survey_responses[survey_id].append(response)
     
-    # Notify presenter of new response
-    socketio.emit('survey_response', {
+    # Notify presenter and survey watchers of new response
+    response_data = {
         'survey_id': survey_id,
         'response': response,
         'total': len(survey_responses[survey_id])
-    }, room='presenter')
+    }
+    socketio.emit('survey_response', response_data, room='presenter')
+    socketio.emit('survey_response', response_data, room=f'survey_{survey_id}')
     
     return jsonify({'success': True})
 
@@ -320,6 +326,74 @@ def close_survey(survey_id):
         # Notify all users on the survey page that it's closed
         socketio.emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
     return jsonify({'success': True})
+
+@app.route('/api/survey-server/start', methods=['POST'])
+def start_survey_server():
+    """Start the survey_server.py as a subprocess with the current presentation's ZIP file."""
+    global survey_server_process
+    
+    try:
+        # Check if server is already running
+        if survey_server_process is not None and survey_server_process.poll() is None:
+            return jsonify({
+                'success': True,
+                'url': 'http://localhost:5001',
+                'message': 'Survey server already running'
+            })
+        
+        # Get the path to survey_server.py
+        survey_server_path = os.path.join(BASE_PATH, 'survey_server.py')
+        
+        if not os.path.exists(survey_server_path):
+            return jsonify({'success': False, 'error': 'survey_server.py not found'}), 404
+        
+        # Build command with current presentation ZIP if available
+        cmd = [sys.executable, survey_server_path, '--port', '5001']
+        
+        if current_presentation['file'] and os.path.exists(current_presentation['file']):
+            cmd.extend(['--zip', current_presentation['file']])
+        
+        # Start the server as a subprocess
+        survey_server_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+        )
+        
+        # Give it a moment to start
+        time.sleep(1)
+        
+        # Check if it started successfully
+        if survey_server_process.poll() is not None:
+            stderr = survey_server_process.stderr.read().decode('utf-8', errors='ignore')
+            return jsonify({
+                'success': False,
+                'error': f'Server failed to start: {stderr}'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'url': 'http://localhost:5001',
+            'message': 'Survey server started'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/survey-server/stop', methods=['POST'])
+def stop_survey_server():
+    """Stop the survey server subprocess."""
+    global survey_server_process
+    
+    if survey_server_process is not None:
+        survey_server_process.terminate()
+        survey_server_process = None
+        return jsonify({'success': True, 'message': 'Survey server stopped'})
+    
+    return jsonify({'success': True, 'message': 'Survey server was not running'})
 
 # Socket.IO events
 @socketio.on('join_presenter')

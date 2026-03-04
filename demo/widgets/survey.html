@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survey Widget</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Computer Modern Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem;
+        }
+        
+        .view { 
+            display: none; 
+            width: 100%; 
+            max-width: 500px;
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
+            gap: 0.75rem;
+        }
+        .view.active { display: flex; }
+        
+        /* Buttons - match main app */
+        .btn {
+            background: #eeeeee;
+            color: #333;
+            border: 2px solid #666;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: 'Computer Modern Sans', sans-serif;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #e0e0e0; }
+        .btn:disabled { 
+            opacity: 0.5; 
+            cursor: not-allowed; 
+        }
+        
+        /* Form styling - match main app modal */
+        .form-group {
+            width: 100%;
+            margin-bottom: 1.5rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            font-family: 'Computer Modern Sans', sans-serif;
+            color: #555;
+        }
+        .form-group input, 
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-family: 'Computer Modern Sans', sans-serif;
+            background: white;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #333;
+        }
+        .form-group small {
+            display: block;
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            color: #666;
+            font-family: 'Computer Modern Sans', sans-serif;
+        }
+        
+        /* Title styling */
+        h2 {
+            font-family: 'Computer Modern Sans', sans-serif;
+            color: #333;
+            font-size: 1.5rem;
+            font-weight: 300;
+            text-align: center;
+            margin: 0;
+        }
+        h2 .subtitle {
+            display: block;
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: normal;
+            margin-top: 0.25rem;
+        }
+        
+        /* QR container - match main app */
+        .qr-container {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+        }
+        #qrcode {
+            padding: 0.5rem;
+            background: white;
+            border-radius: 4px;
+        }
+        .survey-url {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Computer Modern Sans', sans-serif;
+            text-align: center;
+            background: white;
+            font-size: 0.8rem;
+        }
+        
+        /* Response count - match main app */
+        .response-count {
+            font-family: 'Computer Modern Sans', sans-serif;
+            color: #666;
+            font-size: 0.9rem;
+            border: 2px solid #e0e0e0;
+            padding: 0.5rem 1rem;
+            background: white;
+        }
+        .response-count strong {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        /* Results card - match main app */
+        .result-card {
+            font-family: 'Computer Modern Sans', sans-serif;
+            color: #333;
+            font-size: 1rem;
+            line-height: 1.6;
+            text-align: center;
+            padding: 1rem;
+            background: #f8f9fa;
+            border: 2px solid #666;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .result-respondents {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        /* Navigation */
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .nav-counter {
+            font-family: 'Computer Modern Sans', sans-serif;
+            color: #666;
+            font-size: 1rem;
+        }
+        
+        /* Action buttons row */
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            width: 100%;
+        }
+        
+        /* Loading squiggle animation */
+        .loading-squiggle {
+            width: 120px;
+            height: 40px;
+            display: block;
+        }
+        .loading-squiggle path {
+            fill: none;
+            stroke: #333;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-dasharray: 150;
+            stroke-dashoffset: 150;
+            animation: draw-squiggle 1.6s ease-in-out infinite;
+        }
+        @keyframes draw-squiggle {
+            0% { stroke-dashoffset: 150; opacity: 0.6; }
+            40% { stroke-dashoffset: 0; opacity: 1; }
+            100% { stroke-dashoffset: -150; opacity: 0.6; }
+        }
+        .loading-text {
+            margin-top: 1rem;
+            color: #666;
+            font-family: 'Computer Modern Sans', sans-serif;
+        }
+        
+        /* No models message */
+        .no-models {
+            text-align: center;
+            color: #666;
+        }
+        .no-models i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Create Survey View -->
+        <div id="create-view" class="view">
+            <h2>Survey</h2>
+            
+            <div id="create-form" style="width: 100%;">
+                <div class="form-group">
+                    <label>Question (optional):</label>
+                    <input type="text" id="survey-question" placeholder="What do you think about...?">
+                    <small>Leave blank for generic survey</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Summarizer Script:</label>
+                    <select id="survey-model"></select>
+                    <small>This script will be used to summarize survey responses</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Number of Summaries:</label>
+                    <input type="number" id="survey-num-summaries" min="1" max="10" value="3">
+                    <small>Generate 1-10 different summary variations</small>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn" onclick="createSurvey()">
+                        <i class="fa-solid fa-share-from-square"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="no-models" id="no-models" style="display: none;">
+                <i class="fa-solid fa-robot"></i>
+                <p>No AI models available.</p>
+                <p><small>Upload a presentation with models in the ai/ folder.</small></p>
+            </div>
+        </div>
+        
+        <!-- Active Survey View (QR Code) -->
+        <div id="survey-view" class="view">
+            <h2 id="active-question">Survey
+                <span class="subtitle">(scan the QR code below or navigate to the URL to respond)</span>
+            </h2>
+            
+            <div class="qr-container">
+                <div id="qrcode"></div>
+                <input type="text" class="survey-url" id="survey-url" readonly onclick="this.select()">
+            </div>
+            
+            <div class="response-count">
+                <span>Responses:</span> <strong id="response-count">0</strong>
+            </div>
+            
+            <button class="btn" id="analyze-btn" onclick="analyzeResponses()" disabled>
+                <i class="fa-solid fa-chart-simple"></i> Generate Summaries
+            </button>
+        </div>
+        
+        <!-- Results View -->
+        <div id="results-view" class="view">
+            <h2 id="results-question">Survey Results
+                <span class="subtitle" id="results-subtitle">(based on 0 responses)</span>
+            </h2>
+            
+            <div class="result-card" id="result-card">
+                <div id="result-summary"></div>
+            </div>
+            
+            <div class="nav-buttons">
+                <button class="btn" onclick="prevResult()" id="prev-btn">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <span class="nav-counter" id="result-counter">1 / 3</span>
+                <button class="btn" onclick="nextResult()" id="next-btn">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Loading View -->
+        <div id="loading-view" class="view active">
+            <svg class="loading-squiggle" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+                <path d="M 5,20 Q 15,5 25,20 T 45,20 Q 55,5 65,20 T 85,20 Q 95,5 105,20 T 115,20" />
+            </svg>
+        </div>
+        
+        <!-- Connection Error View -->
+        <div id="error-view" class="view">
+            <i class="fa-solid fa-exclamation-triangle" style="font-size: 3rem; color: #e74c3c;"></i>
+            <p style="color: #666; text-align: center;">Failed to connect to server.<br>Make sure Beamer+ is running.</p>
+            <button class="btn" onclick="retryConnection()">
+                <i class="fa-solid fa-rotate-right"></i> Retry
+            </button>
+        </div>
+    </div>
+    
+    <script>
+        // Default to main Beamer+ server
+        let serverUrl = 'http://localhost:5000';
+        let currentSurvey = null;
+        let currentResults = null;
+        let currentResultIndex = 0;
+        let socket = null;
+        let isConnected = false;
+        let widgetConfig = null;
+        let responseCount = 0;
+        
+        function showView(viewName) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewName + '-view').classList.add('active');
+            // Update loading text based on context
+            if (viewName === 'loading') {
+                document.querySelector('.loading-text').textContent = 
+                    currentSurvey ? 'Analyzing responses...' : 'Loading...';
+            }
+        }
+        
+        function updateAnalyzeButton() {
+            const btn = document.getElementById('analyze-btn');
+            const numSummaries = currentSurvey ? currentSurvey.num_summaries : 3;
+            btn.disabled = responseCount < numSummaries;
+        }
+        
+        async function connectToServer() {
+            try {
+                // Test connection
+                const res = await fetch(serverUrl + '/api/models');
+                if (!res.ok) throw new Error('Server not responding');
+                
+                const data = await res.json();
+                
+                // Connect socket
+                if (socket) {
+                    socket.disconnect();
+                }
+                socket = io(serverUrl);
+                socket.on('connect', () => {
+                    isConnected = true;
+                    console.log('Socket connected');
+                });
+                socket.on('disconnect', () => {
+                    isConnected = false;
+                    console.log('Socket disconnected');
+                });
+                socket.on('survey_response', (data) => {
+                    console.log('Received survey_response:', data);
+                    if (currentSurvey && data.survey_id === currentSurvey.survey_id) {
+                        responseCount = data.total;
+                        document.getElementById('response-count').textContent = data.total;
+                        updateAnalyzeButton();
+                    }
+                });
+                
+                isConnected = true;
+                await loadModels();
+                return true;
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                isConnected = false;
+                return false;
+            }
+        }
+        
+        function retryConnection() {
+            updateConfig(widgetConfig || {});
+        }
+        
+        async function loadModels() {
+            try {
+                const res = await fetch(serverUrl + '/api/models');
+                const data = await res.json();
+                
+                const select = document.getElementById('survey-model');
+                select.innerHTML = '';
+                
+                if (data.models.length === 0) {
+                    document.getElementById('create-form').style.display = 'none';
+                    document.getElementById('no-models').style.display = 'block';
+                    return;
+                }
+                
+                document.getElementById('create-form').style.display = 'block';
+                document.getElementById('no-models').style.display = 'none';
+                
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading models:', error);
+            }
+        }
+        
+        async function createSurvey() {
+            const question = document.getElementById('survey-question').value.trim() || 'Survey';
+            const model = document.getElementById('survey-model').value;
+            const numSummaries = parseInt(document.getElementById('survey-num-summaries').value);
+            
+            if (!model) {
+                alert('Please select a model');
+                return;
+            }
+            
+            try {
+                const res = await fetch(serverUrl + '/api/survey/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, model, num_summaries: numSummaries })
+                });
+                
+                const data = await res.json();
+                
+                if (!res.ok) {
+                    alert(data.error || 'Failed to create survey');
+                    return;
+                }
+                
+                currentSurvey = { ...data, question, model, num_summaries: numSummaries };
+                currentResults = null;
+                responseCount = 0;
+                
+                // Join the survey room to receive response updates
+                if (socket) {
+                    socket.emit('join_survey', { survey_id: data.survey_id });
+                }
+                
+                // Update survey view
+                const questionEl = document.getElementById('active-question');
+                questionEl.innerHTML = `${question}<span class="subtitle">(scan the QR code below or navigate to the URL to respond)</span>`;
+                document.getElementById('response-count').textContent = '0';
+                
+                const surveyUrl = serverUrl + data.url;
+                document.getElementById('survey-url').value = surveyUrl;
+                
+                // Generate QR code
+                const qrContainer = document.getElementById('qrcode');
+                qrContainer.innerHTML = '';
+                new QRCode(qrContainer, {
+                    text: surveyUrl,
+                    width: 200,
+                    height: 200,
+                    colorDark: "#333333",
+                    colorLight: "#ffffff"
+                });
+                
+                updateAnalyzeButton();
+                showView('survey');
+            } catch (error) {
+                console.error('Error creating survey:', error);
+                alert('Failed to create survey');
+            }
+        }
+        
+        async function closeSurvey() {
+            if (!currentSurvey) return;
+            
+            try {
+                await fetch(serverUrl + '/api/survey/' + currentSurvey.survey_id + '/close', { method: 'POST' });
+                if (socket) {
+                    socket.emit('survey_close', { survey_id: currentSurvey.survey_id });
+                }
+            } catch (error) {
+                console.error('Error closing survey:', error);
+            }
+        }
+        
+        async function analyzeResponses() {
+            if (!currentSurvey) return;
+            
+            // Check conditions
+            const numSummaries = currentSurvey.num_summaries || 3;
+            if (responseCount < numSummaries) {
+                alert(`Need at least ${numSummaries} responses to generate summaries.`);
+                return;
+            }
+            
+            // Auto-close the survey before analyzing
+            await closeSurvey();
+            
+            showView('loading');
+            
+            try {
+                // Check for responses
+                const respRes = await fetch(serverUrl + '/api/survey/' + currentSurvey.survey_id + '/responses');
+                const respData = await respRes.json();
+                
+                if (respData.responses.length === 0) {
+                    alert('No responses to analyze');
+                    showView('survey');
+                    return;
+                }
+                
+                // Analyze
+                const analyzeRes = await fetch(serverUrl + '/api/survey/' + currentSurvey.survey_id + '/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!analyzeRes.ok) {
+                    const errData = await analyzeRes.json();
+                    throw new Error(errData.error || 'Analysis failed');
+                }
+                
+                const analysisData = await analyzeRes.json();
+                
+                currentResults = {
+                    summaries: analysisData.summaries,
+                    model: analysisData.model,
+                    num_responses: analysisData.num_responses
+                };
+                currentResultIndex = 0;
+                
+                // Update results view
+                const resultsQ = document.getElementById('results-question');
+                resultsQ.innerHTML = `${currentSurvey.question}<span class="subtitle" id="results-subtitle"></span>`;
+                
+                updateResultDisplay();
+                showView('results');
+                
+            } catch (error) {
+                console.error('Error analyzing:', error);
+                alert('Failed to analyze responses: ' + error.message);
+                showView('survey');
+            }
+        }
+        
+        function updateResultDisplay() {
+            if (!currentResults || !currentResults.summaries.length) return;
+            
+            const summary = currentResults.summaries[currentResultIndex];
+            const total = currentResults.summaries.length;
+            
+            document.getElementById('result-summary').textContent = summary.summary;
+            document.getElementById('results-subtitle').textContent = 
+                `(based on ${summary.num_respondents} response${summary.num_respondents !== 1 ? 's' : ''})`;
+            document.getElementById('result-counter').textContent = `${currentResultIndex + 1} / ${total}`;
+            
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            
+            prevBtn.disabled = currentResultIndex === 0;
+            nextBtn.disabled = currentResultIndex === total - 1;
+            
+            prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
+            nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
+            prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
+            nextBtn.style.cursor = nextBtn.disabled ? 'not-allowed' : 'pointer';
+        }
+        
+        function prevResult() {
+            if (currentResultIndex > 0) {
+                currentResultIndex--;
+                updateResultDisplay();
+            }
+        }
+        
+        function nextResult() {
+            if (currentResults && currentResultIndex < currentResults.summaries.length - 1) {
+                currentResultIndex++;
+                updateResultDisplay();
+            }
+        }
+        
+        // Widget config from parent iframe
+        async function updateConfig(config) {
+            widgetConfig = config;
+            console.log('Survey widget received config:', config);
+            
+            // Detect the main Beamer+ server URL from parent
+            try {
+                serverUrl = window.parent.location.origin;
+            } catch (e) {
+                serverUrl = window.location.protocol + '//' + window.location.hostname + ':5000';
+            }
+            
+            // Override with explicit serverUrl if provided
+            if (config.serverUrl) {
+                serverUrl = config.serverUrl;
+            }
+            
+            // Try to connect
+            const connected = await connectToServer();
+            
+            if (!connected) {
+                showView('error');
+                return;
+            }
+            
+            // Pre-fill survey settings from config
+            if (config.question) {
+                document.getElementById('survey-question').value = config.question;
+            }
+            if (config.numSummaries) {
+                document.getElementById('survey-num-summaries').value = config.numSummaries;
+            }
+            
+            // Select model if specified
+            if (config.model) {
+                await new Promise(r => setTimeout(r, 100));
+                const modelSelect = document.getElementById('survey-model');
+                for (let option of modelSelect.options) {
+                    if (option.value === config.model) {
+                        modelSelect.value = config.model;
+                        break;
+                    }
+                }
+            }
+            
+            // If we have config settings (question, model), auto-create the survey
+            // Skip the create form since settings come from config file
+            const hasConfigSettings = config.question || config.model;
+            if (hasConfigSettings && isConnected) {
+                await new Promise(r => setTimeout(r, 200));
+                await createSurvey();
+            } else {
+                showView('create');
+            }
+        }
+        
+        function destroy() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+        
+        // Listen for config from parent (when used as widget)
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'widget-config') {
+                updateConfig(event.data.config);
+            } else if (event.data.type === 'widget-cleanup') {
+                destroy();
+            }
+        });
+        
+        // Keyboard navigation for results
+        document.addEventListener('keydown', (e) => {
+            if (currentResults) {
+                if (e.key === 'ArrowLeft') prevResult();
+                if (e.key === 'ArrowRight') nextResult();
+            }
+            // Space/Enter to analyze when on survey view (only if conditions are met)
+            if (currentSurvey && !currentResults && (e.key === ' ' || e.key === 'Enter')) {
+                const numSummaries = currentSurvey.num_summaries || 3;
+                if (responseCount >= numSummaries) {
+                    analyzeResponses();
+                }
+            }
+        });
+        
+        // Check for standalone use with query params
+        const urlParams = new URLSearchParams(window.location.search);
+        const serverParam = urlParams.get('server');
+        if (serverParam) {
+            serverUrl = serverParam;
+            connectToServer().then(connected => {
+                if (!connected) showView('error');
+            });
+        }
+    </script>
+</body>
+</html>
