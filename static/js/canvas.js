@@ -14,6 +14,8 @@ export class Canvas {
         this.canvas.style.height = `${rect.height}px`;
         
         this.pointer_mode = 'hand';
+        // Prevent browser from hijacking touch/pen input for scrolling
+        this.canvas.style.touchAction = 'none';
         container.appendChild(this.canvas);
 
         // Ensure clicks pass through when in hand mode by default
@@ -40,12 +42,14 @@ export class Canvas {
         this.strokeColor = 'black'
         this.strokeWidth = 2
         this.dpr = dpr;
-        
-        // E-ink optimization: detect and adjust
-        this.isEink = this.detectEink();
-        this.minPointDistance = this.isEink ? 5 : 1; // Skip more points on e-ink
-        this.lastDrawTime = 0;
-        this.drawThrottle = this.isEink ? 100 : 0; // Throttle drawing on e-ink
+
+        // Inkwell-style drawing state
+        this.pointQueue = [];     // raw input points queued for next rAF
+        this.splinePts = [];      // rolling Catmull-Rom window (last 4+ drawn)
+        this.rafId = null;
+        this.cachedRect = null;   // cached per-stroke, not per-event
+        this.TENSION = 0.5;
+        this.useRawInput = false; // set true if pointerrawupdate available
 
         this.history = [];
         this.redoStack = [];
@@ -62,26 +66,21 @@ export class Canvas {
         this.commitHistory();
     }
     
-    detectEink() {
-        // Heuristic: e-ink devices typically have very low color depth
-        // and specific user agents, but we'll use a simple detection
-        // You can also add a manual toggle if needed
-        const colorDepth = window.screen.colorDepth;
-        const userAgent = navigator.userAgent.toLowerCase();
-        
-        // Check for known e-ink devices
-        if (userAgent.includes('kindle') || 
-            userAgent.includes('kobo') || 
-            userAgent.includes('remarkable')) {
-            return true;
-        }
-        
-        // Low color depth might indicate e-ink
-        if (colorDepth <= 8) {
-            return true;
-        }
-        
-        return false;
+    // ── Catmull-Rom spline segment ──────────────────────────────────────────
+    catmullRomSegment(ctx, p0, p1, p2, p3) {
+        const t = this.TENSION * 2;
+        const cp1x = p1.x + (p2.x - p0.x) / 6 * t;
+        const cp1y = p1.y + (p2.y - p0.y) / 6 * t;
+        const cp2x = p2.x - (p3.x - p1.x) / 6 * t;
+        const cp2y = p2.y - (p3.y - p1.y) / 6 * t;
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    }
+
+    drawSplineSegment(ctx, p0, p1, p2, p3) {
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        this.catmullRomSegment(ctx, p0, p1, p2, p3);
+        ctx.stroke();
     }
 
     setPointerMode(pointer_mode) {
@@ -97,29 +96,99 @@ export class Canvas {
 
     setupEvents(drawable) {
         if (drawable) {
-            this.canvas.addEventListener('mousedown', e => this.startDraw(e));
-            this.canvas.addEventListener('mousemove', e => this.draw(e));
-            this.canvas.addEventListener('mouseup', e => this.stopDraw(e));
-            this.canvas.addEventListener('mouseleave', e => this.stopDraw(e));
+            // Bind handlers so we can add/remove them by reference
+            this._onDown = e => this.startDraw(e);
+            this._onMove = e => this.draw(e);
+            this._onUp = e => this.stopDraw(e);
 
-            this.canvas.addEventListener('touchstart', e => this.startDraw(e), { passive: false });
-            this.canvas.addEventListener('touchmove', e => this.draw(e), { passive: false });
-            this.canvas.addEventListener('touchend', e => this.stopDraw(e), { passive: false });
+            // Use pointer events for unified mouse/touch/stylus handling
+            this.canvas.addEventListener('pointerdown', this._onDown, { passive: false });
+            this.canvas.addEventListener('pointermove', this._onMove, { passive: false });
+            document.addEventListener('pointerup', this._onUp);
+            document.addEventListener('pointercancel', this._onUp);
+            this.canvas.addEventListener('contextmenu', e => e.preventDefault());
         }
     }
 
     getPos(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        if (e.touches) {
-            return { 
-                x: e.touches[0].clientX - rect.left, 
-                y: e.touches[0].clientY - rect.top 
-            };
-        }
-        return { 
-            x: e.clientX - rect.left, 
-            y: e.clientY - rect.top 
+        // Use cachedRect per-stroke for performance, fall back to fresh rect
+        const rect = this.cachedRect || this.canvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
         };
+    }
+
+    enqueuePoint(e) {
+        const { x, y } = this.getPos(e);
+        this.pointQueue.push({ x, y, pressure: e.pressure || 0.5 });
+    }
+
+    // ── rAF render loop: drains point queue each frame ────────────────────
+    renderLoop() {
+        if (!this.drawing && this.pointQueue.length === 0) { this.rafId = null; return; }
+        this.rafId = requestAnimationFrame(() => this.renderLoop());
+
+        if (this.pointQueue.length === 0) return;
+
+        const batch = this.pointQueue;
+        this.pointQueue = [];
+
+        // Pick the right context (stroke buffer for highlighter)
+        const ctx = (this.currentStroke && this.currentStroke.mode === 'highlight')
+            ? this.strokeBufferCtx : this.ctx;
+
+        for (const pt of batch) {
+            // Shape-lock detection bookkeeping
+            if (this.currentStroke) {
+                this.currentStroke.points.push(pt);
+                const now = Date.now();
+                if (!this.shapeLock) {
+                    this.lastMoveTime = now;
+                    this.lastMovePoint = pt;
+                    if (this.shapeLockTimer) clearTimeout(this.shapeLockTimer);
+                    this.shapeLockTimer = setTimeout(() => this.tryLockShape(), this.shapeLockDelay);
+                }
+                if (this.shapeLock) {
+                    this.drawLockedShape(pt);
+                    continue;
+                }
+            }
+
+            this.splinePts.push(pt);
+            const n = this.splinePts.length;
+
+            if (n === 2) {
+                // First segment: just a line
+                ctx.beginPath();
+                ctx.moveTo(this.splinePts[0].x, this.splinePts[0].y);
+                ctx.lineTo(this.splinePts[1].x, this.splinePts[1].y);
+                ctx.stroke();
+            } else if (n >= 4) {
+                // Full Catmull-Rom with look-ahead
+                this.drawSplineSegment(
+                    ctx,
+                    this.splinePts[n - 4],
+                    this.splinePts[n - 3],
+                    this.splinePts[n - 2],
+                    this.splinePts[n - 1]
+                );
+            }
+
+            // Keep buffer trimmed — only last 4 needed for next segment
+            if (this.splinePts.length > 8) this.splinePts = this.splinePts.slice(-4);
+        }
+
+        // For highlighter, composite the buffer to main canvas in real-time
+        if (this.currentStroke && this.currentStroke.mode === 'highlight') {
+            this.ctx.putImageData(this.savedCanvasState, 0, 0);
+            this.ctx.save();
+            this.ctx.globalAlpha = 0.4;
+            this.ctx.globalCompositeOperation = 'multiply';
+            const rect = this.canvas.getBoundingClientRect();
+            this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
+            this.ctx.restore();
+        }
     }
 
     setStrokeColor(strokeColor) {
@@ -223,22 +292,24 @@ export class Canvas {
     }
 
     startDraw(e) {
-        if (this.pointer_mode === "hand") {
-            return;
-        }
-
+        if (this.pointer_mode === "hand") return;
+        if (!e.isPrimary) return;
         e.preventDefault();
+
+        // Capture pointer so events keep flowing even if pointer leaves canvas
+        this.canvas.setPointerCapture(e.pointerId);
+
         this.drawing = true;
         this.shapeLock = null;
+        this.splinePts = [];
+        this.pointQueue = [];
+        this.cachedRect = this.canvas.getBoundingClientRect(); // cache once per stroke
+
         if (this.shapeLockTimer) {
             clearTimeout(this.shapeLockTimer);
             this.shapeLockTimer = null;
         }
         this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-
-        const ctx = this.ctx;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
 
         const p = this.getPos(e);
         this.lastMoveTime = Date.now();
@@ -254,29 +325,25 @@ export class Canvas {
                 this.ctx.globalCompositeOperation = "source-over";
                 break;
 
-            case "highlight":
+            case "highlight": {
                 // For highlighter, setup a stroke buffer
-                const rect = this.canvas.getBoundingClientRect();
+                const rect = this.cachedRect;
                 this.strokeBuffer.width = rect.width * this.dpr;
                 this.strokeBuffer.height = rect.height * this.dpr;
-                
-                // Get a fresh context after resizing
+
                 this.strokeBufferCtx = this.strokeBuffer.getContext("2d");
                 this.strokeBufferCtx.scale(this.dpr, this.dpr);
                 this.strokeBufferCtx.lineCap = 'round';
                 this.strokeBufferCtx.lineJoin = 'round';
                 this.strokeBufferCtx.imageSmoothingEnabled = true;
                 this.strokeBufferCtx.imageSmoothingQuality = 'high';
-                
-                // Draw with full opacity on buffer
                 this.strokeBufferCtx.globalAlpha = 1;
                 this.strokeBufferCtx.globalCompositeOperation = "source-over";
-                
-                // Save the current canvas state
+
                 this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-                
                 width = this.strokeWidth * 8;
                 break;
+            }
 
             case "erase":
                 this.ctx.globalCompositeOperation = "destination-out";
@@ -286,170 +353,107 @@ export class Canvas {
                 break;
         }
 
+        // Configure drawing context
+        const drawCtx = (mode === 'highlight') ? this.strokeBufferCtx : this.ctx;
+        drawCtx.lineJoin = 'round';
+        drawCtx.lineCap = 'round';
+        drawCtx.strokeStyle = (mode === 'erase') ? 'rgba(0,0,0,1)' : color;
+        drawCtx.lineWidth = width;
+
         this.currentStroke = {
-            points: [p],
+            points: [{ ...p, pressure: e.pressure || 0.5 }],
             color,
             width,
             mode
         };
+
+        this.enqueuePoint(e);
+
+        // Start the rAF render loop
+        if (!this.rafId) this.rafId = requestAnimationFrame(() => this.renderLoop());
     }
 
     draw(e) {
-        if (this.pointer_mode === "hand") {
-            return;
-        }
-
-        if (!this.drawing) return;
+        if (this.pointer_mode === "hand") return;
+        if (!e.isPrimary || !this.drawing) return;
         e.preventDefault();
-        
-        // Throttle drawing updates for e-ink
-        const now = Date.now();
-        if (this.isEink && now - this.lastDrawTime < this.drawThrottle) {
-            return;
-        }
-        this.lastDrawTime = now;
-        
-        const p = this.getPos(e);
-        const pts = this.currentStroke.points;
-        
-        // Skip if point is too close to last point (reduces jitter)
-        if (pts.length > 0) {
-            const lastPt = pts[pts.length - 1];
-            const dist = Math.sqrt(Math.pow(p.x - lastPt.x, 2) + Math.pow(p.y - lastPt.y, 2));
-            if (dist < this.minPointDistance) return; // Skip points that are too close
-        }
-        
-        pts.push(p);
 
-        if (!this.shapeLock) {
-            this.lastMoveTime = now;
-            this.lastMovePoint = p;
-            if (this.shapeLockTimer) {
-                clearTimeout(this.shapeLockTimer);
-            }
-            this.shapeLockTimer = setTimeout(() => this.tryLockShape(), this.shapeLockDelay);
-        }
-
-        if (this.shapeLock) {
-            this.drawLockedShape(p);
-            return;
-        }
-
-        // Use stroke buffer for highlighter, main context for others
-        const ctx = this.currentStroke.mode === 'highlight' ? this.strokeBufferCtx : this.ctx;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = this.currentStroke.color;
-        ctx.lineWidth = this.currentStroke.width;
-        
-        // For e-ink: use simpler straight lines for preview
-        if (this.isEink) {
-            if (pts.length >= 2) {
-                ctx.beginPath();
-                const p1 = pts[pts.length - 2];
-                const p2 = pts[pts.length - 1];
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-                ctx.stroke();
-            }
-        } else {
-            // Regular smooth curves for normal displays
-            if (pts.length > 3) {
-                ctx.beginPath();
-                const p0 = pts[pts.length - 4];
-                const p1 = pts[pts.length - 3];
-                const p2 = pts[pts.length - 2];
-                const p3 = pts[pts.length - 1];
-                
-                // Catmull-Rom to Bezier conversion
-                const cp1x = p1.x + (p2.x - p0.x) / 6;
-                const cp1y = p1.y + (p2.y - p0.y) / 6;
-                const cp2x = p2.x - (p3.x - p1.x) / 6;
-                const cp2y = p2.y - (p3.y - p1.y) / 6;
-                
-                ctx.moveTo(p1.x, p1.y);
-                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
-                ctx.stroke();
-            } else if (pts.length === 2) {
-                // First segment - simple line
-                ctx.beginPath();
-                ctx.moveTo(pts[0].x, pts[0].y);
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
-            } else if (pts.length === 3) {
-                // Second segment - quadratic curve
-                ctx.beginPath();
-                const p0 = pts[0];
-                const p1 = pts[1];
-                const p2 = pts[2];
-                const midX = (p1.x + p2.x) / 2;
-                const midY = (p1.y + p2.y) / 2;
-                ctx.moveTo(p0.x, p0.y);
-                ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
-                ctx.stroke();
-            }
-        }
-        
-        // For highlighter, composite the buffer to main canvas in real-time
-        if (this.currentStroke.mode === 'highlight') {
-            // Restore the saved state
-            this.ctx.putImageData(this.savedCanvasState, 0, 0);
-            
-            // Composite the stroke buffer with proper alpha
-            this.ctx.save();
-            this.ctx.globalAlpha = 0.4;
-            this.ctx.globalCompositeOperation = "multiply";
-            
-            const rect = this.canvas.getBoundingClientRect();
-            this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
-            
-            this.ctx.restore();
-        }
+        // Drain all coalesced points — browser batches these between frames
+        const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+        for (const p of coalesced) this.enqueuePoint(p);
     }
 
     stopDraw(e) {
-        if (this.pointer_mode === "hand") {
-            return;
+        if (this.pointer_mode === "hand") return;
+        if (!this.drawing) return;
+
+        this.drawing = false;
+        // Only enqueue the final point if the event has valid coordinates
+        // (pointercancel can have clientX/clientY of 0 on some devices)
+        if (e.clientX !== 0 || e.clientY !== 0) {
+            this.enqueuePoint(e);
         }
 
-        if (!this.drawing) return;
-        e.preventDefault();
         if (this.shapeLockTimer) {
             clearTimeout(this.shapeLockTimer);
             this.shapeLockTimer = null;
         }
-        
+
+        // Pick draw context
+        const ctx = (this.currentStroke && this.currentStroke.mode === 'highlight')
+            ? this.strokeBufferCtx : this.ctx;
+
+        // Flush remaining queued points synchronously so stroke ends precisely
+        for (const pt of this.pointQueue) {
+            this.splinePts.push(pt);
+            const m = this.splinePts.length;
+            if (m === 2) {
+                ctx.beginPath();
+                ctx.moveTo(this.splinePts[0].x, this.splinePts[0].y);
+                ctx.lineTo(this.splinePts[1].x, this.splinePts[1].y);
+                ctx.stroke();
+            } else if (m >= 4) {
+                this.drawSplineSegment(
+                    ctx,
+                    this.splinePts[m - 4],
+                    this.splinePts[m - 3],
+                    this.splinePts[m - 2],
+                    this.splinePts[m - 1]
+                );
+            }
+            if (this.splinePts.length > 8) this.splinePts = this.splinePts.slice(-4);
+        }
+        this.pointQueue = [];
+
+        // Draw final tail segment with phantom look-ahead
+        const m = this.splinePts.length;
+        if (m >= 2) {
+            const p1 = this.splinePts[m - 2];
+            const p2 = this.splinePts[m - 1];
+            const p0 = m >= 3 ? this.splinePts[m - 3] : p1;
+            const p3 = { x: p2.x + (p2.x - p1.x), y: p2.y + (p2.y - p1.y), pressure: p2.pressure };
+            this.drawSplineSegment(ctx, p0, p1, p2, p3);
+        }
+
+        this.splinePts = [];
+
         // For highlighter, finalize the composite
         if (this.currentStroke && this.currentStroke.mode === 'highlight') {
-            // Restore the saved canvas state
             this.ctx.putImageData(this.savedCanvasState, 0, 0);
-            
-            // Composite the final stroke buffer with proper alpha
             this.ctx.save();
             this.ctx.globalAlpha = 0.4;
             this.ctx.globalCompositeOperation = "multiply";
-            
             const rect = this.canvas.getBoundingClientRect();
             this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
-            
             this.ctx.restore();
-            
-            // Clear the stroke buffer and saved state
             this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
-            this.savedCanvasState = null;
         }
-        
-        // For e-ink: redraw the entire stroke smoothly when pen lifts
-        // This creates a cleaner final result
-        if (this.isEink && this.currentStroke && this.currentStroke.points.length > 2) {
-            this.redrawStrokeSmooth(this.currentStroke);
-        }
-        
-        this.drawing = false;
+
         this.currentStroke = null;
         this.ctx.globalCompositeOperation = "source-over";
         this.ctx.globalAlpha = 1;
         this.savedCanvasState = null;
+        this.cachedRect = null;
         this.commitHistory();
     }
 
@@ -503,35 +507,7 @@ export class Canvas {
         return shape;
     }
     
-    redrawStrokeSmooth(stroke) {
-        // Clear and redraw the stroke with better smoothing
-        // This happens only once when the pen lifts, so it's acceptable on e-ink
-        const ctx = this.ctx;
-        const pts = stroke.points;
-        
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.width;
-        
-        // Draw a simplified smooth path through all points
-        if (pts.length < 3) return;
-        
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        
-        // Use quadratic curves for smoothing (simpler than Bezier)
-        for (let i = 1; i < pts.length - 1; i++) {
-            const xc = (pts[i].x + pts[i + 1].x) / 2;
-            const yc = (pts[i].y + pts[i + 1].y) / 2;
-            ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-        }
-        
-        // Draw final point
-        const lastPt = pts[pts.length - 1];
-        ctx.lineTo(lastPt.x, lastPt.y);
-        ctx.stroke();
-    }
+
 
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width / this.dpr, this.canvas.height / this.dpr);
