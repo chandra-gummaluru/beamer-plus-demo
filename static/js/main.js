@@ -790,6 +790,10 @@ document.addEventListener('keydown', (e) => {
 async function goToSlide(slideIndex) {
     if (slideIndex < 0 || slideIndex >= totalSlides) return;
     
+    // Cancel pending debounced sync and save immediately to correct slide
+    clearTimeout(annotationSyncTimeout);
+    annotations[currentSlide] = annCvs.canvas.toDataURL("image/png");
+    
     currentSlide = slideIndex;
     await renderSlide(currentSlide);
     updateSlideNavigator();
