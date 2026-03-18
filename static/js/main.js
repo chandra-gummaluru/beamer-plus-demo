@@ -85,6 +85,7 @@ splitViewBtn.onClick(() => {
     document.body.classList.toggle('split-view-active', splitViewEnabled);
     
     if (splitViewEnabled) {
+        rightSlideIndex = currentSlide;
         // Update button icon to show it's active
         splitViewBtn.el.innerHTML = '<i class="fa-solid fa-xmark"></i>';
         
@@ -93,6 +94,8 @@ splitViewBtn.onClick(() => {
             initializeSecondCanvases();
             
             // Populate right navigator
+            populateSlideNavigatorRight();
+            rightSlideIndex = currentSlide;
             populateSlideNavigatorRight();
             
             // Resize all canvases after layout settles
