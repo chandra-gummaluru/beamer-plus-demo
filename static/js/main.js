@@ -629,7 +629,7 @@ function updateSlideNavigator() {
     items.forEach((item, index) => {
         if (index === currentSlide) {
             item.classList.add('active');
-            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            item.scrollIntoView({ behavior: 'smooth', inline: 'nearest' });
         } else {
             item.classList.remove('active');
         }
@@ -665,7 +665,7 @@ function updateSlideNavigatorRight() {
     items.forEach((item, index) => {
         if (index === rightSlideIndex) {
             item.classList.add('active');
-            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            item.scrollIntoView({ behavior: 'smooth', inline: 'nearest' });
         } else {
             item.classList.remove('active');
         }

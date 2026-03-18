@@ -3,8 +3,8 @@
 /* Main content wrapper */
 #main-content {
     display: flex;
-    margin-left: 75px;
-    height: calc(100vh - 60px);
+    margin-left: 0;
+    height: calc(100vh - 60px - 75px);
 }
 
 /* Default single-view layout */
@@ -34,7 +34,7 @@
 
 /* Split view active state */
 body.split-view-active #main-content {
-    margin-right: 75px;
+    margin-right: 0;
 }
 
 body.split-view-active #pdf-container {
@@ -46,8 +46,16 @@ body.split-view-active #pdf-container-2 {
     width: 50%;
 }
 
+body.split-view-active #slide-navigator {
+    left: 0;
+    right: 50%;
+    width: auto;
+    border-right: 5px solid #666;
+}
+
+
 body.split-view-active #slide-navigator-right {
-    display: block;
+    display: flex;
 }
 
 #pdf-container video, #pdf-container-2 video {
@@ -138,5 +146,5 @@ model-viewer {
     flex-direction: row;
     align-items: safe;
     border: 1px solid black;
-    overflow: hidden
+    overflow: hidden;
 }
