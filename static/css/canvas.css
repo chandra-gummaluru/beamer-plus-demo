@@ -183,7 +183,7 @@ model-viewer {
     align-items: center;
     justify-content: center;
     z-index: 50;
-    background: #f0f0f0;
+    background: #ffffff;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.1s ease;

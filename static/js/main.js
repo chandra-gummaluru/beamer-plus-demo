@@ -959,8 +959,11 @@ async function renderSlide(slideIndex) {
         console.error("No slides.pdf found in ZIP");
         return;
     }
-    
+
+    showSlideLoading(slide_canvas_container);
+
     const pdfData = await pdfFile.async("arraybuffer");
+
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
     
@@ -987,14 +990,17 @@ async function renderSlide(slideIndex) {
     
     if (!slideConfig) {
         console.log('No config for this slide');
+        hideSlideLoading(slide_canvas_container);
         return;
     }
 
     if (hasMedia(slideConfig)) {
-        showSlideLoading(slide_canvas_container.parentElement);
         clearTimeout(slideLoadingTimer);
-        slideLoadingTimer = setTimeout(() => hideSlideLoading(slide_canvas_container.parentElement), 2000);
+        slideLoadingTimer = setTimeout(() => hideSlideLoading(slide_canvas_container), 400);
+    } else {
+        hideSlideLoading(slide_canvas_container);
     }
+
 
     
     console.log('Videos to render:', slideConfig.videos?.length || 0);
@@ -1150,8 +1156,11 @@ async function renderSlideRight(slideIndex) {
     
     const pdfFile = zipFile.file("slides.pdf");
     if (!pdfFile) return;
-    
+
+    showSlideLoading(slide_canvas_container2);
+
     const pdfData = await pdfFile.async("arraybuffer");
+
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
     
@@ -1178,14 +1187,17 @@ async function renderSlideRight(slideIndex) {
     const slideConfig = await loadSlideConfig(slideIndex);
     
     if (!slideConfig) {
+        hideSlideLoading(slide_canvas_container2);
         return;
     }
 
     if (hasMedia(slideConfig)) {
-        showSlideLoading(slide_canvas_container2.parentElement);
         clearTimeout(slideLoadingTimerRight);
-        slideLoadingTimerRight = setTimeout(() => hideSlideLoading(slide_canvas_container2.parentElement), 2000);
+        slideLoadingTimerRight = setTimeout(() => hideSlideLoading(slide_canvas_container2), 400);
+    } else {
+        hideSlideLoading(slide_canvas_container2);
     }
+
 
     
     // Get container's actual size for positioning all media elements
