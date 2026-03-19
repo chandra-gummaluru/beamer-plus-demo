@@ -476,4 +476,4 @@ def handle_screen_frame(data):
     emit("screen_frame", data, room='viewer')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
