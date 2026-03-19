@@ -31,6 +31,5 @@
 
 /* Keep old layout tweak only if you still need it */
 #pdf-container {
-    padding-left: 80px;
     box-sizing: border-box;
 }
