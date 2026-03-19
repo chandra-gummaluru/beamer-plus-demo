@@ -606,21 +606,6 @@ const bookmarkTooltip = document.createElement('div');
 bookmarkTooltip.id = 'bookmark-tooltip';
 document.body.appendChild(bookmarkTooltip);
 
-function loadBookmarks() {
-    if (!presentationFilename) return;
-    try {
-        const stored = localStorage.getItem(`bookmarks_${presentationFilename}`);
-        bookmarks = stored ? JSON.parse(stored) : {};
-    } catch (e) {
-        bookmarks = {};
-    }
-}
-
-function saveBookmarks() {
-    if (!presentationFilename) return;
-    localStorage.setItem(`bookmarks_${presentationFilename}`, JSON.stringify(bookmarks));
-}
-
 function attachTooltip(item, slideIndex) {
     item.addEventListener('mouseenter', () => {
         const name = bookmarks[slideIndex];
@@ -662,7 +647,6 @@ function openBookmarkInput(item, slideIndex) {
             } else {
                 bookmarks[slideIndex] = name;
             }
-            saveBookmarks();
             item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
             populateBookmarkPins();
         }
@@ -798,7 +782,6 @@ let annotationsRight = {};
 let currentSlide = 0;
 let totalSlides = 0;
 let bookmarks = {};
-let presentationFilename = '';
 
 async function loadSlideConfig(slideIndex) {
     if (slideConfigs[slideIndex]) {
@@ -1322,8 +1305,6 @@ folderInput.addEventListener('change', async (e) => {
     currentSlide = 0;
     slideConfigs = {};
     mediaCache = {};
-    presentationFilename = files[0].webkitRelativePath.split('/')[0];
-    loadBookmarks();
 
     await renderSlide(0);
 
@@ -1407,8 +1388,6 @@ zipInput.addEventListener('change', async (e) => {
         currentSlide = 0;
         slideConfigs = {};
         mediaCache = {};
-        presentationFilename = file.name;
-        loadBookmarks();
 
         await renderSlide(0);
 
