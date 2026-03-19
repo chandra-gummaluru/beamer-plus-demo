@@ -51,8 +51,8 @@
     /* Floating panel */
     #floating-annotation-panel {
         position: fixed;
-        bottom: 70px;
-        left: 85px;
+        bottom: 85px;
+        left: 10px;
         background: #ccc;
         padding: 10px;
         border-radius: 8px;
@@ -101,8 +101,6 @@
 .controls-right {
     justify-content: flex-end;
 }
-
-/* Button styling moved to static/css/button.css */
 
 /* Control panel inputs */
 #control-panel input[type=range],
