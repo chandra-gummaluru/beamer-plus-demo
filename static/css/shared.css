@@ -32,7 +32,7 @@ input[type=file] {
     overflow-y: auto;
     overflow-x: hidden;
     z-index: 100;
-    padding: 10px 0;
+    padding: 0 0 10px 0;
     border-right: 2px solid #666;
     border-top: none;
     display: flex;
@@ -147,4 +147,70 @@ input[type=file] {
     #control-panel {
         display: none !important;
     }
+}
+
+
+
+/* ── Bookmark system ─────────────────────────────── */
+
+#bookmark-pins {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #ddd;
+    padding: 10px 0 4px;
+    border-bottom: 2px solid #aaa;
+}
+
+.slide-nav-item.bookmarked {
+    background: #e8c84a;
+    border-color: #b8941a;
+    color: #3a2a00;
+}
+
+.slide-nav-item.bookmarked:hover {
+    background: #d4b030;
+    border-color: #8a6c0e;
+}
+
+.slide-nav-item.active.bookmarked {
+    background: #c9a828;
+    border-color: #7a5c08;
+}
+
+#bookmark-tooltip {
+    position: fixed;
+    background: #333;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: "Computer Modern Sans", sans-serif;
+    white-space: nowrap;
+    z-index: 500;
+    pointer-events: none;
+    transform: translateY(-50%);
+    display: none;
+}
+
+.bookmark-input {
+    width: 85%;
+    background: #fff;
+    border: 1px solid #666;
+    border-radius: 2px;
+    font-size: 12px;
+    font-family: "Computer Modern Sans", sans-serif;
+    text-align: center;
+    padding: 2px 3px;
+    outline: none;
+    color: #333;
+}
+
+body.split-view-active #bookmark-pins {
+    display: none !important;
 }
