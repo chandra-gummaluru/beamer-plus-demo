@@ -1,10 +1,10 @@
 /* Beamer+ Canvas and Display Styles */
 
-/* Main content wrapper */
+/* Main content wrapper — singular view */
 #main-content {
     display: flex;
-    margin-left: 0;
-    height: calc(100vh - 60px - 75px);
+    margin-left: 75px;
+    height: calc(100vh - 60px);
 }
 
 /* Default single-view layout */
@@ -34,7 +34,9 @@
 
 /* Split view active state */
 body.split-view-active #main-content {
+    margin-left: 0;
     margin-right: 0;
+    height: calc(100vh - 60px - 75px);
 }
 
 body.split-view-active #pdf-container {
@@ -46,16 +48,36 @@ body.split-view-active #pdf-container-2 {
     width: 50%;
 }
 
+/* Move left navigator to bottom in split view */
 body.split-view-active #slide-navigator {
-    left: 0;
-    right: 50%;
+    left: 10px;
+    right: calc(50% + 8px);
+    bottom: 10px;
+    top: auto;
     width: auto;
-    border-right: 5px solid #666;
+    height: 75px;
+    flex-direction: row;
+    padding: 0 10px;
+    border: 2px solid #666;
+    border-radius: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 
 body.split-view-active #slide-navigator-right {
     display: flex;
+    left: calc(50% + 8px);
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    border-radius: 4px;
+}
+
+
+/* Slide nav items horizontal in split view */
+body.split-view-active .slide-nav-item {
+    margin: 0 4px;
 }
 
 #pdf-container video, #pdf-container-2 video {
