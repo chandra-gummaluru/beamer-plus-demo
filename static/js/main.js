@@ -841,6 +841,8 @@ async function loadMediaFromPath(path) {
 }
 
 let annotationSyncTimeout = null;
+let slideLoadingTimer = null;
+let slideLoadingTimerRight = null;
 annCvs.canvas.addEventListener('mouseup', () => syncAnnotations());
 annCvs.canvas.addEventListener('touchend', () => syncAnnotations());
 
@@ -925,6 +927,25 @@ async function goToSlide(slideIndex) {
     });
 }
 
+function showSlideLoading(container) {
+    const overlay = container.querySelector('.slide-loading-overlay');
+    if (overlay) overlay.classList.add('visible');
+}
+
+function hideSlideLoading(container) {
+    const overlay = container.querySelector('.slide-loading-overlay');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+function hasMedia(config) {
+    return config && (
+        (config.videos && config.videos.length > 0) ||
+        (config.models && config.models.length > 0) ||
+        (config.audio && config.audio.length > 0) ||
+        (config.widgets && config.widgets.length > 0)
+    );
+}
+
 async function renderSlide(slideIndex) {
     console.log('renderSlide called:', slideIndex);
     
@@ -968,6 +989,13 @@ async function renderSlide(slideIndex) {
         console.log('No config for this slide');
         return;
     }
+
+    if (hasMedia(slideConfig)) {
+        showSlideLoading(slide_canvas_container.parentElement);
+        clearTimeout(slideLoadingTimer);
+        slideLoadingTimer = setTimeout(() => hideSlideLoading(slide_canvas_container.parentElement), 2000);
+    }
+
     
     console.log('Videos to render:', slideConfig.videos?.length || 0);
     console.log('Models to render:', slideConfig.models?.length || 0);
@@ -1152,6 +1180,13 @@ async function renderSlideRight(slideIndex) {
     if (!slideConfig) {
         return;
     }
+
+    if (hasMedia(slideConfig)) {
+        showSlideLoading(slide_canvas_container2.parentElement);
+        clearTimeout(slideLoadingTimerRight);
+        slideLoadingTimerRight = setTimeout(() => hideSlideLoading(slide_canvas_container2.parentElement), 2000);
+    }
+
     
     // Get container's actual size for positioning all media elements
     const containerRect = slide_canvas_container2.getBoundingClientRect();
