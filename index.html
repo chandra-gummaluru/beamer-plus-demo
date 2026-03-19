@@ -9,13 +9,13 @@
 
   <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json">
-  
+
   <!-- iOS PWA Support -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Beamer+">
   <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
-  
+
   <!-- Favicon -->
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/icon-16x16.png">
@@ -28,6 +28,7 @@
   <link rel="stylesheet" href="/static/css/label.css">
   <link rel="stylesheet" href="/static/css/toggle.css">
   <link rel="stylesheet" href="/static/css/canvas.css">
+  <link rel="stylesheet" href="/static/css/sidebar.css">
   <link rel="stylesheet" href="/static/css/timer.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/splash.css">
@@ -66,6 +67,7 @@
   <div class="controls-right">
 
     <div id="tool-container"></div>
+    <div id="shape-sidebar"></div>
     <div id="color-picker"></div>
     <div id="brush-controls"></div>
     <div id="other-controls"></div>
@@ -97,7 +99,7 @@
         splashScreen.style.display = 'none';
       }, 2000);
     });
-    
+
     // Register Service Worker for PWA
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -106,13 +108,13 @@
             console.log('[PWA] Service Worker registered successfully');
             console.log('[PWA] Scope:', registration.scope);
             console.log('[PWA] Active:', !!registration.active);
-            
+
             // Wait for service worker to be ready
             return navigator.serviceWorker.ready;
           })
           .then((registration) => {
             console.log('[PWA] Service Worker is ready and active');
-            
+
             // Check for updates
             registration.addEventListener('updatefound', () => {
               const newWorker = registration.installing;
@@ -133,20 +135,20 @@
     } else {
       console.warn('[PWA] Service Workers not supported in this browser');
     }
-    
+
     // Handle installation prompt
     let deferredPrompt;
     let installButton;
-    
+
     window.addEventListener('beforeinstallprompt', (e) => {
       console.log('[PWA] beforeinstallprompt event fired');
       e.preventDefault();
       deferredPrompt = e;
-      
+
       // Show install button
       showInstallButton();
     });
-    
+
     function showInstallButton() {
       // Create install button if it doesn't exist
       if (!installButton) {
@@ -171,35 +173,35 @@
           align-items: center;
           gap: 8px;
         `;
-        
+
         installButton.addEventListener('click', async () => {
           if (!deferredPrompt) {
             console.log('[PWA] No install prompt available');
             return;
           }
-          
+
           console.log('[PWA] Showing install prompt');
           deferredPrompt.prompt();
-          
+
           const { outcome } = await deferredPrompt.userChoice;
           console.log('[PWA] Install outcome:', outcome);
-          
+
           if (outcome === 'accepted') {
             console.log('[PWA] User accepted installation');
           } else {
             console.log('[PWA] User dismissed installation');
           }
-          
+
           deferredPrompt = null;
           installButton.style.display = 'none';
         });
-        
+
         document.body.appendChild(installButton);
       }
-      
+
       installButton.style.display = 'flex';
     }
-    
+
     window.addEventListener('appinstalled', () => {
       console.log('[PWA] App installed successfully');
       deferredPrompt = null;
@@ -207,7 +209,7 @@
         installButton.style.display = 'none';
       }
     });
-    
+
     // Log if already installed
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
       console.log('[PWA] App is running in standalone mode (already installed)');

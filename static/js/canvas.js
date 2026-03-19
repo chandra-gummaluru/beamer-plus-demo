@@ -43,6 +43,12 @@ export class Canvas {
         this.strokeWidth = 2
         this.dpr = dpr;
 
+        // E-ink optimization: detect and adjust
+        this.isEink = this.detectEink();
+        this.minPointDistance = this.isEink ? 5 : 1; // Skip more points on e-ink
+        this.lastDrawTime = 0;
+        this.drawThrottle = this.isEink ? 100 : 0; // Throttle drawing on e-ink
+
         // Inkwell-style drawing state
         this.pointQueue = [];     // raw input points queued for next rAF
         this.splinePts = [];      // rolling Catmull-Rom window (last 4+ drawn)
@@ -61,11 +67,13 @@ export class Canvas {
         this.lastMoveTime = 0;
         this.lastMovePoint = null;
         this.savedCanvasState = null;
+        this.shapeTool = null;
+        this.shapeMode = 'draw';
 
         this.setupEvents(drawable);
         this.commitHistory();
     }
-    
+
     // ── Catmull-Rom spline segment ──────────────────────────────────────────
     catmullRomSegment(ctx, p0, p1, p2, p3) {
         const t = this.TENSION * 2;
@@ -82,6 +90,28 @@ export class Canvas {
         this.catmullRomSegment(ctx, p0, p1, p2, p3);
         ctx.stroke();
     }
+    
+    detectEink() {
+        // Heuristic: e-ink devices typically have very low color depth
+        // and specific user agents, but we'll use a simple detection
+        // You can also add a manual toggle if needed
+        const colorDepth = window.screen.colorDepth;
+        const userAgent = navigator.userAgent.toLowerCase();
+
+        // Check for known e-ink devices
+        if (userAgent.includes('kindle') ||
+            userAgent.includes('kobo') ||
+            userAgent.includes('remarkable')) {
+            return true;
+        }
+
+        // Low color depth might indicate e-ink
+        if (colorDepth <= 8) {
+            return true;
+        }
+
+        return false;
+    }
 
     setPointerMode(pointer_mode) {
         this.pointer_mode = pointer_mode;
@@ -92,6 +122,14 @@ export class Canvas {
         } else {
             this.canvas.style.pointerEvents = 'auto';
         }
+    }
+
+    setShapeTool(shapeTool) {
+        this.shapeTool = shapeTool;
+    }
+
+    setShapeMode(shapeMode) {
+        this.shapeMode = shapeMode;
     }
 
     setupEvents(drawable) {
@@ -319,6 +357,43 @@ export class Canvas {
         let width = this.strokeWidth;
         let mode = this.pointer_mode;
 
+        if (this.pointer_mode === "shape") {
+            const shapeMode = this.shapeMode || 'draw';
+            if (shapeMode === 'highlight') {
+                const rect = this.canvas.getBoundingClientRect();
+                this.strokeBuffer.width = rect.width * this.dpr;
+                this.strokeBuffer.height = rect.height * this.dpr;
+                this.strokeBufferCtx = this.strokeBuffer.getContext("2d");
+                this.strokeBufferCtx.scale(this.dpr, this.dpr);
+                this.strokeBufferCtx.lineCap = 'round';
+                this.strokeBufferCtx.lineJoin = 'round';
+                this.strokeBufferCtx.imageSmoothingEnabled = true;
+                this.strokeBufferCtx.imageSmoothingQuality = 'high';
+                this.strokeBufferCtx.globalAlpha = 1;
+                this.strokeBufferCtx.globalCompositeOperation = "source-over";
+                this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                width = this.strokeWidth * 8;
+            } else if (shapeMode === 'erase') {
+                this.ctx.globalCompositeOperation = "destination-out";
+                this.ctx.globalAlpha = 1;
+                width = this.strokeWidth * 12;
+                color = "white";
+            } else {
+                this.ctx.globalAlpha = 1;
+                this.ctx.globalCompositeOperation = "source-over";
+            }
+
+            this.currentStroke = {
+                start: p,
+                end: p,
+                color,
+                width,
+                mode: shapeMode,
+                shape: this.shapeTool
+            };
+            return;
+        }
+
         switch (this.pointer_mode) {
             case "draw":
                 this.ctx.globalAlpha = 1;
@@ -331,15 +406,19 @@ export class Canvas {
                 this.strokeBuffer.width = rect.width * this.dpr;
                 this.strokeBuffer.height = rect.height * this.dpr;
 
+                // Get a fresh context after resizing
                 this.strokeBufferCtx = this.strokeBuffer.getContext("2d");
                 this.strokeBufferCtx.scale(this.dpr, this.dpr);
                 this.strokeBufferCtx.lineCap = 'round';
                 this.strokeBufferCtx.lineJoin = 'round';
                 this.strokeBufferCtx.imageSmoothingEnabled = true;
                 this.strokeBufferCtx.imageSmoothingQuality = 'high';
+                
+                // Draw with full opacity on buffer
                 this.strokeBufferCtx.globalAlpha = 1;
                 this.strokeBufferCtx.globalCompositeOperation = "source-over";
-
+                
+                // Save the current canvas state
                 this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
                 width = this.strokeWidth * 8;
                 break;
@@ -378,9 +457,37 @@ export class Canvas {
         if (!e.isPrimary || !this.drawing) return;
         e.preventDefault();
 
+        // Throttle drawing updates for e-ink
+        const now = Date.now();
+        if (this.isEink && now - this.lastDrawTime < this.drawThrottle) {
+            return;
+        }
+        this.lastDrawTime = now;
+
+        const p = this.getPos(e);
+
+        // Explicit shape-tool preview
+        if (this.currentStroke && this.currentStroke.shape) {
+            this.currentStroke.end = p;
+            this.drawShapePreview(this.currentStroke);
+            return;
+        }
+
         // Drain all coalesced points — browser batches these between frames
         const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-        for (const p of coalesced) this.enqueuePoint(p);
+
+        for (const ptEvent of coalesced) {
+            const pt = this.getPos(ptEvent);
+
+            // Skip if point is too close to last point on e-ink
+            if (this.isEink && this.currentStroke?.points?.length > 0) {
+                const lastPt = this.currentStroke.points[this.currentStroke.points.length - 1];
+                const dist = Math.sqrt((pt.x - lastPt.x) ** 2 + (pt.y - lastPt.y) ** 2);
+                if (dist < this.minPointDistance) continue;
+            }
+
+            this.enqueuePoint(ptEvent);
+        }
     }
 
     stopDraw(e) {
@@ -388,6 +495,25 @@ export class Canvas {
         if (!this.drawing) return;
 
         this.drawing = false;
+        e.preventDefault();
+
+        // Finalize explicit shape-tool drawing
+        if (this.currentStroke && this.currentStroke.shape) {
+            this.drawShapePreview(this.currentStroke);
+
+            if (this.currentStroke.mode === 'highlight') {
+                this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
+            }
+
+            this.currentStroke = null;
+            this.ctx.globalCompositeOperation = "source-over";
+            this.ctx.globalAlpha = 1;
+            this.savedCanvasState = null;
+            this.cachedRect = null;
+            this.commitHistory();
+            return;
+        }
+
         // Only enqueue the final point if the event has valid coordinates
         // (pointercancel can have clientX/clientY of 0 on some devices)
         if (e.clientX !== 0 || e.clientY !== 0) {
@@ -449,6 +575,18 @@ export class Canvas {
             this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
         }
 
+//        // Optional e-ink smoothing pass on freehand strokes
+//        if (
+//            this.isEink &&
+//            this.currentStroke &&
+//            this.currentStroke.points &&
+//            this.currentStroke.points.length > 2 &&
+//            !this.currentStroke.shape &&
+//            !this.shapeLock
+//        ) {
+//            this.redrawStrokeSmooth(this.currentStroke);
+//        }
+
         this.currentStroke = null;
         this.ctx.globalCompositeOperation = "source-over";
         this.ctx.globalAlpha = 1;
@@ -507,7 +645,35 @@ export class Canvas {
         return shape;
     }
     
+    redrawStrokeSmooth(stroke) {
+        // Clear and redraw the stroke with better smoothing
+        // This happens only once when the pen lifts, so it's acceptable on e-ink
+        const ctx = this.ctx;
+        const pts = stroke.points;
 
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width;
+
+        // Draw a simplified smooth path through all points
+        if (pts.length < 3) return;
+
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+
+        // Use quadratic curves for smoothing (simpler than Bezier)
+        for (let i = 1; i < pts.length - 1; i++) {
+            const xc = (pts[i].x + pts[i + 1].x) / 2;
+            const yc = (pts[i].y + pts[i + 1].y) / 2;
+            ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+        }
+
+        // Draw final point
+        const lastPt = pts[pts.length - 1];
+        ctx.lineTo(lastPt.x, lastPt.y);
+        ctx.stroke();
+    }
 
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width / this.dpr, this.canvas.height / this.dpr);
@@ -584,6 +750,72 @@ export class Canvas {
             const bottom = center.y + height / 2;
             const apex = { x: center.x, y: top };
             ctx.moveTo(apex.x, apex.y);
+            ctx.lineTo(right, bottom);
+            ctx.lineTo(left, bottom);
+            ctx.closePath();
+        }
+        ctx.stroke();
+    }
+
+    drawShapePreview(stroke) {
+        if (!stroke || !this.savedCanvasState) return;
+        if (stroke.mode === 'highlight') {
+            this.ctx.putImageData(this.savedCanvasState, 0, 0);
+            this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
+            this.strokeBufferCtx.lineJoin = 'round';
+            this.strokeBufferCtx.lineCap = 'round';
+            this.strokeBufferCtx.strokeStyle = stroke.color;
+            this.strokeBufferCtx.lineWidth = stroke.width;
+            this.strokeBufferCtx.globalAlpha = 1;
+            this.strokeBufferCtx.globalCompositeOperation = "source-over";
+            this.drawShapeFromPoints(stroke.shape, stroke.start, stroke.end, this.strokeBufferCtx);
+
+            const rect = this.canvas.getBoundingClientRect();
+            this.ctx.save();
+            this.ctx.globalAlpha = 0.4;
+            this.ctx.globalCompositeOperation = "multiply";
+            this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
+            this.ctx.restore();
+            return;
+        }
+
+        this.ctx.putImageData(this.savedCanvasState, 0, 0);
+        this.ctx.lineJoin = 'round';
+        this.ctx.lineCap = 'round';
+        this.ctx.strokeStyle = stroke.color;
+        this.ctx.lineWidth = stroke.width;
+        this.ctx.globalAlpha = 1;
+        if (stroke.mode === 'erase') {
+            this.ctx.globalCompositeOperation = "destination-out";
+        } else {
+            this.ctx.globalCompositeOperation = "source-over";
+        }
+        this.drawShapeFromPoints(stroke.shape, stroke.start, stroke.end, this.ctx);
+    }
+
+    drawShapeFromPoints(type, start, end, ctx) {
+        if (!type || !start || !end) return;
+        const left = Math.min(start.x, end.x);
+        const right = Math.max(start.x, end.x);
+        const top = Math.min(start.y, end.y);
+        const bottom = Math.max(start.y, end.y);
+        const width = right - left;
+        const height = bottom - top;
+        const centerX = left + width / 2;
+        const centerY = top + height / 2;
+
+        ctx.beginPath();
+        if (type === 'line') {
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
+        } else if (type === 'rectangle') {
+            ctx.strokeRect(left, top, width, height);
+            return;
+        } else if (type === 'circle') {
+            const radius = Math.max(width, height) / 2;
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        } else if (type === 'triangle') {
+            ctx.moveTo(centerX, top);
             ctx.lineTo(right, bottom);
             ctx.lineTo(left, bottom);
             ctx.closePath();

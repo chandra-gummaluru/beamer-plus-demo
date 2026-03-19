@@ -1,0 +1,36 @@
+/* Shape toolbar section */
+#shape-sidebar {
+    display: none;
+    flex-direction: row;
+    gap: 8px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    position: static;
+    transform: none;
+    z-index: auto;
+    align-items: center;
+}
+
+#shape-sidebar .btn {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+/* Optional slight separation from pen/highlighter/eraser group */
+#shape-sidebar {
+    margin-left: 8px;
+}
+
+/* Keep old layout tweak only if you still need it */
+#pdf-container {
+    padding-left: 80px;
+    box-sizing: border-box;
+}
