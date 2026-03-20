@@ -7,7 +7,6 @@ import { Canvas } from './canvas.js';
 import { renderWidgets, cleanupWidgets, updateWidgetPositions } from './iframe-widget-renderer.js';
 import { Modal } from './beamer_modal.js';
 import { setControlsEnabledAfterUpload, disableControlButtons } from './beamer_ui.js';
-import { addHoldListener } from './events.js';
 
 const socket = io();
 socket.emit('join_presenter');
@@ -48,6 +47,48 @@ const eraser = new Button(toolContainer, {
 const toolSelector = new Selector([hand, pen, highlighter, eraser], 'btn_selected');
 toolSelector.select(hand);
 
+const shapeSidebar = document.getElementById('shape-sidebar');
+
+const lineShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-solid fa-minus"></i>',
+    className: 'btn'
+});
+
+const rectShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-regular fa-square"></i>',
+    className: 'btn'
+});
+
+const circleShapeBtn = new Button(shapeSidebar, {
+    label: '<i class="fa-regular fa-circle"></i>',
+    className: 'btn'
+});
+
+const triangleShapeBtn = new Button(shapeSidebar, {
+    label: `
+    <svg viewBox="0 0 24 24" width="18" height="18"
+         fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="6,4 20,12 6,20"></polygon>
+    </svg>
+    `,
+    className: 'btn'
+});
+
+const shapeSelector = new Selector(
+    [lineShapeBtn, rectShapeBtn, circleShapeBtn, triangleShapeBtn],
+    'btn_selected'
+);
+
+function clearShapeSelection() {
+    shapeSelector.buttons.forEach(btn => btn.el.classList.remove('btn_selected'));
+}
+
+function setShapeSidebarVisible(isVisible) {
+    shapeSidebar.style.display = isVisible ? 'flex' : 'none';
+    updateFloatingPanel();
+}
+
 const colors = ['#eeeeee', '#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#333333'];
 const colorContainer = document.getElementById('color-picker');
 
@@ -84,34 +125,31 @@ const splitViewBtn = new Button(splitViewButtonContainer, {
 splitViewBtn.onClick(() => {
     splitViewEnabled = !splitViewEnabled;
     document.body.classList.toggle('split-view-active', splitViewEnabled);
-    
+
     if (splitViewEnabled) {
-        rightSlideIndex = currentSlide;
         // Update button icon to show it's active
         splitViewBtn.el.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-        
+
         // Initialize second canvases now that container is visible
         setTimeout(() => {
             initializeSecondCanvases();
-            
+
             // Populate right navigator
             populateSlideNavigatorRight();
-            rightSlideIndex = currentSlide;
-            populateSlideNavigatorRight();
-            
+
             // Resize all canvases after layout settles
             setTimeout(() => {
                 annCvs.resize();
                 pdfCvs.resize();
                 if (annCvs2) annCvs2.resize();
                 if (pdfCvs2) pdfCvs2.resize();
-                
+
                 // Re-render slides at new sizes
                 if (zipFile) {
                     renderSlide(currentSlide);
                     renderSlideRight(rightSlideIndex);
                 }
-                
+
                 // Restore the current pointer mode on both canvases
                 setPointerModeAll(annCvs.pointer_mode);
             }, 100);
@@ -119,12 +157,12 @@ splitViewBtn.onClick(() => {
     } else {
         // Reset button icon
         splitViewBtn.el.innerHTML = '<i class="fa-solid fa-columns"></i>';
-        
+
         // Resize canvases back to full size
         setTimeout(() => {
             annCvs.resize();
             pdfCvs.resize();
-            
+
             // Re-render main slide at full size
             if (zipFile) {
                 renderSlide(currentSlide);
@@ -236,83 +274,133 @@ document.body.appendChild(floatingPanel);
 // Function to populate floating panel on mobile
 function updateFloatingPanel() {
     const toolContainer = document.getElementById('tool-container');
+    const shapeSidebar = document.getElementById('shape-sidebar');
     const colorPicker = document.getElementById('color-picker');
     const brushControls = document.getElementById('brush-controls');
     const otherControls = document.getElementById('other-controls');
     const controlsRight = document.querySelector('.controls-right');
-    
+
+    const undoBtnEl = document.getElementById('undo-btn');
+    const redoBtnEl = document.getElementById('redo-btn');
+    const clearBtnEl = document.getElementById('clear-btn');
+
     if (window.innerWidth <= 1300) {
         // Move elements to floating panel on mobile
-        floatingPanel.innerHTML = '';
-        
+        floatingPanel.replaceChildren();
+
         // Tools section
         const toolsSection = document.createElement('div');
         toolsSection.className = 'panel-section';
         if (toolContainer) toolsSection.appendChild(toolContainer);
         floatingPanel.appendChild(toolsSection);
-        
+
+        // Shape tools section
+        // always append the section if shapeSidebar exists,
+        // otherwise the sidebar can get detached from the DOM and "disappear".
+        const shapeSection = document.createElement('div');
+        shapeSection.className = 'panel-section';
+        if (shapeSidebar) {
+            shapeSection.appendChild(shapeSidebar);
+            floatingPanel.appendChild(shapeSection);
+        }
+
         // Colors section
         const colorsSection = document.createElement('div');
         colorsSection.className = 'panel-section';
         if (colorPicker) colorsSection.appendChild(colorPicker);
         floatingPanel.appendChild(colorsSection);
-        
+
         // Brush controls section
         const brushSection = document.createElement('div');
         brushSection.className = 'panel-section';
         if (brushControls) brushSection.appendChild(brushControls);
         floatingPanel.appendChild(brushSection);
-        
+
         // Undo/Redo/Clear section - move individual buttons from other-controls
         const actionSection = document.createElement('div');
         actionSection.className = 'panel-section';
-        const undoBtnEl = document.getElementById('undo-btn');
-        const redoBtnEl = document.getElementById('redo-btn');
-        const clearBtnEl = document.getElementById('clear-btn');
         if (undoBtnEl) actionSection.appendChild(undoBtnEl);
         if (redoBtnEl) actionSection.appendChild(redoBtnEl);
         if (clearBtnEl) actionSection.appendChild(clearBtnEl);
         if (actionSection.children.length > 0) floatingPanel.appendChild(actionSection);
-        
+
         // Show toggle button on mobile
         annotationToggleBtn.style.display = 'inline-flex';
     } else {
         // Move elements back to controls-right on desktop
-        
+
         // Move undo/redo/clear back to other-controls in the correct order
-        const undoBtnEl = document.getElementById('undo-btn');
-        const redoBtnEl = document.getElementById('redo-btn');
-        const clearBtnEl = document.getElementById('clear-btn');
-        
-        // Insert in correct order at the beginning of other-controls
         if (undoBtnEl && otherControls && !otherControls.contains(undoBtnEl)) {
             otherControls.insertBefore(undoBtnEl, otherControls.firstChild);
         }
         if (redoBtnEl && otherControls && !otherControls.contains(redoBtnEl)) {
-            otherControls.insertBefore(redoBtnEl, undoBtnEl ? undoBtnEl.nextSibling : otherControls.firstChild);
+            otherControls.insertBefore(
+                redoBtnEl,
+                undoBtnEl ? undoBtnEl.nextSibling : otherControls.firstChild
+            );
         }
         if (clearBtnEl && otherControls && !otherControls.contains(clearBtnEl)) {
-            otherControls.insertBefore(clearBtnEl, redoBtnEl ? redoBtnEl.nextSibling : otherControls.firstChild);
+            otherControls.insertBefore(
+                clearBtnEl,
+                redoBtnEl ? redoBtnEl.nextSibling : otherControls.firstChild
+            );
         }
-        
+
         // Insert elements back in correct order
         if (toolContainer && !controlsRight.contains(toolContainer)) {
             controlsRight.insertBefore(toolContainer, otherControls || controlsRight.firstChild);
         }
+
+        if (shapeSidebar && !controlsRight.contains(shapeSidebar)) {
+            if (toolContainer && toolContainer.parentNode === controlsRight) {
+                controlsRight.insertBefore(shapeSidebar, toolContainer.nextSibling);
+            } else {
+                controlsRight.insertBefore(
+                    shapeSidebar,
+                    colorPicker || otherControls || controlsRight.firstChild
+                );
+            }
+        }
+
         if (colorPicker && !controlsRight.contains(colorPicker)) {
             controlsRight.insertBefore(colorPicker, otherControls || controlsRight.firstChild);
         }
         if (brushControls && !controlsRight.contains(brushControls)) {
             controlsRight.insertBefore(brushControls, otherControls || controlsRight.firstChild);
         }
-        
+
         // Clear floating panel after moving elements
-        floatingPanel.innerHTML = '';
-        
+        floatingPanel.replaceChildren();
+
         // Hide toggle button and floating panel on desktop
         annotationToggleBtn.style.display = 'none';
         floatingPanel.classList.remove('visible');
     }
+    updateFloatingPanelSize();
+}
+
+function updateFloatingPanelSize() {
+    if (!floatingPanel) return;
+
+    const isSmallScreen = window.innerWidth <= 1300;
+    if (!isSmallScreen) {
+        floatingPanel.style.width = '';
+        floatingPanel.style.maxWidth = '';
+        return;
+    }
+
+    const mode = annCvs?.pointer_mode;
+
+    // Hand mode: compact toolbar
+    if (mode === 'hand') {
+        floatingPanel.style.width = '840px';
+        floatingPanel.style.maxWidth = '92vw';
+        return;
+    }
+
+    // Drawing-related modes: slightly longer toolbar to fit shape tools nicely
+    floatingPanel.style.width = '1220px';
+    floatingPanel.style.maxWidth = '102vw';
 }
 
 // Initialize and listen for resize
@@ -353,7 +441,7 @@ function dragStart(e) {
 function drag(e) {
     if (isDragging) {
         e.preventDefault();
-        
+
         if (e.type === 'touchmove') {
             currentX = e.touches[0].clientX - initialX;
             currentY = e.touches[0].clientY - initialY;
@@ -393,7 +481,16 @@ annotationToggleBtn.addEventListener('click', (e) => {
 
 // Close panel when clicking outside
 document.addEventListener('click', (e) => {
-    if (!floatingPanel.contains(e.target) && e.target !== annotationToggleBtn && !annotationToggleBtn.contains(e.target)) {
+    const isMobileLayout = window.innerWidth <= 1300;
+
+    // Keep panel open on small screens while annotating
+    if (isMobileLayout && annCvs.pointer_mode !== 'hand') return;
+
+    if (
+        !floatingPanel.contains(e.target) &&
+        e.target !== annotationToggleBtn &&
+        !annotationToggleBtn.contains(e.target)
+    ) {
         floatingPanel.classList.remove('visible');
     }
 });
@@ -401,6 +498,7 @@ document.addEventListener('click', (e) => {
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
     hand, pen, highlighter, eraser,
+    lineShapeBtn, rectShapeBtn, circleShapeBtn, triangleShapeBtn,
     ...colorBtns,
     brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
@@ -456,15 +554,78 @@ function setPointerModeAll(mode) {
     if (annCvs2) annCvs2.setPointerMode(mode);
 }
 
+function setShapeToolAll(shape) {
+    annCvs.setShapeTool(shape);
+    if (annCvs2) annCvs2.setShapeTool(shape);
+}
+
+function setShapeModeAll(mode) {
+    annCvs.setShapeMode(mode);
+    if (annCvs2) annCvs2.setShapeMode(mode);
+}
+
 hand.onClick(() => setPointerModeAll('hand'));
 pen.onClick(() => setPointerModeAll('draw'));
 highlighter.onClick(() => setPointerModeAll('highlight'));
 eraser.onClick(() => setPointerModeAll('erase'));
 
+lineShapeBtn.onClick(() => {
+    setShapeToolAll('line');
+    setPointerModeAll('shape');
+    shapeSelector.select(lineShapeBtn);
+    setShapeSidebarVisible(true);
+    updateFloatingPanelSize();
+});
+
+rectShapeBtn.onClick(() => {
+    setShapeToolAll('rectangle');
+    setPointerModeAll('shape');
+    shapeSelector.select(rectShapeBtn);
+    setShapeSidebarVisible(true);
+    updateFloatingPanelSize();
+});
+
+circleShapeBtn.onClick(() => {
+    setShapeToolAll('circle');
+    setPointerModeAll('shape');
+    shapeSelector.select(circleShapeBtn);
+    setShapeSidebarVisible(true);
+    updateFloatingPanelSize();
+});
+
+triangleShapeBtn.onClick(() => {
+    setShapeToolAll('triangle');
+    setPointerModeAll('shape');
+    shapeSelector.select(triangleShapeBtn);
+    setShapeSidebarVisible(true);
+    updateFloatingPanelSize();
+});
+
 function onToolSelected(selected) {
     if (selected === pen) setPointerModeAll('draw');
     else if (selected === highlighter) setPointerModeAll('highlight');
     else if (selected === eraser) setPointerModeAll('erase');
+
+    clearShapeSelection();
+    setShapeToolAll(null);
+
+    if (selected === hand) {
+        setPointerModeAll('hand');
+        setShapeSidebarVisible(false);
+    } else if (selected === pen) {
+        setPointerModeAll('draw');
+        setShapeModeAll('draw');
+        setShapeSidebarVisible(true);
+    } else if (selected === highlighter) {
+        setPointerModeAll('highlight');
+        setShapeModeAll('highlight');
+        setShapeSidebarVisible(true);
+    } else if (selected === eraser) {
+        setPointerModeAll('erase');
+        setShapeModeAll('erase');
+        setShapeSidebarVisible(true);
+    }
+    updateFloatingPanelSize();
 }
 
 toolSelector.buttons.forEach(item => {
@@ -514,7 +675,6 @@ redoBtn.onClick(async () => {
 
 const zipInput = document.getElementById("upload-zip");
 const folderInput = document.getElementById("upload-folder");
-const pdfInput = document.getElementById("upload-pdf");
 
 uploadBtn.onClick(() => {
     showUploadModal();
@@ -523,14 +683,14 @@ uploadBtn.onClick(() => {
 function showUploadModal() {
     const existingModal = document.querySelector('.upload-modal-overlay');
     if (existingModal) existingModal.remove();
-    
+
     const overlay = document.createElement('div');
     overlay.className = 'custom-modal-overlay';
-    
+
     const modal = document.createElement('div');
     modal.className = 'custom-modal-content';
     modal.style.maxWidth = '500px';
-    
+
     modal.innerHTML = `
         <div class="custom-modal-icon">
             <i class="fa-solid fa-upload"></i>
@@ -562,51 +722,35 @@ function showUploadModal() {
                 <i class="fa-solid fa-folder-open"></i>
                 <span>Select Folder</span>
             </button>
-            <button class="custom-modal-btn upload-option-btn" data-type="pdf" style="
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 10px;
-                padding: 0.75em 1em;
-                font-size: 1rem;
-            ">
-                <i class="fa-solid fa-file-pdf"></i>
-                <span>Upload PDF</span>
-            </button>
         </div>
         <div class="custom-modal-buttons">
             <button class="custom-modal-btn custom-modal-btn-cancel">Cancel</button>
         </div>
     `;
-    
+
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    
+
     // Handle button clicks
     modal.querySelector('[data-type="zip"]').onclick = () => {
         overlay.remove();
         zipInput.click();
     };
-    
+
     modal.querySelector('[data-type="folder"]').onclick = () => {
         overlay.remove();
         folderInput.click();
     };
 
-    modal.querySelector('[data-type="pdf"]').onclick = () => {
-        overlay.remove();
-        pdfInput.click();
-    };
-    
     const cancelBtn = modal.querySelector('.custom-modal-btn-cancel');
     cancelBtn.onclick = () => {
         overlay.remove();
     };
-    
+
     overlay.onclick = (e) => {
         if (e.target === overlay) overlay.remove();
     };
-    
+
     // ESC key handler
     const escHandler = (e) => {
         if (e.key === 'Escape') {
@@ -617,138 +761,37 @@ function showUploadModal() {
     document.addEventListener('keydown', escHandler);
 }
 
-// ── Bookmark system ───────────────────────────────
-
-const bookmarkTooltip = document.createElement('div');
-bookmarkTooltip.id = 'bookmark-tooltip';
-document.body.appendChild(bookmarkTooltip);
-
-function attachTooltip(item, slideIndex) {
-    item.addEventListener('mouseenter', () => {
-        const name = bookmarks[slideIndex];
-        if (!name) return;
-        const rect = item.getBoundingClientRect();
-        bookmarkTooltip.textContent = name;
-        bookmarkTooltip.style.display = 'block';
-        bookmarkTooltip.style.top = `${rect.top + rect.height / 2}px`;
-        bookmarkTooltip.style.left = `${rect.right + 8}px`;
-    });
-    item.addEventListener('mouseleave', () => {
-        bookmarkTooltip.style.display = 'none';
-    });
-}
-
-function openBookmarkInput(item, slideIndex) {
-    const label = item.querySelector('span');
-    const currentName = bookmarks[slideIndex] || '';
-    label.style.display = 'none';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'bookmark-input';
-    input.maxLength = 20;
-    input.placeholder = 'Name…';
-    input.value = currentName;
-    item.appendChild(input);
-    input.focus();
-    input.select();
-
-    let committed = false;
-    const commit = (save) => {
-        if (committed) return;
-        committed = true;
-        if (save) {
-            const name = input.value.trim();
-            if (name === '') {
-                delete bookmarks[slideIndex];
-            } else {
-                bookmarks[slideIndex] = name;
-            }
-            item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
-            populateBookmarkPins();
-        }
-        input.remove();
-        label.style.display = '';
-    };
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') commit(true);
-        if (e.key === 'Escape') commit(false);
-        e.stopPropagation();
-    });
-    input.addEventListener('blur', () => commit(true));
-}
-
-function populateBookmarkPins() {
-    const pins = document.getElementById('bookmark-pins');
-    pins.innerHTML = '';
-    const indices = Object.keys(bookmarks).map(Number).sort((a, b) => a - b);
-    if (indices.length === 0) {
-        pins.style.display = 'none';
-        return;
-    }
-    pins.style.display = 'flex';
-    indices.forEach(slideIndex => {
-        const pin = document.createElement('div');
-        pin.className = 'slide-nav-item bookmarked';
-        const label = document.createElement('span');
-        label.textContent = slideIndex + 1;
-        pin.appendChild(label);
-        pin.onclick = () => goToSlide(slideIndex);
-        attachTooltip(pin, slideIndex);
-        pins.appendChild(pin);
-    });
-}
-
-function createNavItem(slideIndex) {
-    const item = document.createElement('div');
-    item.className = 'slide-nav-item';
-    if (bookmarks[slideIndex]) item.classList.add('bookmarked');
-    item.dataset.slideIndex = slideIndex;
-
-    const label = document.createElement('span');
-    label.textContent = slideIndex + 1;
-    item.appendChild(label);
-
-    let holdFired = false;
-    addHoldListener(item, () => {
-        holdFired = true;
-        openBookmarkInput(item, slideIndex);
-    }, 500);
-
-    item.addEventListener('click', () => {
-        if (holdFired) { holdFired = false; return; }
-        goToSlide(slideIndex);
-    });
-
-    attachTooltip(item, slideIndex);
-    return item;
-}
-
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
-    const pins = document.getElementById('bookmark-pins');
     navigator.innerHTML = '';
-    navigator.appendChild(pins);
 
     for (let i = 0; i < totalSlides; i++) {
-        navigator.appendChild(createNavItem(i));
+        const item = document.createElement('div');
+        item.className = 'slide-nav-item';
+        item.textContent = i + 1;
+        item.dataset.slideIndex = i;
+
+        item.onclick = () => {
+            goToSlide(i);
+        };
+
+        navigator.appendChild(item);
     }
 
     updateSlideNavigator();
-    populateBookmarkPins();
 
+    // Also populate right navigator if split view is active
     if (splitViewEnabled) {
         populateSlideNavigatorRight();
     }
 }
 
 function updateSlideNavigator() {
-    const items = document.querySelectorAll('#slide-navigator > .slide-nav-item');
+    const items = document.querySelectorAll('#slide-navigator .slide-nav-item');
     items.forEach((item, index) => {
         if (index === currentSlide) {
             item.classList.add('active');
-            item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
             item.classList.remove('active');
         }
@@ -758,13 +801,13 @@ function updateSlideNavigator() {
 function populateSlideNavigatorRight() {
     const navigator = document.getElementById('slide-navigator-right');
     navigator.innerHTML = '';
-    
+
     for (let i = 0; i < totalSlides; i++) {
         const item = document.createElement('div');
         item.className = 'slide-nav-item';
         item.textContent = i + 1;
         item.dataset.slideIndex = i;
-        
+
         item.onclick = () => {
             // Save current annotations before switching
             saveRightAnnotations();
@@ -772,10 +815,10 @@ function populateSlideNavigatorRight() {
             renderSlideRight(i);
             updateSlideNavigatorRight();
         };
-        
+
         navigator.appendChild(item);
     }
-    
+
     updateSlideNavigatorRight();
 }
 
@@ -784,7 +827,7 @@ function updateSlideNavigatorRight() {
     items.forEach((item, index) => {
         if (index === rightSlideIndex) {
             item.classList.add('active');
-            item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
             item.classList.remove('active');
         }
@@ -798,7 +841,6 @@ let annotations = {};
 let annotationsRight = {};
 let currentSlide = 0;
 let totalSlides = 0;
-let bookmarks = {};
 
 async function loadSlideConfig(slideIndex) {
     if (slideConfigs[slideIndex]) {
@@ -841,8 +883,6 @@ async function loadMediaFromPath(path) {
 }
 
 let annotationSyncTimeout = null;
-let slideLoadingTimer = null;
-let slideLoadingTimerRight = null;
 annCvs.canvas.addEventListener('mouseup', () => syncAnnotations());
 annCvs.canvas.addEventListener('touchend', () => syncAnnotations());
 
@@ -912,38 +952,15 @@ document.addEventListener('keydown', (e) => {
 async function goToSlide(slideIndex) {
     if (slideIndex < 0 || slideIndex >= totalSlides) return;
     
-    // Cancel pending debounced sync and save immediately to correct slide
-    clearTimeout(annotationSyncTimeout);
-    annotations[currentSlide] = annCvs.canvas.toDataURL("image/png");
-    
     currentSlide = slideIndex;
     await renderSlide(currentSlide);
     updateSlideNavigator();
-    
+
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
         slideIndex: currentSlide,
         annotations: annData
     });
-}
-
-function showSlideLoading(container) {
-    const overlay = container.querySelector('.slide-loading-overlay');
-    if (overlay) overlay.classList.add('visible');
-}
-
-function hideSlideLoading(container) {
-    const overlay = container.querySelector('.slide-loading-overlay');
-    if (overlay) overlay.classList.remove('visible');
-}
-
-function hasMedia(config) {
-    return config && (
-        (config.videos && config.videos.length > 0) ||
-        (config.models && config.models.length > 0) ||
-        (config.audio && config.audio.length > 0) ||
-        (config.widgets && config.widgets.length > 0)
-    );
 }
 
 async function renderSlide(slideIndex) {
@@ -959,11 +976,8 @@ async function renderSlide(slideIndex) {
         console.error("No slides.pdf found in ZIP");
         return;
     }
-
-    showSlideLoading(slide_canvas_container);
-
+    
     const pdfData = await pdfFile.async("arraybuffer");
-
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
     
@@ -990,18 +1004,8 @@ async function renderSlide(slideIndex) {
     
     if (!slideConfig) {
         console.log('No config for this slide');
-        hideSlideLoading(slide_canvas_container);
         return;
     }
-
-    if (hasMedia(slideConfig)) {
-        clearTimeout(slideLoadingTimer);
-        slideLoadingTimer = setTimeout(() => hideSlideLoading(slide_canvas_container), 400);
-    } else {
-        hideSlideLoading(slide_canvas_container);
-    }
-
-
     
     console.log('Videos to render:', slideConfig.videos?.length || 0);
     console.log('Models to render:', slideConfig.models?.length || 0);
@@ -1153,19 +1157,16 @@ async function renderSlide(slideIndex) {
 // Render a slide on the right (split view) canvas - full featured with widgets and annotations
 async function renderSlideRight(slideIndex) {
     if (!zipFile || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
-    
+
     const pdfFile = zipFile.file("slides.pdf");
     if (!pdfFile) return;
 
-    showSlideLoading(slide_canvas_container2);
-
     const pdfData = await pdfFile.async("arraybuffer");
-
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
-    
+
     await pdfCvs2.renderPDFPage(page);
-    
+
     // Load per-slide annotations for right canvas
     try {
         annCvs2.clear();
@@ -1177,47 +1178,37 @@ async function renderSlideRight(slideIndex) {
     } catch (e) {
         console.warn('Error loading right annotations for slide', slideIndex, e);
     }
-    
+
     // Remove existing media from right container
     const existingMedia = slide_canvas_container2.querySelectorAll('video, audio, model-viewer');
     existingMedia.forEach(el => el.remove());
-    
+
     cleanupWidgets(slide_canvas_container2);
-    
+
     const slideConfig = await loadSlideConfig(slideIndex);
-    
+
     if (!slideConfig) {
-        hideSlideLoading(slide_canvas_container2);
         return;
     }
 
-    if (hasMedia(slideConfig)) {
-        clearTimeout(slideLoadingTimerRight);
-        slideLoadingTimerRight = setTimeout(() => hideSlideLoading(slide_canvas_container2), 400);
-    } else {
-        hideSlideLoading(slide_canvas_container2);
-    }
-
-
-    
     // Get container's actual size for positioning all media elements
     const containerRect = slide_canvas_container2.getBoundingClientRect();
-    
+
     if (slideConfig.videos) {
         for (const v of slideConfig.videos) {
             const videoURL = await loadMediaFromPath(v.path);
             if (!videoURL) continue;
-            
+
             const video = document.createElement("video");
             video.src = videoURL;
             video.volume = v.volume || 1.0;
             video.dataset.videoId = v.id + '-right';
-            
+
             video.dataset.videoX = v.x;
             video.dataset.videoY = v.y;
             video.dataset.videoWidth = v.width;
             video.dataset.videoHeight = v.height;
-            
+
             video.style.position = "absolute";
             video.style.left = `${v.x * containerRect.width}px`;
             video.style.top = `${v.y * containerRect.height}px`;
@@ -1225,7 +1216,7 @@ async function renderSlideRight(slideIndex) {
             video.style.height = `${v.height * containerRect.height}px`;
             video.style.objectFit = "contain";
             video.style.zIndex = v.zIndex || 5;
-            
+
             if (v.playMode === "once") {
                 video.autoplay = true;
                 video.loop = false;
@@ -1237,7 +1228,7 @@ async function renderSlideRight(slideIndex) {
             if (v.playMode === "manual") {
                 video.controls = true;
             }
-            
+
             video.addEventListener('click', (ev) => {
                 try {
                     if (video.paused) video.play();
@@ -1247,41 +1238,41 @@ async function renderSlideRight(slideIndex) {
                 }
                 ev.stopPropagation();
             });
-            
+
             slide_canvas_container2.appendChild(video);
         }
     }
-    
+
     if (slideConfig.models) {
         for (const m of slideConfig.models) {
             const modelURL = await loadMediaFromPath(m.path);
             if (!modelURL) continue;
-            
+
             const mv = document.createElement("model-viewer");
             mv.src = modelURL;
             mv.alt = m.alt || "3D model";
             mv.dataset.modelId = m.id + '-right';
-            
+
             mv.dataset.modelX = m.x;
             mv.dataset.modelY = m.y;
             mv.dataset.modelWidth = m.width;
             mv.dataset.modelHeight = m.height;
-            
+
             mv.setAttribute("camera-controls", "");
             mv.setAttribute("shadow-intensity", "1");
             mv.setAttribute("auto-rotate", m.autoRotate ? "true" : "false");
-            
+
             mv.style.position = "absolute";
             mv.style.left = `${m.x * containerRect.width}px`;
             mv.style.top = `${m.y * containerRect.height}px`;
             mv.style.width = `${m.width * containerRect.width}px`;
             mv.style.height = `${m.height * containerRect.height}px`;
             mv.style.zIndex = m.zIndex || 5;
-            
+
             slide_canvas_container2.appendChild(mv);
         }
     }
-    
+
     if (slideConfig.widgets) {
         renderWidgets(slideConfig, slide_canvas_container2, zipFile);
     }
@@ -1369,29 +1360,29 @@ folderInput.addEventListener('change', async (e) => {
     currentSlide = 0;
     slideConfigs = {};
     mediaCache = {};
-
+    
     await renderSlide(0);
-
+    
+    // Populate slide navigator
     populateSlideNavigator();
 
-    
     socket.emit('presentation_loaded', {
         totalSlides: totalSlides
     });
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
-    
+
     // Enable screen share button
     screenShareBtn.el.disabled = false;
     screenShareBtn.el.style.opacity = '1';
     screenShareBtn.el.style.cursor = 'pointer';
-    
+
     // Enable record button
     recordBtn.el.disabled = false;
     recordBtn.el.style.opacity = '1';
     recordBtn.el.style.cursor = 'pointer';
-    
+
     updateHistoryButtons();
 });
 
@@ -1428,13 +1419,13 @@ zipInput.addEventListener('change', async (e) => {
         Modal.error('Upload Failed', 'Failed to upload presentation. Please try again.');
         return;
     }
-    
+
     // Load the ZIP into memory for frontend use
     const reader = new FileReader();
     reader.onload = async (event) => {
         zipFile = await JSZip.loadAsync(event.target.result);
         console.log('ZIP loaded into memory');
-        
+
         const pdfFile = zipFile.file("slides.pdf");
         if (!pdfFile) {
             console.error("The uploaded package is not a valid Beamer+ presentation (no slides.pdf found).");
@@ -1442,13 +1433,13 @@ zipInput.addEventListener('change', async (e) => {
             Modal.error('Invalid Presentation', 'The uploaded package is not a valid Beamer+ presentation.');
             return;
         }
-        
+
         const pdfData = await pdfFile.async("arraybuffer");
         const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
         totalSlides = pdfDoc.numPages;
-        
+
         console.log(`Total slides: ${totalSlides}`);
-        
+
         currentSlide = 0;
         slideConfigs = {};
         mediaCache = {};
@@ -1458,72 +1449,26 @@ zipInput.addEventListener('change', async (e) => {
         // Populate slide navigator
         populateSlideNavigator();
 
-        
         socket.emit('presentation_loaded', {
             totalSlides: totalSlides
         });
         // Enable controls now that a presentation is loaded
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
-        
+
         // Enable screen share button
         screenShareBtn.el.disabled = false;
         screenShareBtn.el.style.opacity = '1';
         screenShareBtn.el.style.cursor = 'pointer';
-        
+
         // Enable record button
         recordBtn.el.disabled = false;
         recordBtn.el.style.opacity = '1';
         recordBtn.el.style.cursor = 'pointer';
-        
+
         updateHistoryButtons();
     };
     reader.readAsArrayBuffer(file);
-});
-
-pdfInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    pdfInput.value = '';
-
-    const uploadModal = Modal.loading('Loading Presentation', 'Please wait while your presentation is loaded...');
-
-    try {
-        const pdfArrayBuffer = await file.arrayBuffer();
-
-        const zip = new JSZip();
-        zip.file('slides.pdf', pdfArrayBuffer);
-        zipFile = zip;
-
-        const pdfDoc = await pdfjsLib.getDocument({ data: pdfArrayBuffer }).promise;
-        totalSlides = pdfDoc.numPages;
-
-        currentSlide = 0;
-        slideConfigs = {};
-        mediaCache = {};
-        bookmarks = {};
-
-        await renderSlide(0);
-        populateSlideNavigator();
-
-        socket.emit('presentation_loaded', { totalSlides });
-        uploadModal.close();
-        setControlsEnabledAfterUpload(true, __beamer_controls);
-
-        screenShareBtn.el.disabled = false;
-        screenShareBtn.el.style.opacity = '1';
-        screenShareBtn.el.style.cursor = 'pointer';
-
-        recordBtn.el.disabled = false;
-        recordBtn.el.style.opacity = '1';
-        recordBtn.el.style.cursor = 'pointer';
-
-        updateHistoryButtons();
-    } catch (err) {
-        console.error('Error loading PDF:', err);
-        uploadModal.close();
-        Modal.error('Invalid File', 'Could not load the PDF. Please try again.');
-    }
 });
 
 async function loadAvailableModels() {
@@ -1591,19 +1536,19 @@ async function startRecording() {
         Modal.error('Recording Error', 'Please start screen sharing before recording.');
         return;
     }
-    
+
     try {
         // Get the canvas that's being used for screen sharing
         const pdfContainer = document.getElementById('pdf-canvas');
-        
+
         // Create a new canvas for recording
         recordingCanvas = document.createElement('canvas');
         recordingCanvas.width = pdfContainer.getBoundingClientRect().width;
         recordingCanvas.height = pdfContainer.getBoundingClientRect().height;
-        
+
         // Create a stream from the canvas at 30 FPS
         recordingStream = recordingCanvas.captureStream(30);
-        
+
         // Request microphone audio
         try {
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1611,7 +1556,7 @@ async function startRecording() {
         } catch (error) {
             console.warn('Microphone not captured:', error);
         }
-        
+
         // Request system audio (will prompt user)
         try {
             audioStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1622,28 +1567,28 @@ async function startRecording() {
         } catch (audioError) {
             console.warn('System audio not captured:', audioError);
         }
-        
+
         // Create MediaRecorder to record in real-time
         recordedChunks = [];
         mediaRecorder = new MediaRecorder(recordingStream, {
             mimeType: 'video/webm;codecs=vp9',
             videoBitsPerSecond: 2500000
         });
-        
+
         mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) {
                 recordedChunks.push(e.data);
             }
         };
-        
+
         mediaRecorder.start(100); // Collect data every 100ms
-        
+
         isRecording = true;
-        
+
         // Update button appearance
         recordBtn.el.innerHTML = '<i class="fa-solid fa-stop"></i>';
         recordBtn.el.style.backgroundColor = '#e74c3c';
-        
+
         console.log('Recording started');
     } catch (error) {
         console.error('Error starting recording:', error);
@@ -1653,24 +1598,24 @@ async function startRecording() {
 
 async function stopRecording() {
     if (!isRecording || !mediaRecorder) return;
-    
+
     isRecording = false;
-    
+
     // Reset button appearance
     recordBtn.el.innerHTML = '<i class="fa-solid fa-circle"></i>';
     recordBtn.el.style.backgroundColor = '';
-    
+
     console.log('Recording stopped. Processing video...');
-    
+
     // Show processing modal with loading animation
     const processingModal = Modal.loading('Processing Video', 'Please wait while your recording is being processed and downloaded...');
-    
+
     return new Promise((resolve, reject) => {
         mediaRecorder.onstop = () => {
             try {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
-                
+
                 // Download the video
                 const a = document.createElement('a');
                 a.href = url;
@@ -1679,7 +1624,7 @@ async function stopRecording() {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                
+
                 // Clean up
                 recordedChunks = [];
                 if (micStream) {
@@ -1695,7 +1640,7 @@ async function stopRecording() {
                     recordingStream = null;
                 }
                 recordingCanvas = null;
-                
+
                 processingModal.close();
                 Modal.success('Recording Complete', 'Your video has been downloaded successfully!');
                 resolve();
@@ -1706,7 +1651,7 @@ async function stopRecording() {
                 reject(error);
             }
         };
-        
+
         mediaRecorder.stop();
     });
 }
@@ -1733,13 +1678,13 @@ async function startScreenShare() {
             surfaceSwitching: 'exclude',
             systemAudio: 'exclude'
         });
-        
+
         // Check if the user selected the correct surface type
         const videoTrack = stream.getVideoTracks()[0];
         const settings = videoTrack.getSettings();
-        
+
         // check by regex if the user is on Safari:
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent); 
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         console.log(`isSafari: ${isSafari}`);
 
         if (!isSafari) {
@@ -1747,9 +1692,9 @@ async function startScreenShare() {
             if (settings.displaySurface && settings.displaySurface !== 'browser') {
                 // Stop the stream immediately
                 stream.getTracks().forEach(track => track.stop());
-                
+
                 Modal.error(
-                    'Wrong Source Selected', 
+                    'Wrong Source Selected',
                     'Please select the Beamer+ browser tab (not a window or entire screen). Click the screen share button again and choose "This Tab" or the Beamer+ tab from the list.'
                 );
                 isScreenSharing = false;
@@ -1761,62 +1706,62 @@ async function startScreenShare() {
 
         screenStream = stream;
         isScreenSharing = true;
-        
+
         // Update button appearance
         screenShareBtn.el.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
-        
+
         // Create a hidden video element to capture the stream
         const video = document.createElement('video');
         video.style.display = 'none';
         video.srcObject = stream;
         video.play();
-        
+
         document.body.appendChild(video);
-        
+
         // Create canvas for cropping
         const cropCanvas = document.createElement('canvas');
         const cropCtx = cropCanvas.getContext('2d');
-        
+
         // Get the canvas container dimensions
         const pdfContainer = document.getElementById('pdf-canvas');
-        
+
         let lastFrameTime = 0;
         const frameInterval = 100; // Reduced to 10 FPS to prevent flashing
-        
+
         // Start capturing and cropping frames
         const captureFrame = (currentTime) => {
             if (!isScreenSharing) return;
-            
+
             // Throttle frame rate
             if (currentTime - lastFrameTime < frameInterval) {
                 requestAnimationFrame(captureFrame);
                 return;
             }
             lastFrameTime = currentTime;
-            
+
             const containerRect = pdfContainer.getBoundingClientRect();
-            
+
             // Set canvas size to match the container
             cropCanvas.width = containerRect.width;
             cropCanvas.height = containerRect.height;
-            
+
             // Calculate the position and size to crop from the video
             // This assumes the video is capturing the full screen
             const scaleX = video.videoWidth / window.innerWidth;
             const scaleY = video.videoHeight / window.innerHeight;
-            
+
             const sourceX = containerRect.left * scaleX;
             const sourceY = containerRect.top * scaleY;
             const sourceWidth = containerRect.width * scaleX;
             const sourceHeight = containerRect.height * scaleY;
-            
+
             // Draw the cropped region onto the canvas
             cropCtx.drawImage(
                 video,
                 sourceX, sourceY, sourceWidth, sourceHeight,
                 0, 0, cropCanvas.width, cropCanvas.height
             );
-            
+
             // If recording, draw to recording canvas in real-time
             if (isRecording && recordingCanvas) {
                 const recordingCtx = recordingCanvas.getContext('2d');
@@ -1828,7 +1773,7 @@ async function startScreenShare() {
                 // Draw the current frame to the recording canvas
                 recordingCtx.drawImage(cropCanvas, 0, 0);
             }
-            
+
             // Convert canvas to blob and emit to server
             cropCanvas.toBlob((blob) => {
                 if (blob && isScreenSharing) {
@@ -1845,32 +1790,32 @@ async function startScreenShare() {
                     reader.readAsDataURL(blob);
                 }
             }, 'image/jpeg', 0.75); // Reduced quality to 75% for less bandwidth
-            
+
             // Request next frame
             if (isScreenSharing) {
                 requestAnimationFrame(captureFrame);
             }
         };
-        
+
         // Wait for video to be ready
         video.onloadedmetadata = () => {
             requestAnimationFrame(captureFrame);
         };
-        
+
         // Handle stream end (user clicks "Stop sharing" in browser)
         stream.getVideoTracks()[0].onended = () => {
             stopScreenShare();
         };
-        
+
         // Notify viewers that screen sharing has started
         socket.emit('screen_share_start');
-        
+
         // Show a helper message
         console.log('Screen sharing started. Sharing Beamer+ tab.');
-        
+
     } catch (error) {
         console.error('Error starting screen share:', error);
-        
+
         let errorMessage = 'Could not start screen sharing.';
         if (error.name === 'NotAllowedError') {
             errorMessage = 'Screen sharing permission was denied. Please allow screen sharing and select the Beamer+ tab (choose "This Tab" option).';
@@ -1879,7 +1824,7 @@ async function startScreenShare() {
         } else if (error.name === 'NotSupportedError') {
             errorMessage = 'Screen sharing is not supported in this browser. Please use Chrome, Firefox, or Edge.';
         }
-        
+
         Modal.error('Screen Share Error', errorMessage);
         isScreenSharing = false;
     }
@@ -1890,22 +1835,22 @@ function stopScreenShare() {
         screenStream.getTracks().forEach(track => track.stop());
         screenStream = null;
     }
-    
+
     isScreenSharing = false;
-    
+
     // If recording is active, stop it
     if (isRecording) {
         stopRecording();
     }
-    
+
     // Reset button appearance
     screenShareBtn.el.innerHTML = '<i class="fa-solid fa-desktop"></i>';
     screenShareBtn.el.style.backgroundColor = '';
-    
+
     // Remove the hidden video element
     const videos = document.querySelectorAll('video[style*="display: none"]');
     videos.forEach(v => v.remove());
-    
+
     // Notify viewers that screen sharing has stopped
     socket.emit('screen_share_stop');
 }
