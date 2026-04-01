@@ -7,6 +7,7 @@ import { Canvas } from './canvas.js';
 import { renderWidgets, cleanupWidgets, updateWidgetPositions } from './iframe-widget-renderer.js';
 import { Modal } from './beamer_modal.js';
 import { setControlsEnabledAfterUpload, disableControlButtons } from './beamer_ui.js';
+import { addHoldListener } from './events.js';
 
 const socket = io();
 socket.emit('join_presenter');
@@ -755,33 +756,134 @@ function showUploadModal() {
     document.addEventListener('keydown', escHandler);
 }
 
+// ── Bookmark system ───────────────────────────────
+
+const bookmarkTooltip = document.createElement('div');
+bookmarkTooltip.id = 'bookmark-tooltip';
+document.body.appendChild(bookmarkTooltip);
+
+function attachTooltip(item, slideIndex) {
+    item.addEventListener('mouseenter', () => {
+        const name = bookmarks[slideIndex];
+        if (!name) return;
+        const rect = item.getBoundingClientRect();
+        bookmarkTooltip.textContent = name;
+        bookmarkTooltip.style.display = 'block';
+        bookmarkTooltip.style.top = `${rect.top + rect.height / 2}px`;
+        bookmarkTooltip.style.left = `${rect.right + 8}px`;
+    });
+    item.addEventListener('mouseleave', () => {
+        bookmarkTooltip.style.display = 'none';
+    });
+}
+
+function openBookmarkInput(item, slideIndex) {
+    const label = item.querySelector('span');
+    const currentName = bookmarks[slideIndex] || '';
+    label.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'bookmark-input';
+    input.maxLength = 20;
+    input.placeholder = 'Name…';
+    input.value = currentName;
+    item.appendChild(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    const commit = (save) => {
+        if (committed) return;
+        committed = true;
+        if (save) {
+            const name = input.value.trim();
+            if (name === '') {
+                delete bookmarks[slideIndex];
+            } else {
+                bookmarks[slideIndex] = name;
+            }
+            item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
+            populateBookmarkPins();
+        }
+        input.remove();
+        label.style.display = '';
+    };
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commit(true);
+        if (e.key === 'Escape') commit(false);
+        e.stopPropagation();
+    });
+    input.addEventListener('blur', () => commit(true));
+}
+
+function populateBookmarkPins() {
+    const pins = document.getElementById('bookmark-pins');
+    pins.innerHTML = '';
+    const indices = Object.keys(bookmarks).map(Number).sort((a, b) => a - b);
+    if (indices.length === 0) {
+        pins.style.display = 'none';
+        return;
+    }
+    pins.style.display = 'flex';
+    indices.forEach(slideIndex => {
+        const pin = document.createElement('div');
+        pin.className = 'slide-nav-item bookmarked';
+        const label = document.createElement('span');
+        label.textContent = slideIndex + 1;
+        pin.appendChild(label);
+        pin.onclick = () => goToSlide(slideIndex);
+        attachTooltip(pin, slideIndex);
+        pins.appendChild(pin);
+    });
+}
+
+function createNavItem(slideIndex) {
+    const item = document.createElement('div');
+    item.className = 'slide-nav-item';
+    if (bookmarks[slideIndex]) item.classList.add('bookmarked');
+    item.dataset.slideIndex = slideIndex;
+
+    const label = document.createElement('span');
+    label.textContent = slideIndex + 1;
+    item.appendChild(label);
+
+    let holdFired = false;
+    addHoldListener(item, () => {
+        holdFired = true;
+        openBookmarkInput(item, slideIndex);
+    }, 500);
+
+    item.addEventListener('click', () => {
+        if (holdFired) { holdFired = false; return; }
+        goToSlide(slideIndex);
+    });
+
+    attachTooltip(item, slideIndex);
+    return item;
+}
+
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
+    const pins = document.getElementById('bookmark-pins');
     navigator.innerHTML = '';
+    navigator.appendChild(pins);
 
     for (let i = 0; i < totalSlides; i++) {
-        const item = document.createElement('div');
-        item.className = 'slide-nav-item';
-        item.textContent = i + 1;
-        item.dataset.slideIndex = i;
-
-        item.onclick = () => {
-            goToSlide(i);
-        };
-
-        navigator.appendChild(item);
+        navigator.appendChild(createNavItem(i));
     }
 
     updateSlideNavigator();
+    populateBookmarkPins();
 
-    // Also populate right navigator if split view is active
     if (splitViewEnabled) {
         populateSlideNavigatorRight();
     }
 }
 
 function updateSlideNavigator() {
-    const items = document.querySelectorAll('#slide-navigator .slide-nav-item');
+    const items = document.querySelectorAll('#slide-navigator > .slide-nav-item');
     items.forEach((item, index) => {
         if (index === currentSlide) {
             item.classList.add('active');
@@ -835,6 +937,8 @@ function autoAdvanceRight() {
     renderSlideRight(rightSlideIndex);
     updateSlideNavigatorRight();
 }
+
+let bookmarks = {};
 
 let zipFile = null;
 let slideConfigs = {};
