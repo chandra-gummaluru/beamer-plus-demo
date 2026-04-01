@@ -1,6 +1,6 @@
-const CACHE_NAME = 'beamer-plus-v2';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v2';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v2';
+const CACHE_NAME = 'beamer-plus-v4';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v4';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v4';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [
