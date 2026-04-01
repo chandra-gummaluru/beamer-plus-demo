@@ -670,6 +670,7 @@ redoBtn.onClick(async () => {
 
 const zipInput = document.getElementById("upload-zip");
 const folderInput = document.getElementById("upload-folder");
+const pdfInput = document.getElementById("upload-pdf");
 
 uploadBtn.onClick(() => {
     showUploadModal();
@@ -717,6 +718,17 @@ function showUploadModal() {
                 <i class="fa-solid fa-folder-open"></i>
                 <span>Select Folder</span>
             </button>
+            <button class="custom-modal-btn upload-option-btn" data-type="pdf" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                padding: 0.75em 1em;
+                font-size: 1rem;
+            ">
+                <i class="fa-solid fa-file-pdf"></i>
+                <span>Upload PDF</span>
+            </button>
         </div>
         <div class="custom-modal-buttons">
             <button class="custom-modal-btn custom-modal-btn-cancel">Cancel</button>
@@ -735,6 +747,11 @@ function showUploadModal() {
     modal.querySelector('[data-type="folder"]').onclick = () => {
         overlay.remove();
         folderInput.click();
+    };
+
+    modal.querySelector('[data-type="pdf"]').onclick = () => {
+        overlay.remove();
+        pdfInput.click();
     };
 
     const cancelBtn = modal.querySelector('.custom-modal-btn-cancel');
@@ -1584,6 +1601,52 @@ zipInput.addEventListener('change', async (e) => {
         updateHistoryButtons();
     };
     reader.readAsArrayBuffer(file);
+});
+
+pdfInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pdfInput.value = '';
+
+    const uploadModal = Modal.loading('Loading Presentation', 'Please wait while your presentation is loaded...');
+
+    try {
+        const pdfArrayBuffer = await file.arrayBuffer();
+
+        const zip = new JSZip();
+        zip.file('slides.pdf', pdfArrayBuffer);
+        zipFile = zip;
+
+        const pdfDoc = await pdfjsLib.getDocument({ data: pdfArrayBuffer }).promise;
+        totalSlides = pdfDoc.numPages;
+
+        currentSlide = 0;
+        slideConfigs = {};
+        mediaCache = {};
+        annotations = {};
+        bookmarks = {};
+
+        await renderSlide(0);
+        populateSlideNavigator();
+
+        socket.emit('presentation_loaded', { totalSlides });
+        uploadModal.close();
+        setControlsEnabledAfterUpload(true, __beamer_controls);
+
+        screenShareBtn.el.disabled = false;
+        screenShareBtn.el.style.opacity = '1';
+        screenShareBtn.el.style.cursor = 'pointer';
+
+        recordBtn.el.disabled = false;
+        recordBtn.el.style.opacity = '1';
+        recordBtn.el.style.cursor = 'pointer';
+
+        updateHistoryButtons();
+    } catch (err) {
+        console.error('Error loading PDF:', err);
+        uploadModal.close();
+        Modal.error('Invalid File', 'Could not load the PDF. Please try again.');
+    }
 });
 
 async function loadAvailableModels() {
