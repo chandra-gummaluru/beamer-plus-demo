@@ -87,6 +87,12 @@
     flex-wrap: nowrap;
 }
 
+/* Compact buttons only when shape tools are visible in the toolbar */
+body.shape-tools-visible #control-panel .btn {
+    padding: 0.4em 0.6em;
+}
+
+
 .controls-center {
     left: 50%;
     display: flex;

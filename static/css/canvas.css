@@ -80,6 +80,12 @@ body.split-view-active .slide-nav-item {
     margin: 0 4px;
 }
 
+.slide-nav-item.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 #pdf-container video, #pdf-container-2 video {
     position: absolute;
     object-fit: contain;

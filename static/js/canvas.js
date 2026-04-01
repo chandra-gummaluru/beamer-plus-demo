@@ -1066,4 +1066,23 @@ export class Canvas {
             img.src = imageData;
         }
     }
+
+    // Resize canvas dimensions only — no content restore.
+    // Use this when a renderSlide/renderSlideRight call is coming immediately after,
+    // to avoid an img.onload race overwriting the annotation repaint.
+    resizeOnly() {
+        const container = this.canvas.parentElement;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = rect.height * dpr;
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `${rect.height}px`;
+        this.ctx = this.canvas.getContext('2d');
+        this.ctx.scale(dpr, dpr);
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'high';
+        this.dpr = dpr;
+    }
 }

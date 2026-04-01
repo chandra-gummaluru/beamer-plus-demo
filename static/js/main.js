@@ -7,6 +7,7 @@ import { Canvas } from './canvas.js';
 import { renderWidgets, cleanupWidgets, updateWidgetPositions } from './iframe-widget-renderer.js';
 import { Modal } from './beamer_modal.js';
 import { setControlsEnabledAfterUpload, disableControlButtons } from './beamer_ui.js';
+import { addHoldListener } from './events.js';
 
 const socket = io();
 socket.emit('join_presenter');
@@ -86,6 +87,7 @@ function clearShapeSelection() {
 
 function setShapeSidebarVisible(isVisible) {
     shapeSidebar.style.display = isVisible ? 'flex' : 'none';
+    document.body.classList.toggle('shape-tools-visible', isVisible);
     updateFloatingPanel();
 }
 
@@ -134,24 +136,26 @@ splitViewBtn.onClick(() => {
         setTimeout(() => {
             initializeSecondCanvases();
 
+            // Set right slide to the slide adjacent to left on each open
+            rightSlideIndex = (currentSlide + 1 < totalSlides)
+                ? currentSlide + 1
+                : Math.max(0, currentSlide - 1);
+
             // Populate right navigator
             populateSlideNavigatorRight();
 
             // Resize all canvases after layout settles
-            setTimeout(() => {
-                annCvs.resize();
-                pdfCvs.resize();
-                if (annCvs2) annCvs2.resize();
-                if (pdfCvs2) pdfCvs2.resize();
+            setTimeout(async () => {
+                snapshotCurrentSlide();
+                annCvs.resizeOnly();
+                pdfCvs.resizeOnly();
+                if (annCvs2) annCvs2.resizeOnly();
+                if (pdfCvs2) pdfCvs2.resizeOnly();
 
-                // Re-render slides at new sizes
                 if (zipFile) {
-                    renderSlide(currentSlide);
-                    renderSlideRight(rightSlideIndex);
+                    await renderSlide(currentSlide);
+                    await renderSlideRight(rightSlideIndex);
                 }
-
-                // Restore the current pointer mode on both canvases
-                setPointerModeAll(annCvs.pointer_mode);
             }, 100);
         }, 50);
     } else {
@@ -159,15 +163,17 @@ splitViewBtn.onClick(() => {
         splitViewBtn.el.innerHTML = '<i class="fa-solid fa-columns"></i>';
 
         // Resize canvases back to full size
-        setTimeout(() => {
-            annCvs.resize();
-            pdfCvs.resize();
+        setTimeout(async () => {
+            snapshotCurrentSlide();
+            annCvs.resizeOnly();
+            pdfCvs.resizeOnly();
 
             // Re-render main slide at full size
             if (zipFile) {
-                renderSlide(currentSlide);
+                await renderSlide(currentSlide);
             }
         }, 100);
+
     }
 });
 
@@ -528,11 +534,7 @@ let pdfCvs2 = null;  // Lazily initialized when split view is activated
 function initializeSecondCanvases() {
     if (!annCvs2) {
         annCvs2 = new Canvas(ann_canvas_container2);
-        annCvs2.setHistoryChangeHandler(updateHistoryButtons);
-        // Copy current settings from first canvas
-        annCvs2.setStrokeColor(annCvs.strokeColor);
-        annCvs2.setStrokeWidth(annCvs.strokeWidth);
-        annCvs2.setPointerMode(annCvs.pointer_mode);
+        annCvs2.setPointerMode('hand'); // right side is always view-only
     }
     if (!pdfCvs2) {
         pdfCvs2 = new Canvas(slide_canvas_container2, false);
@@ -540,28 +542,24 @@ function initializeSecondCanvases() {
 }
 
 const updateHistoryButtons = () => {
-    const canUndo = annCvs.canUndo() || (annCvs2 && annCvs2.canUndo());
-    const canRedo = annCvs.canRedo() || (annCvs2 && annCvs2.canRedo());
-    undoBtn.el.disabled = !canUndo;
-    redoBtn.el.disabled = !canRedo;
+    undoBtn.el.disabled = !annCvs.canUndo();
+    redoBtn.el.disabled = !annCvs.canRedo();
 };
+
 annCvs.setHistoryChangeHandler(updateHistoryButtons);
 updateHistoryButtons();
 
-// Set pointer mode on both canvases
+// Set pointer mode on left canvas only — right is always hand (view-only)
 function setPointerModeAll(mode) {
     annCvs.setPointerMode(mode);
-    if (annCvs2) annCvs2.setPointerMode(mode);
 }
 
 function setShapeToolAll(shape) {
     annCvs.setShapeTool(shape);
-    if (annCvs2) annCvs2.setShapeTool(shape);
 }
 
 function setShapeModeAll(mode) {
     annCvs.setShapeMode(mode);
-    if (annCvs2) annCvs2.setShapeMode(mode);
 }
 
 hand.onClick(() => setPointerModeAll('hand'));
@@ -636,7 +634,6 @@ colorBtns.forEach(btn => {
   btn.onClick(() => {
     const color = getComputedStyle(btn.el).backgroundColor;
     annCvs.setStrokeColor(color);
-    if (annCvs2) annCvs2.setStrokeColor(color);
   });
 });
 
@@ -645,7 +642,6 @@ brushMinusBtn.onClick(() => {
     if (val > 1) val--;
     brushSizeLbl.set(String(val));
     annCvs.setStrokeWidth(val);
-    if (annCvs2) annCvs2.setStrokeWidth(val);
 });
 
 brushPlusBtn.onClick(() => {
@@ -653,7 +649,6 @@ brushPlusBtn.onClick(() => {
     if (val < 9) val++;
     brushSizeLbl.set(String(val));
     annCvs.setStrokeWidth(val);
-    if (annCvs2) annCvs2.setStrokeWidth(val);
 });
 
 clearBtn.onClick(() => {
@@ -675,6 +670,7 @@ redoBtn.onClick(async () => {
 
 const zipInput = document.getElementById("upload-zip");
 const folderInput = document.getElementById("upload-folder");
+const pdfInput = document.getElementById("upload-pdf");
 
 uploadBtn.onClick(() => {
     showUploadModal();
@@ -722,6 +718,17 @@ function showUploadModal() {
                 <i class="fa-solid fa-folder-open"></i>
                 <span>Select Folder</span>
             </button>
+            <button class="custom-modal-btn upload-option-btn" data-type="pdf" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                padding: 0.75em 1em;
+                font-size: 1rem;
+            ">
+                <i class="fa-solid fa-file-pdf"></i>
+                <span>Upload PDF</span>
+            </button>
         </div>
         <div class="custom-modal-buttons">
             <button class="custom-modal-btn custom-modal-btn-cancel">Cancel</button>
@@ -740,6 +747,11 @@ function showUploadModal() {
     modal.querySelector('[data-type="folder"]').onclick = () => {
         overlay.remove();
         folderInput.click();
+    };
+
+    modal.querySelector('[data-type="pdf"]').onclick = () => {
+        overlay.remove();
+        pdfInput.click();
     };
 
     const cancelBtn = modal.querySelector('.custom-modal-btn-cancel');
@@ -761,33 +773,134 @@ function showUploadModal() {
     document.addEventListener('keydown', escHandler);
 }
 
+// ── Bookmark system ───────────────────────────────
+
+const bookmarkTooltip = document.createElement('div');
+bookmarkTooltip.id = 'bookmark-tooltip';
+document.body.appendChild(bookmarkTooltip);
+
+function attachTooltip(item, slideIndex) {
+    item.addEventListener('mouseenter', () => {
+        const name = bookmarks[slideIndex];
+        if (!name) return;
+        const rect = item.getBoundingClientRect();
+        bookmarkTooltip.textContent = name;
+        bookmarkTooltip.style.display = 'block';
+        bookmarkTooltip.style.top = `${rect.top + rect.height / 2}px`;
+        bookmarkTooltip.style.left = `${rect.right + 8}px`;
+    });
+    item.addEventListener('mouseleave', () => {
+        bookmarkTooltip.style.display = 'none';
+    });
+}
+
+function openBookmarkInput(item, slideIndex) {
+    const label = item.querySelector('span');
+    const currentName = bookmarks[slideIndex] || '';
+    label.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'bookmark-input';
+    input.maxLength = 20;
+    input.placeholder = 'Name…';
+    input.value = currentName;
+    item.appendChild(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    const commit = (save) => {
+        if (committed) return;
+        committed = true;
+        if (save) {
+            const name = input.value.trim();
+            if (name === '') {
+                delete bookmarks[slideIndex];
+            } else {
+                bookmarks[slideIndex] = name;
+            }
+            item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
+            populateBookmarkPins();
+        }
+        input.remove();
+        label.style.display = '';
+    };
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commit(true);
+        if (e.key === 'Escape') commit(false);
+        e.stopPropagation();
+    });
+    input.addEventListener('blur', () => commit(true));
+}
+
+function populateBookmarkPins() {
+    const pins = document.getElementById('bookmark-pins');
+    pins.innerHTML = '';
+    const indices = Object.keys(bookmarks).map(Number).sort((a, b) => a - b);
+    if (indices.length === 0) {
+        pins.style.display = 'none';
+        return;
+    }
+    pins.style.display = 'flex';
+    indices.forEach(slideIndex => {
+        const pin = document.createElement('div');
+        pin.className = 'slide-nav-item bookmarked';
+        const label = document.createElement('span');
+        label.textContent = slideIndex + 1;
+        pin.appendChild(label);
+        pin.onclick = () => goToSlide(slideIndex);
+        attachTooltip(pin, slideIndex);
+        pins.appendChild(pin);
+    });
+}
+
+function createNavItem(slideIndex) {
+    const item = document.createElement('div');
+    item.className = 'slide-nav-item';
+    if (bookmarks[slideIndex]) item.classList.add('bookmarked');
+    item.dataset.slideIndex = slideIndex;
+
+    const label = document.createElement('span');
+    label.textContent = slideIndex + 1;
+    item.appendChild(label);
+
+    let holdFired = false;
+    addHoldListener(item, () => {
+        holdFired = true;
+        openBookmarkInput(item, slideIndex);
+    }, 500);
+
+    item.addEventListener('click', () => {
+        if (holdFired) { holdFired = false; return; }
+        goToSlide(slideIndex);
+    });
+
+    attachTooltip(item, slideIndex);
+    return item;
+}
+
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
+    const pins = document.getElementById('bookmark-pins');
     navigator.innerHTML = '';
+    navigator.appendChild(pins);
 
     for (let i = 0; i < totalSlides; i++) {
-        const item = document.createElement('div');
-        item.className = 'slide-nav-item';
-        item.textContent = i + 1;
-        item.dataset.slideIndex = i;
-
-        item.onclick = () => {
-            goToSlide(i);
-        };
-
-        navigator.appendChild(item);
+        navigator.appendChild(createNavItem(i));
     }
 
     updateSlideNavigator();
+    populateBookmarkPins();
 
-    // Also populate right navigator if split view is active
     if (splitViewEnabled) {
         populateSlideNavigatorRight();
     }
 }
 
 function updateSlideNavigator() {
-    const items = document.querySelectorAll('#slide-navigator .slide-nav-item');
+    const items = document.querySelectorAll('#slide-navigator > .slide-nav-item');
     items.forEach((item, index) => {
         if (index === currentSlide) {
             item.classList.add('active');
@@ -809,8 +922,7 @@ function populateSlideNavigatorRight() {
         item.dataset.slideIndex = i;
 
         item.onclick = () => {
-            // Save current annotations before switching
-            saveRightAnnotations();
+            if (i === currentSlide) return;
             rightSlideIndex = i;
             renderSlideRight(i);
             updateSlideNavigatorRight();
@@ -825,20 +937,30 @@ function populateSlideNavigatorRight() {
 function updateSlideNavigatorRight() {
     const items = document.querySelectorAll('#slide-navigator-right .slide-nav-item');
     items.forEach((item, index) => {
+        item.classList.toggle('active', index === rightSlideIndex);
+        item.classList.toggle('disabled', index === currentSlide);
         if (index === rightSlideIndex) {
-            item.classList.add('active');
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else {
-            item.classList.remove('active');
         }
     });
 }
+
+function autoAdvanceRight() {
+    const candidates = [];
+    if (currentSlide + 1 < totalSlides) candidates.push(currentSlide + 1);
+    if (currentSlide - 1 >= 0) candidates.push(currentSlide - 1);
+    if (candidates.length === 0) return;
+    rightSlideIndex = candidates[0];
+    renderSlideRight(rightSlideIndex);
+    updateSlideNavigatorRight();
+}
+
+let bookmarks = {};
 
 let zipFile = null;
 let slideConfigs = {};
 let mediaCache = {};
 let annotations = {};
-let annotationsRight = {};
 let currentSlide = 0;
 let totalSlides = 0;
 
@@ -882,22 +1004,25 @@ async function loadMediaFromPath(path) {
     return url;
 }
 
+function snapshotCurrentSlide() {
+    annotations[currentSlide] = annCvs.canvas.toDataURL("image/png");
+}
+
 let annotationSyncTimeout = null;
 annCvs.canvas.addEventListener('mouseup', () => syncAnnotations());
 annCvs.canvas.addEventListener('touchend', () => syncAnnotations());
 
 function syncAnnotations() {
+    snapshotCurrentSlide();
     clearTimeout(annotationSyncTimeout);
     annotationSyncTimeout = setTimeout(() => {
-        const annData = annCvs.canvas.toDataURL("image/png");
-        // Save annotations locally per-slide and emit to server
-        annotations[currentSlide] = annData;
         socket.emit('annotation_update', {
-            annotations: annData,
+            annotations: annotations[currentSlide],
             slideIndex: currentSlide
         });
     }, 100);
 }
+
 
 // Helper function to update all media element positions after resize
 function updateMediaPositions() {
@@ -951,10 +1076,19 @@ document.addEventListener('keydown', (e) => {
 
 async function goToSlide(slideIndex) {
     if (slideIndex < 0 || slideIndex >= totalSlides) return;
-    
+
+    snapshotCurrentSlide();
     currentSlide = slideIndex;
     await renderSlide(currentSlide);
     updateSlideNavigator();
+
+    if (splitViewEnabled) {
+        if (rightSlideIndex === currentSlide) {
+            autoAdvanceRight();
+        } else {
+            updateSlideNavigatorRight();
+        }
+    }
 
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
@@ -1170,8 +1304,8 @@ async function renderSlideRight(slideIndex) {
     // Load per-slide annotations for right canvas
     try {
         annCvs2.clear();
-        if (annotationsRight[slideIndex]) {
-            await annCvs2.loadAnnotations(annotationsRight[slideIndex]);
+        if (annotations[slideIndex]) {
+            await annCvs2.loadAnnotations(annotations[slideIndex]);
         } else {
             annCvs2.resetHistory();
         }
@@ -1278,12 +1412,6 @@ async function renderSlideRight(slideIndex) {
     }
 }
 
-// Save right annotations when switching slides
-function saveRightAnnotations() {
-    if (splitViewEnabled && annCvs2 && annCvs2.canvas) {
-        annotationsRight[rightSlideIndex] = annCvs2.canvas.toDataURL('image/png');
-    }
-}
 
 folderInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
@@ -1360,8 +1488,10 @@ folderInput.addEventListener('change', async (e) => {
     currentSlide = 0;
     slideConfigs = {};
     mediaCache = {};
-    
+    annotations = {};
+
     await renderSlide(0);
+
     
     // Populate slide navigator
     populateSlideNavigator();
@@ -1443,8 +1573,10 @@ zipInput.addEventListener('change', async (e) => {
         currentSlide = 0;
         slideConfigs = {};
         mediaCache = {};
+        annotations = {};
 
         await renderSlide(0);
+
 
         // Populate slide navigator
         populateSlideNavigator();
@@ -1471,6 +1603,52 @@ zipInput.addEventListener('change', async (e) => {
     reader.readAsArrayBuffer(file);
 });
 
+pdfInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pdfInput.value = '';
+
+    const uploadModal = Modal.loading('Loading Presentation', 'Please wait while your presentation is loaded...');
+
+    try {
+        const pdfArrayBuffer = await file.arrayBuffer();
+
+        const zip = new JSZip();
+        zip.file('slides.pdf', pdfArrayBuffer);
+        zipFile = zip;
+
+        const pdfDoc = await pdfjsLib.getDocument({ data: pdfArrayBuffer }).promise;
+        totalSlides = pdfDoc.numPages;
+
+        currentSlide = 0;
+        slideConfigs = {};
+        mediaCache = {};
+        annotations = {};
+        bookmarks = {};
+
+        await renderSlide(0);
+        populateSlideNavigator();
+
+        socket.emit('presentation_loaded', { totalSlides });
+        uploadModal.close();
+        setControlsEnabledAfterUpload(true, __beamer_controls);
+
+        screenShareBtn.el.disabled = false;
+        screenShareBtn.el.style.opacity = '1';
+        screenShareBtn.el.style.cursor = 'pointer';
+
+        recordBtn.el.disabled = false;
+        recordBtn.el.style.opacity = '1';
+        recordBtn.el.style.cursor = 'pointer';
+
+        updateHistoryButtons();
+    } catch (err) {
+        console.error('Error loading PDF:', err);
+        uploadModal.close();
+        Modal.error('Invalid File', 'Could not load the PDF. Please try again.');
+    }
+});
+
 async function loadAvailableModels() {
     try {
         const response = await fetch('/api/models');
@@ -1489,12 +1667,16 @@ window.addEventListener('resize', () => {
     if (annCvs) {
         annCvs.resize();
     }
-    
+    if (splitViewEnabled && annCvs2) {
+        annCvs2.resize();
+    }
+
     // Update positions of all media elements (videos, models, widgets)
     if (zipFile && slideConfigs[currentSlide]) {
         updateMediaPositions();
     }
 });
+
 
 // Add fullscreen change listener to handle fullscreen transitions
 document.addEventListener('fullscreenchange', () => {
