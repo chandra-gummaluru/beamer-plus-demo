@@ -697,6 +697,15 @@ def survey_page(survey_id):
                                   survey_id=survey_id, 
                                   question=surveys[survey_id].get('question', 'Survey'))
 
+@app.route('/wordcloud/<survey_id>')
+def wordcloud_page(survey_id):
+    """Serve the wordcloud response page (alias of survey)"""
+    if survey_id not in surveys:
+        return "<h1>Survey not found</h1>", 404
+    return render_template_string(SURVEY_RESPONSE_HTML,
+                                  survey_id=survey_id,
+                                  question=surveys[survey_id].get('question', 'Word Cloud'))
+
 @app.route('/api/models')
 def get_models():
     """Get list of available AI models"""
@@ -729,7 +738,12 @@ def create_survey():
         'model': model_name,
         'num_summaries': data.get('num_summaries', 3)
     }
-    return jsonify({'survey_id': survey_id, 'url': f'/survey/{survey_id}'})
+    is_wordcloud = data.get('is_wordcloud', False)
+
+    return jsonify({
+        'survey_id': survey_id,
+        'url': f'/wordcloud/{survey_id}' if is_wordcloud else f'/survey/{survey_id}'
+    })
 
 @app.route('/api/survey/<survey_id>')
 def get_survey(survey_id):

@@ -20,6 +20,7 @@
           background: transparent;
         }
 
+
         #widget-container {
           width: 100%;
           height: 100%;
@@ -39,6 +40,7 @@
           background: #f8f9fa;
           padding: 2rem;
         }
+
 
         .setup-card {
             background: #eeeeee;
@@ -295,7 +297,7 @@
                 const res = await fetch('/api/survey/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question: question })
+                    body: JSON.stringify({ question: question, model: null, num_summaries: 0, is_wordcloud: true})
                 });
                 const data = await res.json();
                 surveyId = data.survey_id;
@@ -316,24 +318,24 @@
             if (!surveyId) return;
 
             try {
-                const res = await fetch(`/api/survey/${surveyId}/responses`);
-                if (!res.ok) return;
-                const data = await res.json();
+            const res = await fetch(`/api/survey/${surveyId}/responses?after=${lastSyncedTotal}`);
+            if (!res.ok) return;
+            const data = await res.json();
 
-                // update totals
-                totalResponses = data.total ?? totalResponses;
-                sessionStorage.setItem('wc_total', String(totalResponses));
-                document.getElementById('response-count').textContent = String(totalResponses);
+            // update totals
+            totalResponses = data.total ?? totalResponses;
+            sessionStorage.setItem('wc_total', String(totalResponses));
+            document.getElementById('response-count').textContent = String(totalResponses);
 
-                // process missed texts
-                const responses = Array.isArray(data.responses) ? data.responses : [];
-                for (const r of responses) processResponse(r.text);
+            // process missed texts
+            const responses = Array.isArray(data.responses) ? data.responses : [];
+            for (const r of responses) processResponse(r.text);
 
-                // move cursor forward
-                lastSyncedTotal = totalResponses;
-                sessionStorage.setItem('wc_lastSyncedTotal', String(lastSyncedTotal));
+            // move cursor forward
+            lastSyncedTotal = totalResponses;
+            sessionStorage.setItem('wc_lastSyncedTotal', String(lastSyncedTotal));
             } catch (e) {
-                console.warn("syncMissedResponses failed:", e);
+            console.warn("syncMissedResponses failed:", e);
             }
         }
 

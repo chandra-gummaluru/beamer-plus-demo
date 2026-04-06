@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="/static/css/shared.css">
+  <link rel="stylesheet" href="/static/css/button.css">
+  <link rel="stylesheet" href="/static/css/control-panel.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="/static/css/survey.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Computer Modern Sans", sans-serif;
+      background: transparent;
+    }
+
+    #widget-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      border: 2px solid #666;
+      border-radius: 4px;
+      overflow: hidden;
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    #view-setup, #view-qr, #view-results, #view-loading {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .view-header {
+      padding: 26px 30px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #666;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+    }
+
+    .title {
+      font-size: 2rem;
+      color: #333;
+      font-weight: 500;
+      line-height: 1.15;
+    }
+
+    .sub {
+      color: #666;
+      font-size: 0.95rem;
+    }
+
+    .stage {
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      background: #fff;
+    }
+
+    .view-footer {
+      padding: 8px 14px;
+      border-top: 1.5px solid #666;
+      background: #f8f9fa;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 0.75rem;
+      min-height: 44px;
+    }
+
+    #view-setup .view-footer,
+    #view-loading .view-footer {
+      padding: 0;
+      min-height: 0;
+      border-top: none;
+      background: transparent;
+    }
+
+    .card {
+      width: min(620px, 82%);
+      min-height: 260px;
+      padding: 1rem;
+      border: 2px solid #666;
+      border-radius: 4px;
+      background: #eeeeee;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin: 0 auto;
+    }
+
+    label {
+      font-size: 0.93rem;
+      color: #444;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.55rem;
+      border: 2px solid #666;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-family: inherit;
+      background: #fff;
+    }
+
+    .row {
+      display: flex;
+      gap: 0.6rem;
+    }
+
+    .row > div {
+      flex: 1;
+    }
+
+    .btn {
+      padding: 0.7rem 1.1rem;
+      border: 2px solid #666;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.95rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      user-select: none;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #e0e0e0;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .qr-wrap {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      border: 1px solid #666;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .qr-side {
+      border-right: 1.5px solid #666;
+      background: #f8f9fa;
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+    }
+
+    .qr-label {
+      font-size: 0.9rem;
+      color: #666;
+      text-align: center;
+    }
+
+    #qr {
+      padding: 10px;
+      background: #fff;
+      border: 2px solid #666;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .join-url {
+      font-family: monospace;
+      background: #eee;
+      padding: 10px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      text-align: center;
+      word-break: break-all;
+      width: 100%;
+      border: 1px solid #ccc;
+    }
+
+    .qr-main {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .pill {
+      border: 2px solid #666;
+      padding: 0.65rem 1rem;
+      background: #fff;
+      color: #333;
+      font-size: 1rem;
+      border-radius: 4px;
+      display: inline-flex;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .results-shell {
+      width: min(920px, 96%);
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .results-box {
+      width: 100%;
+      border: 2px solid #666;
+      border-radius: 4px;
+      background: #f8f9fa;
+      padding: 1.25rem;
+      line-height: 1.75;
+      color: #333;
+      font-size: 1.05rem;
+      text-align: center;
+      margin: 0 auto;
+      overflow: auto;
+      flex: 1;
+    }
+
+    .nav-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.9rem;
+    }
+
+    .loading-shell {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      background: #fff;
+    }
+
+    .loading-squiggle {
+      width: 120px;
+      height: 40px;
+      display: block;
+    }
+
+    .loading-squiggle path {
+      fill: none;
+      stroke: #333;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 150;
+      stroke-dashoffset: 150;
+      animation: draw-squiggle 1.6s ease-in-out infinite;
+    }
+
+    @keyframes draw-squiggle {
+      0% { stroke-dashoffset: 150; opacity: 0.6; }
+      40% { stroke-dashoffset: 0; opacity: 1; }
+      100% { stroke-dashoffset: -150; opacity: 0.6; }
+    }
+
+    .loading-text {
+      color: #666;
+      font-size: 1rem;
+    }
+
+    @media (max-width: 700px) {
+      .qr-wrap {
+        grid-template-columns: 1fr;
+      }
+
+      .qr-side {
+        border-right: none;
+        border-bottom: 2px solid #666;
+      }
+
+      .row {
+        flex-direction: column;
+      }
+
+      .title {
+        font-size: 1.6rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="widget-container">
+
+    <!-- SETUP VIEW -->
+    <div id="view-setup">
+      <div class="view-header">
+        <div class="title">Survey</div>
+        <div class="sub">Create a question and start collecting responses</div>
+      </div>
+
+      <div class="stage">
+        <div class="card">
+          <div>
+            <label>Question</label>
+            <input id="q" type="text" placeholder="What do you think about...?" />
+          </div>
+
+          <div class="row">
+            <div>
+              <label>Summarizer Script</label>
+              <select id="model"></select>
+            </div>
+            <div>
+              <label># Summaries</label>
+              <input id="n" type="number" min="1" max="10" value="3" />
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:0.2rem;">
+            <button id="btn-create" class="btn">
+              <i class="fa-solid fa-qrcode"></i>
+              Create & Show QR
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-footer"></div>
+    </div>
+
+    <!-- QR VIEW -->
+    <div id="view-qr" class="hidden">
+      <div class="view-header">
+        <div class="title" id="qr-title">Survey</div>
+      </div>
+
+      <div class="stage">
+        <div class="qr-wrap">
+          <div class="qr-side">
+            <div class="qr-label">Scan to join</div>
+
+            <div id="qr"></div>
+
+            <div class="join-url" id="display-url"></div>
+
+            <div class="pill">
+              <i class="fa-solid fa-comment-dots"></i>
+              Responses: <span id="count">0</span>
+            </div>
+          </div>
+
+          <div class="qr-main">
+            <div style="color:#777; font-size:1rem; text-align:center; max-width:420px;">
+              You can navigate slides while students respond.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-footer">
+        <button id="btn-reset" class="btn" title="Reset and go back">
+          <i class="fa-solid fa-arrow-left"></i>
+          Reset
+        </button>
+
+        <button id="btn-generate" class="btn" disabled>
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          Generate Summaries
+        </button>
+      </div>
+    </div>
+
+    <!-- LOADING VIEW -->
+    <div id="view-loading" class="hidden">
+      <div class="view-header">
+        <div class="title">Generating Summaries</div>
+        <div class="sub">Analyzing survey responses...</div>
+      </div>
+
+      <div class="stage">
+        <div class="loading-shell">
+          <svg class="loading-squiggle" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+            <path d="M 5,20 Q 15,5 25,20 T 45,20 Q 55,5 65,20 T 85,20 Q 95,5 105,20 T 115,20" />
+          </svg>
+          <div class="loading-text">Please wait while summaries are generated...</div>
+        </div>
+      </div>
+
+      <div class="view-footer"></div>
+    </div>
+
+    <!-- RESULTS VIEW -->
+    <div id="view-results" class="hidden">
+      <div class="view-header">
+        <div class="title" id="res-title">Summaries</div>
+        <div class="sub" id="res-sub"></div>
+      </div>
+
+      <div class="stage">
+        <div class="results-shell">
+          <div class="results-box" id="summary"></div>
+
+          <div class="nav-row">
+            <button id="prev" class="btn" title="Previous"><i class="fa-solid fa-arrow-left"></i></button>
+            <span id="idx" style="color:#666;">1 / 1</span>
+            <button id="next" class="btn" title="Next"><i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view-footer">
+        <button id="btn-new" class="btn" title="Start a new survey">
+          <i class="fa-solid fa-rotate-left"></i>
+          New Survey
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const parentAPI = () => window.parent && window.parent.beamerSurvey;
+    const parentOrigin = () =>
+      (window.parent && window.parent.location && window.parent.location.origin)
+        ? window.parent.location.origin
+        : window.location.origin;
+
+    const setup = document.getElementById('view-setup');
+    const qrView = document.getElementById('view-qr');
+    const loadingView = document.getElementById('view-loading');
+    const resView = document.getElementById('view-results');
+
+    const qEl = document.getElementById('q');
+    const modelEl = document.getElementById('model');
+    const nEl = document.getElementById('n');
+
+    const qrTitle = document.getElementById('qr-title');
+    const qrBox = document.getElementById('qr');
+    const urlEl = document.getElementById('url');
+    const countEl = document.getElementById('count');
+
+    const btnCreate = document.getElementById('btn-create');
+    const btnGenerate = document.getElementById('btn-generate');
+    const btnReset = document.getElementById('btn-reset');
+
+    const resTitle = document.getElementById('res-title');
+    const resSub = document.getElementById('res-sub');
+    const summaryEl = document.getElementById('summary');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const idxEl = document.getElementById('idx');
+    const btnNew = document.getElementById('btn-new');
+
+    let unsubscribe = null;
+    let current = 0;
+    let summaries = [];
+    let state = null;
+
+    function show(view) {
+      setup.classList.add('hidden');
+      qrView.classList.add('hidden');
+      loadingView.classList.add('hidden');
+      resView.classList.add('hidden');
+      view.classList.remove('hidden');
+    }
+
+    function fillModels() {
+      const api = parentAPI();
+      const models = api ? api.getAvailableModels() : [];
+      modelEl.innerHTML = '';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m.replace(/_/g, ' ');
+        modelEl.appendChild(opt);
+      });
+    }
+
+    function renderQR(fullUrl, title) {
+      qrBox.innerHTML = '';
+      new QRCode(qrBox, {
+        text: fullUrl,
+        width: 180,
+        height: 180,
+        colorDark: "#333",
+        colorLight: "#fff"
+      });
+
+      const displayUrl = document.getElementById('display-url');
+      if (displayUrl) displayUrl.textContent = fullUrl;
+
+      qrTitle.textContent = title || 'Survey';
+    }
+
+    function attachCountSubscription() {
+      const api = parentAPI();
+      if (!api) return;
+
+      if (unsubscribe) unsubscribe();
+      unsubscribe = api.subscribeResponseCount((c) => {
+        countEl.textContent = String(c);
+        const needed = state?.survey?.num_summaries || 1;
+        btnGenerate.disabled = !(c >= needed);
+      });
+    }
+
+    function renderResults() {
+      if (!summaries.length) return;
+
+      const s = summaries[current];
+      summaryEl.textContent = s.summary || '';
+      idxEl.textContent = `${current + 1} / ${summaries.length}`;
+
+      prevBtn.disabled = current === 0;
+      nextBtn.disabled = current === summaries.length - 1;
+    }
+
+    async function refreshFromParentState() {
+      const api = parentAPI();
+      if (!api) return;
+
+      state = api.getState();
+
+      if (state.survey && !state.results) {
+        show(qrView);
+        renderQR(`${parentOrigin()}${state.survey.url}`, state.survey.question || 'Survey');
+        countEl.textContent = String(state.responseCount || 0);
+
+        const needed = state.survey.num_summaries || 1;
+        btnGenerate.disabled = !((state.responseCount || 0) >= needed);
+
+        attachCountSubscription();
+        return;
+      }
+
+      if (state.survey && state.results && state.results.summaries) {
+        show(resView);
+        resTitle.textContent = state.survey.question || 'Summaries';
+        resSub.textContent = `(based on ${state.results.num_responses || 0} response(s))`;
+        summaries = state.results.summaries;
+        current = 0;
+        renderResults();
+        return;
+      }
+
+      show(setup);
+    }
+
+    btnCreate.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return alert('Parent API not found.');
+
+      const question = qEl.value.trim();
+
+      if (!question) {
+        alert('Please enter a question.');
+        return;
+      }
+
+      const model = modelEl.value;
+      const numSummaries = parseInt(nEl.value, 10);
+
+      if (!model) return alert('Please select a model.');
+      if (isNaN(numSummaries) || numSummaries < 1 || numSummaries > 10) {
+        return alert('Number of summaries must be 1–10.');
+      }
+
+      btnCreate.disabled = true;
+
+      try {
+        const created = await api.createSurvey({ question, model, num_summaries: numSummaries });
+        show(qrView);
+        renderQR(`${parentOrigin()}${created.url}`, question);
+
+        state = api.getState();
+        attachCountSubscription();
+        btnGenerate.disabled = true;
+      } catch (e) {
+        alert(e.message || 'Failed to create survey');
+      } finally {
+        btnCreate.disabled = false;
+      }
+    };
+
+    btnGenerate.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return;
+
+      btnGenerate.disabled = true;
+      show(loadingView);
+
+      try {
+        const results = await api.generateSummaries();
+        summaries = results.summaries || [];
+        current = 0;
+
+        show(resView);
+        const st = api.getState();
+        resTitle.textContent = st.survey?.question || 'Summaries';
+        resSub.textContent = `(based on ${results.num_responses || 0} response(s))`;
+
+        renderResults();
+      } catch (e) {
+        alert(e.message || 'Failed to generate summaries');
+        await refreshFromParentState();
+      }
+    };
+
+    btnReset.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return;
+      if (unsubscribe) unsubscribe();
+      await api.reset();
+      await refreshFromParentState();
+    };
+
+    btnNew.onclick = async () => {
+      const api = parentAPI();
+      if (!api) return;
+      if (unsubscribe) unsubscribe();
+      await api.reset();
+      await refreshFromParentState();
+    };
+
+    prevBtn.onclick = () => { if (current > 0) { current--; renderResults(); } };
+    nextBtn.onclick = () => { if (current < summaries.length - 1) { current++; renderResults(); } };
+
+    fillModels();
+    refreshFromParentState();
+  </script>
+</body>
+</html>

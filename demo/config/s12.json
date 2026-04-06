@@ -1,17 +1,15 @@
 {
-    "slides": [
-        {
-            "title": "Word Cloud Demo",
-            "elements": [
-                {
-                    "type": "widget",
-                    "url": "widgets/word_cloud.html",
-                    "x": "5%",
-                    "y": "5%",
-                    "width": "90%",
-                    "height": "90%"
-                }
-            ]
-        }
-    ]
+  "widgets": [
+    {
+      "id": "sr1",
+      "type": "survey_result",
+      "src": "widgets/survey_result.html",
+      "x": 0.1,
+      "y": 0.15,
+      "width": 0.8,
+      "height": 0.7,
+      "interactive": true
+    }
+  ]
 }
+
