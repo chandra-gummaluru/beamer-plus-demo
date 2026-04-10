@@ -124,6 +124,12 @@ def survey_page(survey_id):
         return render_template("survey_not_found.html"), 404
     return render_template("survey_response.html", survey_id=survey_id)
 
+@app.route("/wordcloud/<survey_id>")
+def wordcloud_page(survey_id):
+    if survey_id not in surveys:
+        return render_template("survey_not_found.html"), 404
+    return render_template("survey_response.html", survey_id=survey_id)
+
 # PWA routes
 @app.route('/manifest.json')
 def manifest():
@@ -203,7 +209,12 @@ def create_survey():
         'model': model_name,
         'num_summaries': data.get('num_summaries', 3)
     }
-    return jsonify({'survey_id': survey_id, 'url': f'/survey/{survey_id}'})
+    is_wordcloud = data.get('is_wordcloud', False)
+
+    return jsonify({
+        'survey_id': survey_id,
+        'url': f'/wordcloud/{survey_id}' if is_wordcloud else f'/survey/{survey_id}'
+    })
 
 @app.route('/api/survey/<survey_id>')
 def get_survey(survey_id):
@@ -241,9 +252,21 @@ def respond_survey(survey_id):
 def get_responses(survey_id):
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
+    after = request.args.get("after", default="0")
+    try:
+        after = int(after)
+    except ValueError:
+        after = 0
+
+    all_responses = survey_responses[survey_id]
+    total = len(all_responses)
+
+    # return only responses after index `after`
+    missed = all_responses[after:] if after < total else []
+
     return jsonify({
-        'responses': survey_responses[survey_id],
-        'total': len(survey_responses[survey_id])
+        'responses': missed,
+        'total': total
     })
 
 @app.route('/api/survey/<survey_id>/analyze', methods=['POST'])
@@ -476,4 +499,4 @@ def handle_screen_frame(data):
     emit("screen_frame", data, room='viewer')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False)

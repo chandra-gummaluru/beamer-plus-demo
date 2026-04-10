@@ -117,6 +117,26 @@ const nextBtn = new Button(navContainer, {
     className: 'btn'
 });
 
+const addBlankBtn = new Button(navContainer, {
+    label: '<i class="fa-solid fa-file-circle-plus"></i>',
+    className: 'btn'
+});
+addBlankBtn.el.title = "Add Blank Page";
+addBlankBtn.el.style.marginLeft = '10px';
+addBlankBtn.onClick(() => {
+    insertBlankAfterCurrent();
+});
+
+const deleteBlankBtn = new Button(navContainer, {
+    label: '<i class="fa-solid fa-trash"></i>',
+    className: 'btn'
+});
+deleteBlankBtn.el.title = "Delete Blank Page";
+deleteBlankBtn.el.style.marginLeft = '10px';
+deleteBlankBtn.onClick(() => {
+    deleteCurrentBlank();
+});
+
 const splitViewButtonContainer = document.getElementById('split-view-button-container');
 
 const splitViewBtn = new Button(splitViewButtonContainer, {
@@ -146,16 +166,20 @@ splitViewBtn.onClick(() => {
 
             // Resize all canvases after layout settles
             setTimeout(async () => {
-                snapshotCurrentSlide();
+                saveCurrentAnnotations();
                 annCvs.resizeOnly();
                 pdfCvs.resizeOnly();
                 if (annCvs2) annCvs2.resizeOnly();
                 if (pdfCvs2) pdfCvs2.resizeOnly();
 
+                // Re-render slides at new sizes
                 if (zipFile) {
-                    await renderSlide(currentSlide);
+                    await renderLogicalSlide(currentSlide);
                     await renderSlideRight(rightSlideIndex);
                 }
+
+                // Restore the current pointer mode on both canvases
+                setPointerModeAll(annCvs.pointer_mode);
             }, 100);
         }, 50);
     } else {
@@ -164,16 +188,15 @@ splitViewBtn.onClick(() => {
 
         // Resize canvases back to full size
         setTimeout(async () => {
-            snapshotCurrentSlide();
+            saveCurrentAnnotations();
             annCvs.resizeOnly();
             pdfCvs.resizeOnly();
 
             // Re-render main slide at full size
             if (zipFile) {
-                await renderSlide(currentSlide);
+                await renderLogicalSlide(currentSlide);
             }
         }, 100);
-
     }
 });
 
@@ -315,16 +338,19 @@ function updateFloatingPanel() {
         colorsSection.className = 'panel-section';
         if (colorPicker) colorsSection.appendChild(colorPicker);
         floatingPanel.appendChild(colorsSection);
-
+        
         // Brush controls section
         const brushSection = document.createElement('div');
         brushSection.className = 'panel-section';
         if (brushControls) brushSection.appendChild(brushControls);
         floatingPanel.appendChild(brushSection);
-
+        
         // Undo/Redo/Clear section - move individual buttons from other-controls
         const actionSection = document.createElement('div');
         actionSection.className = 'panel-section';
+        const undoBtnEl = document.getElementById('undo-btn');
+        const redoBtnEl = document.getElementById('redo-btn');
+        const clearBtnEl = document.getElementById('clear-btn');
         if (undoBtnEl) actionSection.appendChild(undoBtnEl);
         if (redoBtnEl) actionSection.appendChild(redoBtnEl);
         if (clearBtnEl) actionSection.appendChild(clearBtnEl);
@@ -336,6 +362,13 @@ function updateFloatingPanel() {
         // Move elements back to controls-right on desktop
 
         // Move undo/redo/clear back to other-controls in the correct order
+        if (otherControls) {
+            const undoBtnEl = document.getElementById('undo-btn');
+            const redoBtnEl = document.getElementById('redo-btn');
+            const clearBtnEl = document.getElementById('clear-btn');
+        }
+
+        // Insert in correct order at the beginning of other-controls
         if (undoBtnEl && otherControls && !otherControls.contains(undoBtnEl)) {
             otherControls.insertBefore(undoBtnEl, otherControls.firstChild);
         }
@@ -508,11 +541,11 @@ const __beamer_controls = [
     ...colorBtns,
     brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
+    addBlankBtn, deleteBlankBtn,
     splitViewBtn,
     undoBtn, redoBtn,
     clearBtn
 ];
-// QUESTION: Why aren't screenShareBtn and recordBtn in this array?^
 
 // Disable at startup
 setControlsEnabledAfterUpload(false, __beamer_controls);
@@ -534,6 +567,7 @@ let pdfCvs2 = null;  // Lazily initialized when split view is activated
 function initializeSecondCanvases() {
     if (!annCvs2) {
         annCvs2 = new Canvas(ann_canvas_container2);
+        annCvs2.setHistoryChangeHandler(updateHistoryButtons);
         annCvs2.setPointerMode('hand'); // right side is always view-only
     }
     if (!pdfCvs2) {
@@ -552,6 +586,7 @@ updateHistoryButtons();
 // Set pointer mode on left canvas only — right is always hand (view-only)
 function setPointerModeAll(mode) {
     annCvs.setPointerMode(mode);
+    if (annCvs2) annCvs2.setPointerMode('hand');
 }
 
 function setShapeToolAll(shape) {
@@ -758,11 +793,11 @@ function showUploadModal() {
     cancelBtn.onclick = () => {
         overlay.remove();
     };
-
+    
     overlay.onclick = (e) => {
         if (e.target === overlay) overlay.remove();
     };
-
+    
     // ESC key handler
     const escHandler = (e) => {
         if (e.key === 'Escape') {
@@ -881,14 +916,95 @@ function createNavItem(slideIndex) {
     return item;
 }
 
+function getBlankChildren(parentPdfIndex) {
+    return slideStructure.filter(
+        s => s.type === 'blank' && s.parent === parentPdfIndex
+    );
+}
+
+function isParentCollapsed(parentPdfIndex) {
+    return collapsedParents.has(parentPdfIndex);
+}
+
+function toggleParentCollapsed(parentPdfIndex) {
+    if (collapsedParents.has(parentPdfIndex)) {
+        collapsedParents.delete(parentPdfIndex);
+    } else {
+        collapsedParents.add(parentPdfIndex);
+    }
+    populateSlideNavigator();
+}
+
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
     const pins = document.getElementById('bookmark-pins');
+
     navigator.innerHTML = '';
     navigator.appendChild(pins);
 
-    for (let i = 0; i < totalSlides; i++) {
-        navigator.appendChild(createNavItem(i));
+    for (let i = 0; i < slideStructure.length; i++) {
+        const slide = slideStructure[i];
+
+        // PDF slide
+        if (slide.type === 'pdf') {
+            const item = createNavItem(i);
+            item.dataset.slideIndex = i;
+            item.classList.add('slide-nav-parent');
+            item.style.position = 'relative';
+
+            const blankChildren = getBlankChildren(slide.pdfIndex);
+
+            if (blankChildren.length > 0) {
+                const toggleBtn = document.createElement('span');
+                toggleBtn.textContent = isParentCollapsed(slide.pdfIndex) ? '▸' : '▾';
+                toggleBtn.style.position = 'absolute';
+                toggleBtn.style.right = '8px';
+                toggleBtn.style.top = '50%';
+                toggleBtn.style.transform = 'translateY(-50%)';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.fontSize = '12px';
+                toggleBtn.style.lineHeight = '1';
+
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleParentCollapsed(slide.pdfIndex);
+                };
+
+                item.appendChild(toggleBtn);
+            }
+
+            navigator.appendChild(item);
+            continue;
+        }
+
+        // Blank child slide
+        if (slide.type === 'blank') {
+            if (isParentCollapsed(slide.parent)) {
+                continue;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'slide-nav-item slide-nav-child';
+
+            const letter = String.fromCharCode(96 + slide.subIndex);
+            item.textContent = `${slide.parent + 1}.${letter}`;
+            item.dataset.slideIndex = i;
+
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.justifyContent = 'center';
+            item.style.width = '76%';
+            item.style.marginLeft = '16px';
+            item.style.boxSizing = 'border-box';
+            item.style.paddingLeft = '0';
+            item.style.fontSize = '0.95em';
+
+            item.onclick = () => {
+                goToSlide(i);
+            };
+
+            navigator.appendChild(item);
+        }
     }
 
     updateSlideNavigator();
@@ -900,9 +1016,12 @@ function populateSlideNavigator() {
 }
 
 function updateSlideNavigator() {
-    const items = document.querySelectorAll('#slide-navigator > .slide-nav-item');
-    items.forEach((item, index) => {
-        if (index === currentSlide) {
+    const items = document.querySelectorAll('#slide-navigator .slide-nav-item');
+
+    items.forEach((item) => {
+        const slideIndex = Number(item.dataset.slideIndex);
+
+        if (slideIndex === currentSlide) {
             item.classList.add('active');
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
@@ -923,6 +1042,9 @@ function populateSlideNavigatorRight() {
 
         item.onclick = () => {
             if (i === currentSlide) return;
+
+            // Save current annotations before switching
+            saveRightAnnotations();
             rightSlideIndex = i;
             renderSlideRight(i);
             updateSlideNavigatorRight();
@@ -940,7 +1062,10 @@ function updateSlideNavigatorRight() {
         item.classList.toggle('active', index === rightSlideIndex);
         item.classList.toggle('disabled', index === currentSlide);
         if (index === rightSlideIndex) {
+            item.classList.add('active');
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            item.classList.remove('active');
         }
     });
 }
@@ -961,22 +1086,25 @@ let zipFile = null;
 let slideConfigs = {};
 let mediaCache = {};
 let annotations = {};
+let annotationsRight = {};
 let currentSlide = 0;
 let totalSlides = 0;
+let slideStructure = [];
+let collapsedParents = new Set();
 
 async function loadSlideConfig(slideIndex) {
     if (slideConfigs[slideIndex]) {
         return slideConfigs[slideIndex];
     }
-    
+
     const configFileName = `config/s${slideIndex}.json`;
     const configFile = zipFile.file(configFileName);
-    
+
     if (!configFile) {
         slideConfigs[slideIndex] = null;
         return null;
     }
-    
+
     const configText = await configFile.async("string");
     const config = JSON.parse(configText);
     slideConfigs[slideIndex] = config;
@@ -1004,25 +1132,25 @@ async function loadMediaFromPath(path) {
     return url;
 }
 
-function snapshotCurrentSlide() {
-    annotations[currentSlide] = annCvs.canvas.toDataURL("image/png");
-}
-
 let annotationSyncTimeout = null;
 annCvs.canvas.addEventListener('mouseup', () => syncAnnotations());
 annCvs.canvas.addEventListener('touchend', () => syncAnnotations());
 
 function syncAnnotations() {
-    snapshotCurrentSlide();
     clearTimeout(annotationSyncTimeout);
+
+    const slideIndexAtDrawTime = currentSlide;
+
     annotationSyncTimeout = setTimeout(() => {
+        const annData = annCvs.canvas.toDataURL("image/png");
+        // Save annotations locally per-slide and emit to server
+        annotations[slideIndexAtDrawTime] = annData;
         socket.emit('annotation_update', {
-            annotations: annotations[currentSlide],
-            slideIndex: currentSlide
+            annotations: annData,
+            slideIndex: slideIndexAtDrawTime
         });
     }, 100);
 }
-
 
 // Helper function to update all media element positions after resize
 function updateMediaPositions() {
@@ -1065,6 +1193,14 @@ function updateMediaPositions() {
     updateWidgetPositions(slide_canvas_container);
 }
 
+function saveCurrentAnnotations() {
+    const annData = annCvs.canvas.toDataURL("image/png");
+    annotations[currentSlide] = annData;
+    socket.emit('annotation_update', {
+        annotations: annData,
+        slideIndex: currentSlide
+    });
+}
 
 prevBtn.onClick(() => goToSlide(currentSlide - 1));
 nextBtn.onClick(() => goToSlide(currentSlide + 1));
@@ -1075,11 +1211,20 @@ document.addEventListener('keydown', (e) => {
 });
 
 async function goToSlide(slideIndex) {
-    if (slideIndex < 0 || slideIndex >= totalSlides) return;
+    if (slideIndex < 0 || slideIndex >= slideStructure.length) return;
 
-    snapshotCurrentSlide();
+    // Save current slide before leaving it
+    saveCurrentAnnotations();
+    clearTimeout(annotationSyncTimeout);
+
     currentSlide = slideIndex;
-    await renderSlide(currentSlide);
+
+    const currentObj = slideStructure[currentSlide];
+    if (currentObj?.type === 'blank') {
+        collapsedParents.delete(currentObj.parent);
+    }
+
+    await renderLogicalSlide(currentSlide);
     updateSlideNavigator();
 
     if (splitViewEnabled) {
@@ -1095,6 +1240,37 @@ async function goToSlide(slideIndex) {
         slideIndex: currentSlide,
         annotations: annData
     });
+}
+
+async function renderLogicalSlide(logicalIndex) {
+    const slideObj = slideStructure[logicalIndex];
+    if (!slideObj) return;
+
+    if (slideObj.type === 'pdf') {
+        slide_canvas_container.style.display = 'block';
+        ann_canvas_container.style.background = '';
+
+        await renderSlide(slideObj.pdfIndex);
+        return;
+    }
+
+    if (slideObj.type === 'blank') {
+        slide_canvas_container.style.display = 'none';
+        annCvs.clear();
+
+        try {
+            if (annotations[currentSlide]) {
+                await annCvs.loadAnnotations(annotations[currentSlide]);
+            } else {
+                annCvs.resetHistory();
+            }
+        } catch (e) {
+            console.warn('Error loading annotations for blank slide', logicalIndex, e);
+        }
+
+        ann_canvas_container.style.background = 'white';
+        updateHistoryButtons();
+    }
 }
 
 async function renderSlide(slideIndex) {
@@ -1120,8 +1296,8 @@ async function renderSlide(slideIndex) {
     // Load per-slide annotations (clear then draw saved image if present)
     try {
         annCvs.clear();
-        if (annotations[slideIndex]) {
-            await annCvs.loadAnnotations(annotations[slideIndex]);
+        if (annotations[currentSlide]) {
+            await annCvs.loadAnnotations(annotations[currentSlide]);
         } else {
             annCvs.resetHistory();
         }
@@ -1183,7 +1359,7 @@ async function renderSlide(slideIndex) {
             if (v.playMode === "manual") {
                 video.controls = true;
             }
-            
+
             video.addEventListener('play', () => {
                 socket.emit('video_action', {
                     videoId: v.id,
@@ -1192,7 +1368,7 @@ async function renderSlide(slideIndex) {
                     currentTime: video.currentTime
                 });
             });
-            
+
             video.addEventListener('pause', () => {
                 socket.emit('video_action', {
                     videoId: v.id,
@@ -1288,6 +1464,97 @@ async function renderSlide(slideIndex) {
     }
 }
 
+function insertBlankAfterCurrent() {
+    const currentObj = slideStructure[currentSlide];
+
+    if (!currentObj || currentObj.type !== 'pdf') {
+        return;
+    }
+
+    const parentPdfIndex = currentObj.pdfIndex;
+
+    const existingBlanks = slideStructure.filter(
+        s => s.type === 'blank' && s.parent === parentPdfIndex
+    );
+
+    const newSubIndex = existingBlanks.length + 1;
+
+    const blankSlide = {
+        type: 'blank',
+        parent: parentPdfIndex,
+        subIndex: newSubIndex
+    };
+
+    let insertIndex = currentSlide + 1;
+
+    while (
+        insertIndex < slideStructure.length &&
+        slideStructure[insertIndex].type === 'blank' &&
+        slideStructure[insertIndex].parent === parentPdfIndex
+    ) {
+        insertIndex++;
+    }
+
+    slideStructure.splice(insertIndex, 0, blankSlide);
+    collapsedParents.delete(parentPdfIndex);
+    populateSlideNavigator();
+}
+
+function shiftAnnotationsAfterDelete(deletedIndex) {
+    const newAnnotations = {};
+
+    Object.keys(annotations).forEach((key) => {
+        const index = Number(key);
+
+        if (index < deletedIndex) {
+            newAnnotations[index] = annotations[index];
+        } else if (index > deletedIndex) {
+            newAnnotations[index - 1] = annotations[index];
+        }
+        // skip deletedIndex
+    });
+
+    annotations = newAnnotations;
+}
+
+async function deleteCurrentBlank() {
+    const slideObj = slideStructure[currentSlide];
+
+    if (!slideObj || slideObj.type !== 'blank') {
+        return;
+    }
+
+    const deletedIndex = currentSlide;
+    const parentIndex = slideObj.parent;
+
+    clearTimeout(annotationSyncTimeout);
+
+    shiftAnnotationsAfterDelete(deletedIndex);
+
+    slideStructure.splice(deletedIndex, 1);
+
+    let counter = 1;
+    slideStructure.forEach(s => {
+        if (s.type === 'blank' && s.parent === parentIndex) {
+            s.subIndex = counter++;
+        }
+    });
+
+    const parentLogicalIndex = slideStructure.findIndex(
+        s => s.type === 'pdf' && s.pdfIndex === parentIndex
+    );
+
+    currentSlide = parentLogicalIndex;
+    populateSlideNavigator();
+    await renderLogicalSlide(currentSlide);
+
+    const annData = annCvs.canvas.toDataURL("image/png");
+    socket.emit('slide_change', {
+        slideIndex: currentSlide,
+        annotations: annData
+    });
+}
+
 // Render a slide on the right (split view) canvas - full featured with widgets and annotations
 async function renderSlideRight(slideIndex) {
     if (!zipFile || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
@@ -1304,8 +1571,8 @@ async function renderSlideRight(slideIndex) {
     // Load per-slide annotations for right canvas
     try {
         annCvs2.clear();
-        if (annotations[slideIndex]) {
-            await annCvs2.loadAnnotations(annotations[slideIndex]);
+        if (annotationsRight[slideIndex]) {
+            await annCvs2.loadAnnotations(annotationsRight[slideIndex]);
         } else {
             annCvs2.resetHistory();
         }
@@ -1412,6 +1679,12 @@ async function renderSlideRight(slideIndex) {
     }
 }
 
+// Save right annotations when switching slides
+function saveRightAnnotations() {
+    if (splitViewEnabled && annCvs2 && annCvs2.canvas) {
+        annotationsRight[rightSlideIndex] = annCvs2.canvas.toDataURL('image/png');
+    }
+}
 
 folderInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
@@ -1484,17 +1757,28 @@ folderInput.addEventListener('change', async (e) => {
     totalSlides = pdfDoc.numPages;
     
     console.log(`Total slides: ${totalSlides}`);
-    
+
+    slideStructure = [];
+    for (let i = 0; i < totalSlides; i++) {
+        slideStructure.push({
+            type: 'pdf',
+            pdfIndex: i
+        });
+    }
+
     currentSlide = 0;
     slideConfigs = {};
     mediaCache = {};
     annotations = {};
 
-    await renderSlide(0);
+    await renderLogicalSlide(0);
 
-    
     // Populate slide navigator
     populateSlideNavigator();
+
+
+    // Locate the slide that contains the survey_result widget (if any)
+    await locateSurveyWidgetSlide();
 
     socket.emit('presentation_loaded', {
         totalSlides: totalSlides
@@ -1502,17 +1786,17 @@ folderInput.addEventListener('change', async (e) => {
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
-
+    
     // Enable screen share button
     screenShareBtn.el.disabled = false;
     screenShareBtn.el.style.opacity = '1';
     screenShareBtn.el.style.cursor = 'pointer';
-
+    
     // Enable record button
     recordBtn.el.disabled = false;
     recordBtn.el.style.opacity = '1';
     recordBtn.el.style.cursor = 'pointer';
-
+    
     updateHistoryButtons();
 });
 
@@ -1549,13 +1833,13 @@ zipInput.addEventListener('change', async (e) => {
         Modal.error('Upload Failed', 'Failed to upload presentation. Please try again.');
         return;
     }
-
+    
     // Load the ZIP into memory for frontend use
     const reader = new FileReader();
     reader.onload = async (event) => {
         zipFile = await JSZip.loadAsync(event.target.result);
         console.log('ZIP loaded into memory');
-
+        
         const pdfFile = zipFile.file("slides.pdf");
         if (!pdfFile) {
             console.error("The uploaded package is not a valid Beamer+ presentation (no slides.pdf found).");
@@ -1563,23 +1847,33 @@ zipInput.addEventListener('change', async (e) => {
             Modal.error('Invalid Presentation', 'The uploaded package is not a valid Beamer+ presentation.');
             return;
         }
-
+        
         const pdfData = await pdfFile.async("arraybuffer");
         const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
         totalSlides = pdfDoc.numPages;
-
+        
         console.log(`Total slides: ${totalSlides}`);
+
+        slideStructure = [];
+        for (let i = 0; i < totalSlides; i++) {
+            slideStructure.push({
+                type: 'pdf',
+                pdfIndex: i
+            });
+        }
 
         currentSlide = 0;
         slideConfigs = {};
         mediaCache = {};
         annotations = {};
 
-        await renderSlide(0);
-
+        await renderLogicalSlide(0);
 
         // Populate slide navigator
         populateSlideNavigator();
+
+        // Locate the slide that contains the survey_result widget (if any)
+        await locateSurveyWidgetSlide();
 
         socket.emit('presentation_loaded', {
             totalSlides: totalSlides
@@ -1587,17 +1881,17 @@ zipInput.addEventListener('change', async (e) => {
         // Enable controls now that a presentation is loaded
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
-
+        
         // Enable screen share button
         screenShareBtn.el.disabled = false;
         screenShareBtn.el.style.opacity = '1';
         screenShareBtn.el.style.cursor = 'pointer';
-
+        
         // Enable record button
         recordBtn.el.disabled = false;
         recordBtn.el.style.opacity = '1';
         recordBtn.el.style.cursor = 'pointer';
-
+        
         updateHistoryButtons();
     };
     reader.readAsArrayBuffer(file);
@@ -1615,19 +1909,31 @@ pdfInput.addEventListener('change', async (e) => {
 
         const zip = new JSZip();
         zip.file('slides.pdf', pdfArrayBuffer);
-        zipFile = zip;
 
         const pdfDoc = await pdfjsLib.getDocument({ data: pdfArrayBuffer }).promise;
         totalSlides = pdfDoc.numPages;
+
+        zipFile = zip;
+
+        slideStructure = [];
+        for (let i = 0; i < totalSlides; i++) {
+            slideStructure.push({
+                type: 'pdf',
+                pdfIndex: i
+            });
+        }
 
         currentSlide = 0;
         slideConfigs = {};
         mediaCache = {};
         annotations = {};
+        annotationsRight = {};
         bookmarks = {};
+        collapsedParents = new Set();
 
-        await renderSlide(0);
+        await renderLogicalSlide(0);
         populateSlideNavigator();
+        await locateSurveyWidgetSlide();
 
         socket.emit('presentation_loaded', { totalSlides });
         uploadModal.close();
@@ -1661,6 +1967,168 @@ async function loadAvailableModels() {
     }
 }
 
+let currentSurveyResults = null; // { summaries, model, num_responses }
+let currentSurveyData = null;    // { survey_id, url, question, model, num_summaries, ... }
+let currentSurveyResponseCount = 0;
+
+// listeners used by the widget to live-update the response count
+const __surveyCountSubscribers = new Set();
+
+// caches the first slide index that contains the survey_result widget (if any)
+let surveyWidgetSlideIndex = null;
+
+// Find the first slide that contains a survey_result widget.
+async function locateSurveyWidgetSlide() {
+    surveyWidgetSlideIndex = null;
+    if (!zipFile || !totalSlides) return;
+
+    for (let i = 0; i < totalSlides; i++) {
+        const cfg = await loadSlideConfig(i);
+        const widgets = cfg?.widgets || [];
+        if (widgets.some(w => w.type === 'survey_result')) {
+            surveyWidgetSlideIndex = i;
+            break;
+        }
+    }
+}
+
+function __notifySurveyCountSubscribers() {
+    for (const cb of __surveyCountSubscribers) {
+        try { cb(currentSurveyResponseCount); } catch (e) { /* ignore */ }
+    }
+}
+
+// Expose a parent API for the survey_result widget (iframe) to call.
+window.beamerSurvey = {
+    getAvailableModels: () => Array.isArray(availableModels) ? [...availableModels] : [],
+
+    getState: () => ({
+        survey: currentSurveyData,
+        responseCount: currentSurveyResponseCount,
+        results: currentSurveyResults
+    }),
+
+    subscribeResponseCount: (cb) => {
+        if (typeof cb !== 'function') return () => {};
+        __surveyCountSubscribers.add(cb);
+        // immediate sync
+        cb(currentSurveyResponseCount);
+        return () => __surveyCountSubscribers.delete(cb);
+    },
+
+    // Create survey and start collecting responses (does NOT block slide navigation).
+    createSurvey: async ({ question, model, num_summaries }) => {
+        if (!zipFile) throw new Error('Please upload a presentation first.');
+        if (!model) throw new Error('No model selected.');
+
+        const resp = await fetch('/api/survey/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, model, num_summaries })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to create survey');
+
+        currentSurveyData = { ...data, question, model, num_summaries };
+        currentSurveyResults = null;
+        currentSurveyResponseCount = 0;
+        __notifySurveyCountSubscribers();
+
+        socket.emit('survey_show', data);
+
+        return {
+            ...data,
+            full_url: `${window.location.origin}${data.url}`
+        };
+    },
+
+    // Close survey + generate summaries.
+    generateSummaries: async () => {
+        if (!currentSurveyData) throw new Error('No survey exists. Create one first.');
+
+        // close the survey server-side
+        try {
+            await fetch(`/api/survey/${currentSurveyData.survey_id}/close`, { method: 'POST' });
+            socket.emit('survey_close', { survey_id: currentSurveyData.survey_id });
+        } catch (e) {
+            // non-fatal; continue
+        }
+
+        // ensure there is at least one response (widget disables button until then)
+        const resResp = await fetch(`/api/survey/${currentSurveyData.survey_id}/responses`);
+        const resData = await resResp.json();
+        if (!resResp.ok) throw new Error(resData.error || 'Failed to load responses');
+        if (!Array.isArray(resData.responses) || resData.responses.length === 0) {
+            throw new Error('No responses yet.');
+        }
+
+        const analyzeResponse = await fetch(`/api/survey/${currentSurveyData.survey_id}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const analysisData = await analyzeResponse.json();
+        if (!analyzeResponse.ok) throw new Error(analysisData.error || 'Analysis failed');
+
+        currentSurveyResults = {
+            summaries: analysisData.summaries,
+            model: analysisData.model,
+            num_responses: analysisData.num_responses
+        };
+
+        return currentSurveyResults;
+    },
+
+    // Optional reset helper (not currently used by the widget UI)
+    reset: async () => {
+        if (currentSurveyData?.survey_id) {
+            try { await fetch(`/api/survey/${currentSurveyData.survey_id}/close`, { method: 'POST' }); } catch (e) {}
+        }
+        currentSurveyData = null;
+        currentSurveyResults = null;
+        currentSurveyResponseCount = 0;
+        __notifySurveyCountSubscribers();
+    }
+};
+
+window.beamerWordCloud = {
+    goToNextPdfSlide: async () => {
+        const currentPdfIndex = slideStructure[currentSlide]?.pdfIndex;
+        if (currentPdfIndex == null) return;
+
+        const nextPdfIndex = currentPdfIndex + 1;
+        const nextLogicalIndex = slideStructure.findIndex(
+            s => s.type === 'pdf' && s.pdfIndex === nextPdfIndex
+        );
+
+        if (nextLogicalIndex !== -1) {
+            await goToSlide(nextLogicalIndex);
+        }
+    },
+
+    goToPdfSlide: async (pdfIndex) => {
+        const logicalIndex = slideStructure.findIndex(
+            s => s.type === 'pdf' && s.pdfIndex === pdfIndex
+        );
+
+        if (logicalIndex !== -1) {
+            await goToSlide(logicalIndex);
+        }
+    },
+
+    getCurrentPdfIndex: () => slideStructure[currentSlide]?.pdfIndex ?? null
+};
+
+// Update response counts globally (for the widget), without creating any overlays.
+socket.on('survey_response', (data) => {
+    if (!currentSurveyData) return;
+    if (data.survey_id !== currentSurveyData.survey_id) return;
+
+    // server sends a running total
+    if (typeof data.total === 'number') {
+        currentSurveyResponseCount = data.total;
+        __notifySurveyCountSubscribers();
+    }
+});
 // Add resize listener
 window.addEventListener('resize', () => {
     // Resize annotation canvas to maintain proper mouse coordinate mapping
@@ -1677,7 +2145,6 @@ window.addEventListener('resize', () => {
     }
 });
 
-
 // Add fullscreen change listener to handle fullscreen transitions
 document.addEventListener('fullscreenchange', () => {
     // Need a small delay for the browser to finish the fullscreen transition
@@ -1685,7 +2152,7 @@ document.addEventListener('fullscreenchange', () => {
         if (annCvs) {
             annCvs.resize();
         }
-        
+
         if (zipFile && slideConfigs[currentSlide]) {
             updateMediaPositions();
         }
@@ -1718,19 +2185,19 @@ async function startRecording() {
         Modal.error('Recording Error', 'Please start screen sharing before recording.');
         return;
     }
-
+    
     try {
         // Get the canvas that's being used for screen sharing
         const pdfContainer = document.getElementById('pdf-canvas');
-
+        
         // Create a new canvas for recording
         recordingCanvas = document.createElement('canvas');
         recordingCanvas.width = pdfContainer.getBoundingClientRect().width;
         recordingCanvas.height = pdfContainer.getBoundingClientRect().height;
-
+        
         // Create a stream from the canvas at 30 FPS
         recordingStream = recordingCanvas.captureStream(30);
-
+        
         // Request microphone audio
         try {
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1738,7 +2205,7 @@ async function startRecording() {
         } catch (error) {
             console.warn('Microphone not captured:', error);
         }
-
+        
         // Request system audio (will prompt user)
         try {
             audioStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1749,14 +2216,14 @@ async function startRecording() {
         } catch (audioError) {
             console.warn('System audio not captured:', audioError);
         }
-
+        
         // Create MediaRecorder to record in real-time
         recordedChunks = [];
         mediaRecorder = new MediaRecorder(recordingStream, {
             mimeType: 'video/webm;codecs=vp9',
             videoBitsPerSecond: 2500000
         });
-
+        
         mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) {
                 recordedChunks.push(e.data);
@@ -1788,16 +2255,16 @@ async function stopRecording() {
     recordBtn.el.style.backgroundColor = '';
 
     console.log('Recording stopped. Processing video...');
-
+    
     // Show processing modal with loading animation
     const processingModal = Modal.loading('Processing Video', 'Please wait while your recording is being processed and downloaded...');
-
+    
     return new Promise((resolve, reject) => {
         mediaRecorder.onstop = () => {
             try {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
-
+                
                 // Download the video
                 const a = document.createElement('a');
                 a.href = url;
@@ -1806,7 +2273,7 @@ async function stopRecording() {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-
+                
                 // Clean up
                 recordedChunks = [];
                 if (micStream) {
@@ -1822,7 +2289,7 @@ async function stopRecording() {
                     recordingStream = null;
                 }
                 recordingCanvas = null;
-
+                
                 processingModal.close();
                 Modal.success('Recording Complete', 'Your video has been downloaded successfully!');
                 resolve();
@@ -1833,7 +2300,7 @@ async function stopRecording() {
                 reject(error);
             }
         };
-
+        
         mediaRecorder.stop();
     });
 }
@@ -1860,13 +2327,13 @@ async function startScreenShare() {
             surfaceSwitching: 'exclude',
             systemAudio: 'exclude'
         });
-
+        
         // Check if the user selected the correct surface type
         const videoTrack = stream.getVideoTracks()[0];
         const settings = videoTrack.getSettings();
-
+        
         // check by regex if the user is on Safari:
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent); 
         console.log(`isSafari: ${isSafari}`);
 
         if (!isSafari) {
@@ -1874,9 +2341,9 @@ async function startScreenShare() {
             if (settings.displaySurface && settings.displaySurface !== 'browser') {
                 // Stop the stream immediately
                 stream.getTracks().forEach(track => track.stop());
-
+                
                 Modal.error(
-                    'Wrong Source Selected',
+                    'Wrong Source Selected', 
                     'Please select the Beamer+ browser tab (not a window or entire screen). Click the screen share button again and choose "This Tab" or the Beamer+ tab from the list.'
                 );
                 isScreenSharing = false;
@@ -1888,62 +2355,62 @@ async function startScreenShare() {
 
         screenStream = stream;
         isScreenSharing = true;
-
+        
         // Update button appearance
         screenShareBtn.el.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
-
+        
         // Create a hidden video element to capture the stream
         const video = document.createElement('video');
         video.style.display = 'none';
         video.srcObject = stream;
         video.play();
-
+        
         document.body.appendChild(video);
-
+        
         // Create canvas for cropping
         const cropCanvas = document.createElement('canvas');
         const cropCtx = cropCanvas.getContext('2d');
-
+        
         // Get the canvas container dimensions
         const pdfContainer = document.getElementById('pdf-canvas');
-
+        
         let lastFrameTime = 0;
         const frameInterval = 100; // Reduced to 10 FPS to prevent flashing
-
+        
         // Start capturing and cropping frames
         const captureFrame = (currentTime) => {
             if (!isScreenSharing) return;
-
+            
             // Throttle frame rate
             if (currentTime - lastFrameTime < frameInterval) {
                 requestAnimationFrame(captureFrame);
                 return;
             }
             lastFrameTime = currentTime;
-
+            
             const containerRect = pdfContainer.getBoundingClientRect();
-
+            
             // Set canvas size to match the container
             cropCanvas.width = containerRect.width;
             cropCanvas.height = containerRect.height;
-
+            
             // Calculate the position and size to crop from the video
             // This assumes the video is capturing the full screen
             const scaleX = video.videoWidth / window.innerWidth;
             const scaleY = video.videoHeight / window.innerHeight;
-
+            
             const sourceX = containerRect.left * scaleX;
             const sourceY = containerRect.top * scaleY;
             const sourceWidth = containerRect.width * scaleX;
             const sourceHeight = containerRect.height * scaleY;
-
+            
             // Draw the cropped region onto the canvas
             cropCtx.drawImage(
                 video,
                 sourceX, sourceY, sourceWidth, sourceHeight,
                 0, 0, cropCanvas.width, cropCanvas.height
             );
-
+            
             // If recording, draw to recording canvas in real-time
             if (isRecording && recordingCanvas) {
                 const recordingCtx = recordingCanvas.getContext('2d');
@@ -1955,7 +2422,7 @@ async function startScreenShare() {
                 // Draw the current frame to the recording canvas
                 recordingCtx.drawImage(cropCanvas, 0, 0);
             }
-
+            
             // Convert canvas to blob and emit to server
             cropCanvas.toBlob((blob) => {
                 if (blob && isScreenSharing) {
@@ -1972,32 +2439,32 @@ async function startScreenShare() {
                     reader.readAsDataURL(blob);
                 }
             }, 'image/jpeg', 0.75); // Reduced quality to 75% for less bandwidth
-
+            
             // Request next frame
             if (isScreenSharing) {
                 requestAnimationFrame(captureFrame);
             }
         };
-
+        
         // Wait for video to be ready
         video.onloadedmetadata = () => {
             requestAnimationFrame(captureFrame);
         };
-
+        
         // Handle stream end (user clicks "Stop sharing" in browser)
         stream.getVideoTracks()[0].onended = () => {
             stopScreenShare();
         };
-
+        
         // Notify viewers that screen sharing has started
         socket.emit('screen_share_start');
-
+        
         // Show a helper message
         console.log('Screen sharing started. Sharing Beamer+ tab.');
-
+        
     } catch (error) {
         console.error('Error starting screen share:', error);
-
+        
         let errorMessage = 'Could not start screen sharing.';
         if (error.name === 'NotAllowedError') {
             errorMessage = 'Screen sharing permission was denied. Please allow screen sharing and select the Beamer+ tab (choose "This Tab" option).';
@@ -2006,7 +2473,7 @@ async function startScreenShare() {
         } else if (error.name === 'NotSupportedError') {
             errorMessage = 'Screen sharing is not supported in this browser. Please use Chrome, Firefox, or Edge.';
         }
-
+        
         Modal.error('Screen Share Error', errorMessage);
         isScreenSharing = false;
     }
@@ -2017,22 +2484,22 @@ function stopScreenShare() {
         screenStream.getTracks().forEach(track => track.stop());
         screenStream = null;
     }
-
+    
     isScreenSharing = false;
-
+    
     // If recording is active, stop it
     if (isRecording) {
         stopRecording();
     }
-
+    
     // Reset button appearance
     screenShareBtn.el.innerHTML = '<i class="fa-solid fa-desktop"></i>';
     screenShareBtn.el.style.backgroundColor = '';
-
+    
     // Remove the hidden video element
     const videos = document.querySelectorAll('video[style*="display: none"]');
     videos.forEach(v => v.remove());
-
+    
     // Notify viewers that screen sharing has stopped
     socket.emit('screen_share_stop');
 }
