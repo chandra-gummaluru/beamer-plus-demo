@@ -580,6 +580,15 @@ const updateHistoryButtons = () => {
     redoBtn.el.disabled = !annCvs.canRedo();
 };
 
+function updateBlankSlideButtons() {
+    const currentObj = slideStructure[currentSlide];
+    const isBlankSlide = currentObj?.type === 'blank';
+
+    deleteBlankBtn.el.disabled = !isBlankSlide;
+    deleteBlankBtn.el.style.opacity = isBlankSlide ? '1' : '0.5';
+    deleteBlankBtn.el.style.cursor = isBlankSlide ? 'pointer' : 'not-allowed';
+}
+
 annCvs.setHistoryChangeHandler(updateHistoryButtons);
 updateHistoryButtons();
 
@@ -898,7 +907,8 @@ function createNavItem(slideIndex) {
     item.dataset.slideIndex = slideIndex;
 
     const label = document.createElement('span');
-    label.textContent = slideIndex + 1;
+    const slide = slideStructure[slideIndex];
+    label.textContent = slide?.type === 'pdf' ? slide.pdfIndex + 1 : slideIndex + 1;
     item.appendChild(label);
 
     let holdFired = false;
@@ -1226,6 +1236,7 @@ async function goToSlide(slideIndex) {
 
     await renderLogicalSlide(currentSlide);
     updateSlideNavigator();
+    updateBlankSlideButtons();
 
     if (splitViewEnabled) {
         if (rightSlideIndex === currentSlide) {
@@ -1466,38 +1477,47 @@ async function renderSlide(slideIndex) {
 
 function insertBlankAfterCurrent() {
     const currentObj = slideStructure[currentSlide];
+    if (!currentObj) return;
 
-    if (!currentObj || currentObj.type !== 'pdf') {
-        return;
-    }
-
-    const parentPdfIndex = currentObj.pdfIndex;
-
-    const existingBlanks = slideStructure.filter(
-        s => s.type === 'blank' && s.parent === parentPdfIndex
-    );
-
-    const newSubIndex = existingBlanks.length + 1;
+    const parentPdfIndex =
+        currentObj.type === 'pdf' ? currentObj.pdfIndex : currentObj.parent;
 
     const blankSlide = {
         type: 'blank',
         parent: parentPdfIndex,
-        subIndex: newSubIndex
+        subIndex: 1
     };
 
-    let insertIndex = currentSlide + 1;
+    let insertIndex;
 
-    while (
-        insertIndex < slideStructure.length &&
-        slideStructure[insertIndex].type === 'blank' &&
-        slideStructure[insertIndex].parent === parentPdfIndex
-    ) {
-        insertIndex++;
+    if (currentObj.type === 'blank') {
+        // Add directly after the current blank page
+        insertIndex = currentSlide + 1;
+    } else {
+        // Add after all existing blank children of this PDF page
+        insertIndex = currentSlide + 1;
+        while (
+            insertIndex < slideStructure.length &&
+            slideStructure[insertIndex].type === 'blank' &&
+            slideStructure[insertIndex].parent === parentPdfIndex
+        ) {
+            insertIndex++;
+        }
     }
 
     slideStructure.splice(insertIndex, 0, blankSlide);
+
+    let counter = 1;
+    slideStructure.forEach((s) => {
+        if (s.type === 'blank' && s.parent === parentPdfIndex) {
+            s.subIndex = counter++;
+        }
+    });
+
     collapsedParents.delete(parentPdfIndex);
     populateSlideNavigator();
+
+    goToSlide(insertIndex);
 }
 
 function shiftAnnotationsAfterDelete(deletedIndex) {
@@ -1540,13 +1560,38 @@ async function deleteCurrentBlank() {
         }
     });
 
-    const parentLogicalIndex = slideStructure.findIndex(
-        s => s.type === 'pdf' && s.pdfIndex === parentIndex
-    );
+    let nextSlideIndex;
 
-    currentSlide = parentLogicalIndex;
+    // Stay at the same position if another blank now occupies it
+    if (
+        deletedIndex < slideStructure.length &&
+        slideStructure[deletedIndex].type === 'blank' &&
+        slideStructure[deletedIndex].parent === parentIndex
+    ) {
+        nextSlideIndex = deletedIndex;
+    }
+
+    // Otherwise move to the previous blank sibling if it exists
+    else if (
+        deletedIndex - 1 >= 0 &&
+        slideStructure[deletedIndex - 1].type === 'blank' &&
+        slideStructure[deletedIndex - 1].parent === parentIndex
+    ) {
+        nextSlideIndex = deletedIndex - 1;
+    }
+
+    // Finally, fall back to the parent PDF slide
+    else {
+        nextSlideIndex = slideStructure.findIndex(
+            s => s.type === 'pdf' && s.pdfIndex === parentIndex
+        );
+    }
+
+    currentSlide = nextSlideIndex;
     populateSlideNavigator();
     await renderLogicalSlide(currentSlide);
+    updateSlideNavigator();
+    updateBlankSlideButtons();
 
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
@@ -1775,7 +1820,7 @@ folderInput.addEventListener('change', async (e) => {
 
     // Populate slide navigator
     populateSlideNavigator();
-
+    updateBlankSlideButtons();
 
     // Locate the slide that contains the survey_result widget (if any)
     await locateSurveyWidgetSlide();
@@ -1786,6 +1831,7 @@ folderInput.addEventListener('change', async (e) => {
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
+    updateBlankSlideButtons();
     
     // Enable screen share button
     screenShareBtn.el.disabled = false;
@@ -1871,6 +1917,7 @@ zipInput.addEventListener('change', async (e) => {
 
         // Populate slide navigator
         populateSlideNavigator();
+        updateBlankSlideButtons();
 
         // Locate the slide that contains the survey_result widget (if any)
         await locateSurveyWidgetSlide();
@@ -1881,6 +1928,7 @@ zipInput.addEventListener('change', async (e) => {
         // Enable controls now that a presentation is loaded
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
+        updateBlankSlideButtons();
         
         // Enable screen share button
         screenShareBtn.el.disabled = false;
@@ -1933,11 +1981,13 @@ pdfInput.addEventListener('change', async (e) => {
 
         await renderLogicalSlide(0);
         populateSlideNavigator();
+        updateBlankSlideButtons();
         await locateSurveyWidgetSlide();
 
         socket.emit('presentation_loaded', { totalSlides });
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
+        updateBlankSlideButtons();
 
         screenShareBtn.el.disabled = false;
         screenShareBtn.el.style.opacity = '1';
