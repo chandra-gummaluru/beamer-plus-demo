@@ -156,12 +156,13 @@ splitViewBtn.onClick(() => {
         setTimeout(() => {
             initializeSecondCanvases();
 
-            // Set right slide to the slide adjacent to left on each open
-            rightSlideIndex = (currentSlide + 1 < totalSlides)
+            // Set right slide to an adjacent logical slide on each open
+            rightSlideIndex = (currentSlide + 1 < slideStructure.length)
                 ? currentSlide + 1
                 : Math.max(0, currentSlide - 1);
 
             // Populate right navigator
+            populateSlideNavigator();
             populateSlideNavigatorRight();
 
             // Resize all canvases after layout settles
@@ -175,7 +176,7 @@ splitViewBtn.onClick(() => {
                 // Re-render slides at new sizes
                 if (zipFile) {
                     await renderLogicalSlide(currentSlide);
-                    await renderSlideRight(rightSlideIndex);
+                    await renderLogicalSlideRight(rightSlideIndex);
                 }
 
                 // Restore the current pointer mode on both canvases
@@ -196,6 +197,10 @@ splitViewBtn.onClick(() => {
             if (zipFile) {
                 await renderLogicalSlide(currentSlide);
             }
+
+            // Refresh navigator after leaving split view
+            populateSlideNavigator();
+            updateBlankSlideButtons();
         }, 100);
     }
 });
@@ -866,6 +871,10 @@ function openBookmarkInput(item, slideIndex) {
             }
             item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
             populateBookmarkPins();
+
+            if (splitViewEnabled) {
+                populateSlideNavigatorRight();
+            }
         }
         input.remove();
         label.style.display = '';
@@ -882,18 +891,87 @@ function openBookmarkInput(item, slideIndex) {
 function populateBookmarkPins() {
     const pins = document.getElementById('bookmark-pins');
     pins.innerHTML = '';
-    const indices = Object.keys(bookmarks).map(Number).sort((a, b) => a - b);
-    if (indices.length === 0) {
+
+    const indices = Object.keys(bookmarks)
+        .map(Number)
+        .filter(index => index >= 0 && index < slideStructure.length)
+        .sort((a, b) => a - b);
+
+    // Clean up stale bookmarks that point to removed slides
+    Object.keys(bookmarks).forEach((key) => {
+        const index = Number(key);
+        if (index < 0 || index >= slideStructure.length) {
+            delete bookmarks[index];
+        }
+    });
+
+    const visibleIndices = indices.filter((slideIndex) => {
+        const slide = slideStructure[slideIndex];
+
+        if (slide?.type !== 'blank') {
+            return true;
+        }
+
+        const parentIsBookmarked = indices.some((index) => {
+            const candidate = slideStructure[index];
+            return candidate?.type === 'pdf' && candidate.pdfIndex === slide.parent;
+        });
+
+        return !parentIsBookmarked || !isParentCollapsed(slide.parent);
+    });
+
+    if (visibleIndices.length === 0) {
         pins.style.display = 'none';
         return;
     }
+
     pins.style.display = 'flex';
-    indices.forEach(slideIndex => {
+
+    visibleIndices.forEach((slideIndex) => {
+        const slide = slideStructure[slideIndex];
+
         const pin = document.createElement('div');
         pin.className = 'slide-nav-item bookmarked';
+
+        if (slide?.type === 'pdf') {
+            pin.classList.add('slide-nav-parent');
+            pin.style.position = 'relative';
+        }
+
+        if (slide?.type === 'blank') {
+            pin.classList.add('slide-nav-child');
+        }
+
         const label = document.createElement('span');
-        label.textContent = slideIndex + 1;
+        label.textContent = getLogicalSlideLabel(slide, slideIndex);
         pin.appendChild(label);
+
+        if (slide?.type === 'pdf') {
+            const hasBookmarkedBlankChildren = indices.some((index) => {
+                const candidate = slideStructure[index];
+                return candidate?.type === 'blank' && candidate.parent === slide.pdfIndex;
+            });
+
+            if (hasBookmarkedBlankChildren) {
+                const toggleBtn = document.createElement('span');
+                toggleBtn.textContent = getCollapseIndicator(slide.pdfIndex);
+                toggleBtn.style.position = 'absolute';
+                toggleBtn.style.right = '8px';
+                toggleBtn.style.top = '50%';
+                toggleBtn.style.transform = 'translateY(-50%)';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.fontSize = '12px';
+                toggleBtn.style.lineHeight = '1';
+
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleParentCollapsed(slide.pdfIndex);
+                };
+
+                pin.appendChild(toggleBtn);
+            }
+        }
+
         pin.onclick = () => goToSlide(slideIndex);
         attachTooltip(pin, slideIndex);
         pins.appendChild(pin);
@@ -906,9 +984,10 @@ function createNavItem(slideIndex) {
     if (bookmarks[slideIndex]) item.classList.add('bookmarked');
     item.dataset.slideIndex = slideIndex;
 
-    const label = document.createElement('span');
     const slide = slideStructure[slideIndex];
-    label.textContent = slide?.type === 'pdf' ? slide.pdfIndex + 1 : slideIndex + 1;
+
+    const label = document.createElement('span');
+    label.textContent = getLogicalSlideLabel(slide, slideIndex);
     item.appendChild(label);
 
     let holdFired = false;
@@ -918,12 +997,30 @@ function createNavItem(slideIndex) {
     }, 500);
 
     item.addEventListener('click', () => {
-        if (holdFired) { holdFired = false; return; }
+        if (holdFired) {
+            holdFired = false;
+            return;
+        }
         goToSlide(slideIndex);
     });
 
     attachTooltip(item, slideIndex);
     return item;
+}
+
+function getLogicalSlideLabel(slide, logicalIndex) {
+    if (!slide) return String(logicalIndex + 1);
+
+    if (slide.type === 'pdf') {
+        return String(slide.pdfIndex + 1);
+    }
+
+    if (slide.type === 'blank') {
+        const letter = String.fromCharCode(96 + slide.subIndex);
+        return `${slide.parent + 1}.${letter}`;
+    }
+
+    return String(logicalIndex + 1);
 }
 
 function getBlankChildren(parentPdfIndex) {
@@ -936,13 +1033,28 @@ function isParentCollapsed(parentPdfIndex) {
     return collapsedParents.has(parentPdfIndex);
 }
 
+function getCollapseIndicator(parentPdfIndex) {
+    const collapsed = isParentCollapsed(parentPdfIndex);
+
+    if (splitViewEnabled) {
+        return collapsed ? '▾' : '▸';
+    }
+
+    return collapsed ? '▸' : '▾';
+}
+
 function toggleParentCollapsed(parentPdfIndex) {
     if (collapsedParents.has(parentPdfIndex)) {
         collapsedParents.delete(parentPdfIndex);
     } else {
         collapsedParents.add(parentPdfIndex);
     }
+
     populateSlideNavigator();
+
+    if (splitViewEnabled) {
+        populateSlideNavigatorRight();
+    }
 }
 
 function populateSlideNavigator() {
@@ -966,7 +1078,7 @@ function populateSlideNavigator() {
 
             if (blankChildren.length > 0) {
                 const toggleBtn = document.createElement('span');
-                toggleBtn.textContent = isParentCollapsed(slide.pdfIndex) ? '▸' : '▾';
+                toggleBtn.textContent = getCollapseIndicator(slide.pdfIndex);
                 toggleBtn.style.position = 'absolute';
                 toggleBtn.style.right = '8px';
                 toggleBtn.style.top = '50%';
@@ -993,25 +1105,15 @@ function populateSlideNavigator() {
                 continue;
             }
 
-            const item = document.createElement('div');
-            item.className = 'slide-nav-item slide-nav-child';
-
-            const letter = String.fromCharCode(96 + slide.subIndex);
-            item.textContent = `${slide.parent + 1}.${letter}`;
-            item.dataset.slideIndex = i;
+            const item = createNavItem(i);
+            item.classList.add('slide-nav-child');
 
             item.style.display = 'flex';
             item.style.alignItems = 'center';
             item.style.justifyContent = 'center';
-            item.style.width = '76%';
-            item.style.marginLeft = '16px';
             item.style.boxSizing = 'border-box';
             item.style.paddingLeft = '0';
             item.style.fontSize = '0.95em';
-
-            item.onclick = () => {
-                goToSlide(i);
-            };
 
             navigator.appendChild(item);
         }
@@ -1044,23 +1146,79 @@ function populateSlideNavigatorRight() {
     const navigator = document.getElementById('slide-navigator-right');
     navigator.innerHTML = '';
 
-    for (let i = 0; i < totalSlides; i++) {
-        const item = document.createElement('div');
-        item.className = 'slide-nav-item';
-        item.textContent = i + 1;
-        item.dataset.slideIndex = i;
+    for (let i = 0; i < slideStructure.length; i++) {
+        const slide = slideStructure[i];
 
-        item.onclick = () => {
-            if (i === currentSlide) return;
+        if (slide.type === 'pdf') {
+            const item = document.createElement('div');
+            item.className = 'slide-nav-item slide-nav-parent';
+            if (bookmarks[i]) item.classList.add('bookmarked');
+            item.dataset.slideIndex = i;
+            item.style.position = 'relative';
 
-            // Save current annotations before switching
-            saveRightAnnotations();
-            rightSlideIndex = i;
-            renderSlideRight(i);
-            updateSlideNavigatorRight();
-        };
+            const label = document.createElement('span');
+            label.textContent = getLogicalSlideLabel(slide, i);
+            item.appendChild(label);
 
-        navigator.appendChild(item);
+            attachTooltip(item, i);
+
+            const blankChildren = getBlankChildren(slide.pdfIndex);
+
+            if (blankChildren.length > 0) {
+                const toggleBtn = document.createElement('span');
+                toggleBtn.textContent = getCollapseIndicator(slide.pdfIndex);
+                toggleBtn.style.position = 'absolute';
+                toggleBtn.style.right = '8px';
+                toggleBtn.style.top = '50%';
+                toggleBtn.style.transform = 'translateY(-50%)';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.fontSize = '12px';
+                toggleBtn.style.lineHeight = '1';
+
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleParentCollapsed(slide.pdfIndex);
+                };
+
+                item.appendChild(toggleBtn);
+            }
+
+            item.onclick = async () => {
+                if (i === currentSlide) return;
+                rightSlideIndex = i;
+                await renderLogicalSlideRight(i);
+                updateSlideNavigatorRight();
+            };
+
+            navigator.appendChild(item);
+            continue;
+        }
+
+        if (slide.type === 'blank') {
+            if (isParentCollapsed(slide.parent)) {
+                continue;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'slide-nav-item slide-nav-child';
+            if (bookmarks[i]) item.classList.add('bookmarked');
+            item.dataset.slideIndex = i;
+
+            const label = document.createElement('span');
+            label.textContent = getLogicalSlideLabel(slide, i);
+            item.appendChild(label);
+
+            attachTooltip(item, i);
+
+            item.onclick = async () => {
+                if (i === currentSlide) return;
+                rightSlideIndex = i;
+                await renderLogicalSlideRight(i);
+                updateSlideNavigatorRight();
+            };
+
+            navigator.appendChild(item);
+        }
     }
 
     updateSlideNavigatorRight();
@@ -1068,25 +1226,26 @@ function populateSlideNavigatorRight() {
 
 function updateSlideNavigatorRight() {
     const items = document.querySelectorAll('#slide-navigator-right .slide-nav-item');
-    items.forEach((item, index) => {
-        item.classList.toggle('active', index === rightSlideIndex);
-        item.classList.toggle('disabled', index === currentSlide);
-        if (index === rightSlideIndex) {
-            item.classList.add('active');
+
+    items.forEach((item) => {
+        const slideIndex = Number(item.dataset.slideIndex);
+
+        item.classList.toggle('active', slideIndex === rightSlideIndex);
+        item.classList.toggle('disabled', slideIndex === currentSlide);
+
+        if (slideIndex === rightSlideIndex) {
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else {
-            item.classList.remove('active');
         }
     });
 }
 
 function autoAdvanceRight() {
     const candidates = [];
-    if (currentSlide + 1 < totalSlides) candidates.push(currentSlide + 1);
+    if (currentSlide + 1 < slideStructure.length) candidates.push(currentSlide + 1);
     if (currentSlide - 1 >= 0) candidates.push(currentSlide - 1);
     if (candidates.length === 0) return;
     rightSlideIndex = candidates[0];
-    renderSlideRight(rightSlideIndex);
+    renderLogicalSlideRight(rightSlideIndex);
     updateSlideNavigatorRight();
 }
 
@@ -1258,7 +1417,8 @@ async function renderLogicalSlide(logicalIndex) {
     if (!slideObj) return;
 
     if (slideObj.type === 'pdf') {
-        slide_canvas_container.style.display = 'block';
+        slide_canvas_container.style.display = 'flex';
+        if (pdfCvs?.canvas) pdfCvs.canvas.style.visibility = 'visible';
         ann_canvas_container.style.background = '';
 
         await renderSlide(slideObj.pdfIndex);
@@ -1266,12 +1426,13 @@ async function renderLogicalSlide(logicalIndex) {
     }
 
     if (slideObj.type === 'blank') {
-        slide_canvas_container.style.display = 'none';
+        slide_canvas_container.style.display = 'flex';
+        if (pdfCvs?.canvas) pdfCvs.canvas.style.visibility = 'hidden';
         annCvs.clear();
 
         try {
-            if (annotations[currentSlide]) {
-                await annCvs.loadAnnotations(annotations[currentSlide]);
+            if (annotations[logicalIndex]) {
+                await annCvs.loadAnnotations(annotations[logicalIndex]);
             } else {
                 annCvs.resetHistory();
             }
@@ -1301,7 +1462,8 @@ async function renderSlide(slideIndex) {
     const pdfData = await pdfFile.async("arraybuffer");
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
-    
+
+    if (pdfCvs?.canvas) pdfCvs.canvas.style.visibility = 'visible';
     await pdfCvs.renderPDFPage(page);
 
     // Load per-slide annotations (clear then draw saved image if present)
@@ -1600,8 +1762,39 @@ async function deleteCurrentBlank() {
     });
 }
 
+async function renderLogicalSlideRight(logicalIndex) {
+    const slideObj = slideStructure[logicalIndex];
+    if (!slideObj || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
+
+    if (slideObj.type === 'pdf') {
+        slide_canvas_container2.style.display = 'flex';
+        if (pdfCvs2?.canvas) pdfCvs2.canvas.style.visibility = 'visible';
+        ann_canvas_container2.style.background = '';
+        await renderSlideRight(slideObj.pdfIndex, logicalIndex);
+        return;
+    }
+
+    if (slideObj.type === 'blank') {
+        slide_canvas_container2.style.display = 'flex';
+        if (pdfCvs2?.canvas) pdfCvs2.canvas.style.visibility = 'hidden';
+        annCvs2.clear();
+
+        try {
+            if (annotations[logicalIndex]) {
+                await annCvs2.loadAnnotations(annotations[logicalIndex]);
+            } else {
+                annCvs2.resetHistory();
+            }
+        } catch (e) {
+            console.warn('Error loading right annotations for blank slide', logicalIndex, e);
+        }
+
+        ann_canvas_container2.style.background = 'white';
+    }
+}
+
 // Render a slide on the right (split view) canvas - full featured with widgets and annotations
-async function renderSlideRight(slideIndex) {
+async function renderSlideRight(slideIndex, logicalIndex = null) {
     if (!zipFile || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
 
     const pdfFile = zipFile.file("slides.pdf");
@@ -1613,11 +1806,16 @@ async function renderSlideRight(slideIndex) {
 
     await pdfCvs2.renderPDFPage(page);
 
-    // Load per-slide annotations for right canvas
+    const effectiveLogicalIndex =
+        logicalIndex !== null
+            ? logicalIndex
+            : slideStructure.findIndex(s => s.type === 'pdf' && s.pdfIndex === slideIndex);
+
+    // Load annotations for the corresponding logical slide
     try {
         annCvs2.clear();
-        if (annotationsRight[slideIndex]) {
-            await annCvs2.loadAnnotations(annotationsRight[slideIndex]);
+        if (effectiveLogicalIndex !== -1 && annotations[effectiveLogicalIndex]) {
+            await annCvs2.loadAnnotations(annotations[effectiveLogicalIndex]);
         } else {
             annCvs2.resetHistory();
         }
