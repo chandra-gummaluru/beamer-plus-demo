@@ -63,7 +63,7 @@ export class Canvas {
         this.historyChangeHandler = null;
         this.shapeLock = null;
         this.shapeLockTimer = null;
-        this.shapeLockDelay = 2000;
+        this.shapeLockDelay = 1000;
         this.lastMoveTime = 0;
         this.lastMovePoint = null;
         this.savedCanvasState = null;
@@ -227,6 +227,53 @@ export class Canvas {
             this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
             this.ctx.restore();
         }
+    }
+
+    drawSegmentToContext(start, end, ctx, stroke) {
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = stroke.mode === 'erase' ? 'rgba(0,0,0,1)' : stroke.color;
+        ctx.lineWidth = stroke.width;
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+    }
+
+    restoreStrokeBaseline(stroke) {
+        if (!this.savedCanvasState || !stroke) return;
+        this.ctx.putImageData(this.savedCanvasState, 0, 0);
+        if (stroke.mode === 'highlight') {
+            this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
+        }
+    }
+
+    drawSegmentPreview(start, end) {
+        if (!this.currentStroke || !this.savedCanvasState) return;
+
+        this.restoreStrokeBaseline(this.currentStroke);
+
+        if (this.currentStroke.mode === 'highlight') {
+            this.drawSegmentToContext(start, end, this.strokeBufferCtx, this.currentStroke);
+            const rect = this.canvas.getBoundingClientRect();
+            this.ctx.save();
+            this.ctx.globalAlpha = 0.4;
+            this.ctx.globalCompositeOperation = 'multiply';
+            this.ctx.drawImage(this.strokeBuffer, 0, 0, rect.width, rect.height);
+            this.ctx.restore();
+            return;
+        }
+
+        this.drawSegmentToContext(start, end, this.ctx, this.currentStroke);
+    }
+
+    commitSegment(start, end) {
+        if (!this.currentStroke || !this.savedCanvasState) return;
+
+        this.drawSegmentPreview(start, end);
+        this.savedCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
     }
 
     setStrokeColor(strokeColor) {
@@ -443,7 +490,10 @@ export class Canvas {
             points: [{ ...p, pressure: e.pressure || 0.5 }],
             color,
             width,
-            mode
+            mode,
+            segmentStart: p,
+            currentPoint: p,
+            polylineActive: false
         };
 
         this.enqueuePoint(e);
@@ -456,6 +506,22 @@ export class Canvas {
         if (this.pointer_mode === "hand") return;
         if (!e.isPrimary || !this.drawing) return;
         e.preventDefault();
+
+        if (this.currentStroke?.polylineActive) {
+            const coalescedPoints = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+            const latestEvent = coalescedPoints[coalescedPoints.length - 1];
+            const point = this.getPos(latestEvent);
+
+            this.currentStroke.currentPoint = point;
+            this.lastMoveTime = Date.now();
+            this.lastMovePoint = point;
+
+            if (this.shapeLockTimer) clearTimeout(this.shapeLockTimer);
+            this.shapeLockTimer = setTimeout(() => this.tryLockShape(), this.shapeLockDelay);
+
+            this.drawSegmentPreview(this.currentStroke.segmentStart, point);
+            return;
+        }
 
         // Throttle drawing updates for e-ink
         const now = Date.now();
@@ -523,6 +589,26 @@ export class Canvas {
         if (this.shapeLockTimer) {
             clearTimeout(this.shapeLockTimer);
             this.shapeLockTimer = null;
+        }
+
+        if (this.currentStroke?.polylineActive) {
+            const endPoint = (e.clientX !== 0 || e.clientY !== 0)
+                ? this.getPos(e)
+                : this.currentStroke.currentPoint;
+
+            if (endPoint && this.distance(this.currentStroke.segmentStart, endPoint) > 0.5) {
+                this.commitSegment(this.currentStroke.segmentStart, endPoint);
+            } else {
+                this.restoreStrokeBaseline(this.currentStroke);
+            }
+
+            this.currentStroke = null;
+            this.ctx.globalCompositeOperation = "source-over";
+            this.ctx.globalAlpha = 1;
+            this.savedCanvasState = null;
+            this.cachedRect = null;
+            this.commitHistory();
+            return;
         }
 
         // Pick draw context
@@ -599,6 +685,23 @@ export class Canvas {
         this.shapeLockTimer = null;
         if (this.shapeLock || !this.drawing || !this.currentStroke) return;
         if (Date.now() - this.lastMoveTime < this.shapeLockDelay) return;
+
+        if (!this.currentStroke.shape && ['draw', 'highlight'].includes(this.currentStroke.mode)) {
+            const points = this.currentStroke.points || [];
+            const endPoint = this.lastMovePoint || this.currentStroke.currentPoint || points[points.length - 1];
+            const segmentStart = this.currentStroke.segmentStart || points[0];
+
+            if (!segmentStart || !endPoint || this.distance(segmentStart, endPoint) < 1) return;
+
+            this.commitSegment(segmentStart, endPoint);
+            this.currentStroke.polylineActive = true;
+            this.currentStroke.segmentStart = endPoint;
+            this.currentStroke.currentPoint = endPoint;
+            this.currentStroke.points = [{ ...endPoint, pressure: 0.5 }];
+            this.pointQueue = [];
+            this.splinePts = [];
+            return;
+        }
 
         const pts = this.currentStroke.points || [];
         if (pts.length < 10) return;

@@ -1,5 +1,4 @@
 import { Timer } from './timer.js';
-import { Label } from './label.js';
 import { Button } from './button.js';
 import { Selector } from './selector.js';
 import { Toggle } from './toggle.js';
@@ -32,23 +31,212 @@ const hand = new Button(toolContainer, {
     className: 'btn'
 });
 
-const pen = new Button(toolContainer, {
-    label: '<i class="fa-solid fa-pen"></i>',
-    className: 'btn'
-});
-
-const highlighter = new Button(toolContainer, {
-    label: '<i class="fa-solid fa-highlighter"></i>',
-    className: 'btn'
-});
-
-const eraser = new Button(toolContainer, {
+const eraserBtn = new Button(toolContainer, {
     label: '<i class="fa-solid fa-eraser"></i>',
     className: 'btn'
 });
+eraserBtn.el.title = 'Eraser';
 
-const toolSelector = new Selector([hand, pen, highlighter, eraser], 'btn_selected');
-toolSelector.select(hand);
+const PEN_SLOT_DEFAULTS = [
+    { mode: 'draw', color: '#333333', size: 2, label: 'P1' },
+    { mode: 'draw', color: '#e74c3c', size: 2, label: 'P2' },
+    { mode: 'highlight', color: '#f1c40f', size: 5, label: 'H1' }
+];
+
+const PEN_SWATCHES = ['#eeeeee', '#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#333333'];
+
+const penProfiles = PEN_SLOT_DEFAULTS.map(profile => ({ ...profile }));
+const penSlotButtons = [];
+let activePenSlot = 0;
+
+function clearAnnotationToolSelection() {
+    hand.el.classList.remove('btn_selected');
+    eraserBtn.el.classList.remove('btn_selected');
+    penSlotButtons.forEach((btn) => btn.el.classList.remove('btn_selected'));
+    clearShapeSelection();
+}
+
+function markActivePenSlot(index) {
+    clearAnnotationToolSelection();
+    penSlotButtons.forEach((btn, i) => {
+        btn.el.classList.toggle('btn_selected', i === index);
+    });
+}
+
+function refreshPenSlotButtonStyle(index) {
+    const btn = penSlotButtons[index];
+    const profile = penProfiles[index];
+    if (!btn || !profile) return;
+
+    const iconClass = profile.mode === 'highlight'
+        ? 'fa-solid fa-highlighter'
+        : 'fa-solid fa-pen';
+
+    btn.el.innerHTML = `<i class="${iconClass}"></i>`;
+    btn.el.style.backgroundColor = '#eeeeee';
+    btn.el.style.borderColor = '#666';
+    btn.el.style.color = profile.color;
+    btn.el.title = `${profile.label}: ${profile.mode === 'highlight' ? 'Highlighter' : 'Pen'} (${profile.size}px)`;
+}
+
+function applyPenSlot(index) {
+    const profile = penProfiles[index];
+    if (!profile) return;
+
+    activePenSlot = index;
+    setPointerModeAll(profile.mode === 'highlight' ? 'highlight' : 'draw');
+    annCvs.setStrokeColor(profile.color);
+    annCvs.setStrokeWidth(profile.size);
+    markActivePenSlot(index);
+    setShapeSidebarVisible(false);
+}
+
+function openPenSettingsModal(index) {
+    const profile = penProfiles[index];
+    if (!profile) return;
+
+    const existingModal = document.querySelector('.custom-modal-overlay');
+    if (existingModal) existingModal.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'custom-modal-content';
+    modal.style.maxWidth = '420px';
+
+    let selectedMode = profile.mode;
+    let selectedColor = profile.color;
+    let selectedSize = profile.size;
+
+    const swatchMarkup = PEN_SWATCHES.map((color) => `
+        <button
+            class="custom-modal-pen-swatch${color === profile.color ? ' is-selected' : ''}"
+            type="button"
+            data-color="${color}"
+            style="background:${color};"
+            aria-label="Select ${color}"
+        ></button>
+    `).join('');
+
+    const sizeMarkup = [1, 2, 3, 4, 5].map((size) => `
+        <button class="custom-modal-size-option${size === profile.size ? ' is-selected' : ''}" type="button" data-size="${size}" aria-label="Select size ${size}">
+            <span class="custom-modal-size-dot size-${size}"></span>
+        </button>
+    `).join('');
+
+    modal.innerHTML = `
+        <div class="custom-modal-icon"><i class="fa-solid fa-pen"></i></div>
+        <h2 class="custom-modal-title">Edit ${profile.label}</h2>
+        <div class="custom-modal-pen-settings">
+            <div class="custom-modal-setting-group">
+                <div class="custom-modal-setting-label">Style</div>
+                <div class="custom-modal-button-group" data-setting="style">
+                    <button class="custom-modal-btn custom-modal-tool-btn${profile.mode === 'draw' ? ' is-selected' : ''}" type="button" data-mode="draw">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button class="custom-modal-btn custom-modal-tool-btn${profile.mode === 'highlight' ? ' is-selected' : ''}" type="button" data-mode="highlight">
+                        <i class="fa-solid fa-highlighter"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="custom-modal-setting-group">
+                <div class="custom-modal-setting-label">Color</div>
+                <div class="custom-modal-swatch-row">
+                    ${swatchMarkup}
+                </div>
+            </div>
+            <div class="custom-modal-setting-group">
+                <div class="custom-modal-setting-label">Size</div>
+                <div class="custom-modal-size-row">
+                    ${sizeMarkup}
+                </div>
+            </div>
+        </div>
+        <div class="custom-modal-buttons">
+            <button class="custom-modal-btn custom-modal-btn-cancel">Cancel</button>
+            <button class="custom-modal-btn custom-modal-btn-ok">Save</button>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    modal.querySelectorAll('[data-mode]').forEach((button) => {
+        button.addEventListener('click', () => {
+            selectedMode = button.dataset.mode;
+            modal.querySelectorAll('[data-mode]').forEach((candidate) => {
+                candidate.classList.toggle('is-selected', candidate.dataset.mode === selectedMode);
+            });
+        });
+    });
+
+    modal.querySelectorAll('[data-color]').forEach((button) => {
+        button.addEventListener('click', () => {
+            selectedColor = button.dataset.color;
+            modal.querySelectorAll('[data-color]').forEach((candidate) => {
+                candidate.classList.toggle('is-selected', candidate.dataset.color === selectedColor);
+            });
+        });
+    });
+
+    modal.querySelectorAll('[data-size]').forEach((button) => {
+        button.addEventListener('click', () => {
+            selectedSize = Number(button.dataset.size);
+            modal.querySelectorAll('[data-size]').forEach((candidate) => {
+                candidate.classList.toggle('is-selected', Number(candidate.dataset.size) === selectedSize);
+            });
+        });
+    });
+
+    const close = () => overlay.remove();
+
+    modal.querySelector('.custom-modal-btn-cancel').onclick = close;
+    modal.querySelector('.custom-modal-btn-ok').onclick = () => {
+        profile.mode = selectedMode;
+        profile.color = selectedColor;
+        profile.size = selectedSize;
+        refreshPenSlotButtonStyle(index);
+
+        if (activePenSlot === index) {
+            applyPenSlot(index);
+        }
+
+        close();
+    };
+
+    overlay.onclick = (e) => {
+        if (e.target === overlay) close();
+    };
+}
+
+for (let i = 0; i < penProfiles.length; i++) {
+    const btn = new Button(toolContainer, {
+        label: '<i class="fa-solid fa-pen"></i>',
+        className: 'btn'
+    });
+
+    btn.el.classList.add('pen-slot-btn');
+    refreshPenSlotButtonStyle(i);
+
+    let holdFired = false;
+    addHoldListener(btn.el, () => {
+        holdFired = true;
+        openPenSettingsModal(i);
+    }, 500);
+
+    btn.onClick(() => {
+        if (holdFired) {
+            holdFired = false;
+            return;
+        }
+        applyPenSlot(i);
+    });
+
+    penSlotButtons.push(btn);
+}
+
+hand.el.classList.add('btn_selected');
 
 const shapeSidebar = document.getElementById('shape-sidebar');
 
@@ -93,53 +281,60 @@ function setShapeSidebarVisible(isVisible) {
     updateFloatingPanel();
 }
 
-const colors = ['#eeeeee', '#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#333333'];
-const colorContainer = document.getElementById('color-picker');
-
-const colorBtns = colors.map(color => {
-    const btn = new Button(colorContainer, {
-        className: 'color-swatch',
-    });
-    btn.el.style.background = color;
-    return btn;
-});
-
-const colorSelector = new Selector(colorBtns, 'color-selected');
-colorSelector.select(colorBtns[6]);
-
 const navContainer = document.getElementById('nav-container');
+const slideNavigator = document.getElementById('slide-navigator');
+
+slideNavigator?.addEventListener('wheel', (event) => {
+    if (!splitViewEnabled) return;
+
+    const slideScroller = slideNavigator.querySelector('#slide-nav-slides');
+    if (!slideScroller) return;
+
+    const scrollDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
+
+    if (scrollDelta === 0) return;
+
+    event.preventDefault();
+    slideScroller.scrollLeft += scrollDelta;
+}, { passive: false });
 
 const prevBtn = new Button(navContainer, {
     label: '<i class="fa-solid fa-arrow-left"></i>',
     className: 'btn'
 });
+prevBtn.el.id = 'prev-btn';
+prevBtn.el.style.display = 'none';
 
 const nextBtn = new Button(navContainer, {
     label: '<i class="fa-solid fa-arrow-right"></i>',
     className: 'btn'
 });
+nextBtn.el.id = 'next-btn';
+nextBtn.el.style.display = 'none';
 
-const addBlankBtn = new Button(navContainer, {
+const pageToolsContainer = document.getElementById('slide-nav-bottom-actions');
+
+const addBlankBtn = new Button(pageToolsContainer, {
     label: '<i class="fa-solid fa-file-circle-plus"></i>',
     className: 'btn'
 });
 addBlankBtn.el.title = "Add Blank Page";
-addBlankBtn.el.style.marginLeft = '10px';
 addBlankBtn.onClick(() => {
     insertBlankAfterCurrent();
 });
 
-const deleteBlankBtn = new Button(navContainer, {
+const deleteBlankBtn = new Button(pageToolsContainer, {
     label: '<i class="fa-solid fa-trash"></i>',
     className: 'btn'
 });
 deleteBlankBtn.el.title = "Delete Blank Page";
-deleteBlankBtn.el.style.marginLeft = '10px';
 deleteBlankBtn.onClick(() => {
     deleteCurrentBlank();
 });
 
-const splitViewButtonContainer = document.getElementById('split-view-button-container');
+const splitViewButtonContainer = document.getElementById('slide-nav-top-actions');
 
 const splitViewBtn = new Button(splitViewButtonContainer, {
     label: '<i class="fa-solid fa-columns"></i>',
@@ -165,7 +360,6 @@ splitViewBtn.onClick(() => {
 
             // Populate right navigator
             populateSlideNavigator();
-            populateSlideNavigatorRight();
 
             // Resize all canvases after layout settles
             setTimeout(async () => {
@@ -207,25 +401,7 @@ splitViewBtn.onClick(() => {
     }
 });
 
-const brushContainer = document.getElementById('brush-controls');
-
-const brushMinusBtn = new Button(brushContainer, {
-    label: '<i class="fa-solid fa-minus"></i>',
-    className: 'btn'
-});
-
-const brushSizeLbl = new Label(brushContainer, {
-    id: 'brush_size_scroll',
-    className: 'brush_size_scroll',
-    initial: '2'
-});
-
-const brushPlusBtn = new Button(brushContainer, {
-    label: '<i class="fa-solid fa-plus"></i>',
-    className: 'btn'
-});
-
-const otherControlsContainer = document.getElementById('other-controls');
+const otherControlsContainer = document.getElementById('annotation-undo-redo');
 
 const undoBtn = new Button(otherControlsContainer, {
     className: 'btn',
@@ -233,7 +409,7 @@ const undoBtn = new Button(otherControlsContainer, {
 });
 
 undoBtn.el.id = 'undo-btn';
-undoBtn.el.style.marginLeft = '15px';
+undoBtn.el.style.marginLeft = '0';
 undoBtn.el.style.marginRight = '5px';
 
 const redoBtn = new Button(otherControlsContainer, {
@@ -242,22 +418,21 @@ const redoBtn = new Button(otherControlsContainer, {
 });
 
 redoBtn.el.id = 'redo-btn';
-redoBtn.el.style.marginRight = '5px';
+redoBtn.el.style.marginRight = '0';
 
-const clearBtn = new Button(otherControlsContainer, {
-    className: 'btn',
-    label: '<i class="fa-solid fa-broom"></i>'
-});
-
-clearBtn.el.id = 'clear-btn';
-clearBtn.el.style.marginRight = '20px';
+const clearContainer = document.getElementById('annotation-clear');
+if (clearContainer) {
+    clearContainer.style.display = 'none';
+}
 
 const displayControls = document.getElementById('display-controls');
+const uploadContainer = document.getElementById('upload-container');
 
-const uploadBtn = new Button(displayControls, {
+const uploadBtn = new Button(uploadContainer || displayControls, {
     className: 'btn',
     label: '<i class="fa-solid fa-folder-open"></i>',
 });
+uploadBtn.el.title = 'Upload Presentation';
 
 const screenShareContainer = document.getElementById('screen-share-container');
 
@@ -294,12 +469,20 @@ annotationToggleBtn.title = 'Annotation Tools';
 // Insert after nav-container instead of in display-controls
 const navContainerElement = document.getElementById('nav-container');
 const controlsLeft = document.querySelector('.controls-left');
-if (navContainerElement && navContainerElement.nextSibling) {
-    controlsLeft.insertBefore(annotationToggleBtn, navContainerElement.nextSibling);
-} else if (navContainerElement) {
+const annotationToolbar = document.getElementById('floating-annotation-toolbar');
+
+if (controlsLeft && navContainerElement) {
+    if (navContainerElement.nextSibling) {
+        controlsLeft.insertBefore(annotationToggleBtn, navContainerElement.nextSibling);
+    } else {
+        controlsLeft.appendChild(annotationToggleBtn);
+    }
+} else if (navContainerElement?.parentNode) {
     navContainerElement.parentNode.insertBefore(annotationToggleBtn, navContainerElement.nextSibling);
+} else if (annotationToolbar?.parentNode) {
+    annotationToolbar.parentNode.insertBefore(annotationToggleBtn, annotationToolbar);
 } else {
-    controlsLeft.appendChild(annotationToggleBtn);
+    document.body.appendChild(annotationToggleBtn);
 }
 
 // Create floating annotation panel
@@ -309,144 +492,21 @@ document.body.appendChild(floatingPanel);
 
 // Function to populate floating panel on mobile
 function updateFloatingPanel() {
-    const toolContainer = document.getElementById('tool-container');
-    const shapeSidebar = document.getElementById('shape-sidebar');
-    const colorPicker = document.getElementById('color-picker');
-    const brushControls = document.getElementById('brush-controls');
-    const otherControls = document.getElementById('other-controls');
-    const controlsRight = document.querySelector('.controls-right');
-
-    const undoBtnEl = document.getElementById('undo-btn');
-    const redoBtnEl = document.getElementById('redo-btn');
-    const clearBtnEl = document.getElementById('clear-btn');
+    const annotationToolbar = document.getElementById('floating-annotation-toolbar');
 
     if (window.innerWidth <= 1300) {
-        // Move elements to floating panel on mobile
-        floatingPanel.replaceChildren();
-
-        // Tools section
-        const toolsSection = document.createElement('div');
-        toolsSection.className = 'panel-section';
-        if (toolContainer) toolsSection.appendChild(toolContainer);
-        floatingPanel.appendChild(toolsSection);
-
-        // Shape tools section
-        // always append the section if shapeSidebar exists,
-        // otherwise the sidebar can get detached from the DOM and "disappear".
-        const shapeSection = document.createElement('div');
-        shapeSection.className = 'panel-section';
-        if (shapeSidebar) {
-            shapeSection.appendChild(shapeSidebar);
-            floatingPanel.appendChild(shapeSection);
-        }
-
-        // Colors section
-        const colorsSection = document.createElement('div');
-        colorsSection.className = 'panel-section';
-        if (colorPicker) colorsSection.appendChild(colorPicker);
-        floatingPanel.appendChild(colorsSection);
-        
-        // Brush controls section
-        const brushSection = document.createElement('div');
-        brushSection.className = 'panel-section';
-        if (brushControls) brushSection.appendChild(brushControls);
-        floatingPanel.appendChild(brushSection);
-        
-        // Undo/Redo/Clear section - move individual buttons from other-controls
-        const actionSection = document.createElement('div');
-        actionSection.className = 'panel-section';
-        const undoBtnEl = document.getElementById('undo-btn');
-        const redoBtnEl = document.getElementById('redo-btn');
-        const clearBtnEl = document.getElementById('clear-btn');
-        if (undoBtnEl) actionSection.appendChild(undoBtnEl);
-        if (redoBtnEl) actionSection.appendChild(redoBtnEl);
-        if (clearBtnEl) actionSection.appendChild(clearBtnEl);
-        if (actionSection.children.length > 0) floatingPanel.appendChild(actionSection);
-
-        // Show toggle button on mobile
-        annotationToggleBtn.style.display = 'inline-flex';
+        // Hide floating toolbar on small screens
+        if (annotationToolbar) annotationToolbar.style.display = 'none';
+        if (annotationToggleBtn) annotationToggleBtn.style.display = 'inline-flex';
     } else {
-        // Move elements back to controls-right on desktop
-
-        // Move undo/redo/clear back to other-controls in the correct order
-        if (otherControls) {
-            const undoBtnEl = document.getElementById('undo-btn');
-            const redoBtnEl = document.getElementById('redo-btn');
-            const clearBtnEl = document.getElementById('clear-btn');
-        }
-
-        // Insert in correct order at the beginning of other-controls
-        if (undoBtnEl && otherControls && !otherControls.contains(undoBtnEl)) {
-            otherControls.insertBefore(undoBtnEl, otherControls.firstChild);
-        }
-        if (redoBtnEl && otherControls && !otherControls.contains(redoBtnEl)) {
-            otherControls.insertBefore(
-                redoBtnEl,
-                undoBtnEl ? undoBtnEl.nextSibling : otherControls.firstChild
-            );
-        }
-        if (clearBtnEl && otherControls && !otherControls.contains(clearBtnEl)) {
-            otherControls.insertBefore(
-                clearBtnEl,
-                redoBtnEl ? redoBtnEl.nextSibling : otherControls.firstChild
-            );
-        }
-
-        // Insert elements back in correct order
-        if (toolContainer && !controlsRight.contains(toolContainer)) {
-            controlsRight.insertBefore(toolContainer, otherControls || controlsRight.firstChild);
-        }
-
-        if (shapeSidebar && !controlsRight.contains(shapeSidebar)) {
-            if (toolContainer && toolContainer.parentNode === controlsRight) {
-                controlsRight.insertBefore(shapeSidebar, toolContainer.nextSibling);
-            } else {
-                controlsRight.insertBefore(
-                    shapeSidebar,
-                    colorPicker || otherControls || controlsRight.firstChild
-                );
-            }
-        }
-
-        if (colorPicker && !controlsRight.contains(colorPicker)) {
-            controlsRight.insertBefore(colorPicker, otherControls || controlsRight.firstChild);
-        }
-        if (brushControls && !controlsRight.contains(brushControls)) {
-            controlsRight.insertBefore(brushControls, otherControls || controlsRight.firstChild);
-        }
-
-        // Clear floating panel after moving elements
-        floatingPanel.replaceChildren();
-
-        // Hide toggle button and floating panel on desktop
-        annotationToggleBtn.style.display = 'none';
-        floatingPanel.classList.remove('visible');
+        // Show floating toolbar on desktop
+        if (annotationToolbar) annotationToolbar.style.display = 'flex';
+        if (annotationToggleBtn) annotationToggleBtn.style.display = 'none';
     }
-    updateFloatingPanelSize();
 }
 
 function updateFloatingPanelSize() {
-    if (!floatingPanel) return;
-
-    const isSmallScreen = window.innerWidth <= 1300;
-    if (!isSmallScreen) {
-        floatingPanel.style.width = '';
-        floatingPanel.style.maxWidth = '';
-        return;
-    }
-
-    const mode = annCvs?.pointer_mode;
-
-    // Hand mode: compact toolbar
-    if (mode === 'hand') {
-        floatingPanel.style.width = '840px';
-        floatingPanel.style.maxWidth = '92vw';
-        return;
-    }
-
-    // Drawing-related modes: slightly longer toolbar to fit shape tools nicely
-    floatingPanel.style.width = '1220px';
-    floatingPanel.style.maxWidth = '102vw';
+    // No longer needed with fixed floating toolbar
 }
 
 // Initialize and listen for resize
@@ -543,15 +603,12 @@ document.addEventListener('click', (e) => {
 
 // Keep list of controls for enabling/disabling (upload button remains enabled)
 const __beamer_controls = [
-    hand, pen, highlighter, eraser,
+    hand, eraserBtn, ...penSlotButtons,
     lineShapeBtn, rectShapeBtn, circleShapeBtn, triangleShapeBtn,
-    ...colorBtns,
-    brushMinusBtn, brushPlusBtn,
     prevBtn, nextBtn,
     addBlankBtn, deleteBlankBtn,
     splitViewBtn,
     undoBtn, redoBtn,
-    clearBtn
 ];
 
 // Disable at startup
@@ -614,13 +671,37 @@ function setShapeModeAll(mode) {
 }
 
 hand.onClick(() => setPointerModeAll('hand'));
-pen.onClick(() => setPointerModeAll('draw'));
-highlighter.onClick(() => setPointerModeAll('highlight'));
-eraser.onClick(() => setPointerModeAll('erase'));
+hand.onClick(() => {
+    setPointerModeAll('hand');
+    clearAnnotationToolSelection();
+    hand.el.classList.add('btn_selected');
+    setShapeSidebarVisible(false);
+});
+
+let eraserHoldFired = false;
+addHoldListener(eraserBtn.el, () => {
+    eraserHoldFired = true;
+    annCvs.clearAndCommit();
+    // Clear current slide annotations locally and notify server
+    annotations[currentSlide] = null;
+    socket.emit('clear_annotations');
+}, 550);
+
+eraserBtn.onClick(() => {
+    if (eraserHoldFired) {
+        eraserHoldFired = false;
+        return;
+    }
+    setPointerModeAll('erase');
+    clearAnnotationToolSelection();
+    eraserBtn.el.classList.add('btn_selected');
+    setShapeSidebarVisible(false);
+});
 
 lineShapeBtn.onClick(() => {
     setShapeToolAll('line');
     setPointerModeAll('shape');
+    clearAnnotationToolSelection();
     shapeSelector.select(lineShapeBtn);
     setShapeSidebarVisible(true);
     updateFloatingPanelSize();
@@ -629,6 +710,7 @@ lineShapeBtn.onClick(() => {
 rectShapeBtn.onClick(() => {
     setShapeToolAll('rectangle');
     setPointerModeAll('shape');
+    clearAnnotationToolSelection();
     shapeSelector.select(rectShapeBtn);
     setShapeSidebarVisible(true);
     updateFloatingPanelSize();
@@ -637,6 +719,7 @@ rectShapeBtn.onClick(() => {
 circleShapeBtn.onClick(() => {
     setShapeToolAll('circle');
     setPointerModeAll('shape');
+    clearAnnotationToolSelection();
     shapeSelector.select(circleShapeBtn);
     setShapeSidebarVisible(true);
     updateFloatingPanelSize();
@@ -645,69 +728,13 @@ circleShapeBtn.onClick(() => {
 triangleShapeBtn.onClick(() => {
     setShapeToolAll('triangle');
     setPointerModeAll('shape');
+    clearAnnotationToolSelection();
     shapeSelector.select(triangleShapeBtn);
     setShapeSidebarVisible(true);
     updateFloatingPanelSize();
 });
 
-function onToolSelected(selected) {
-    if (selected === pen) setPointerModeAll('draw');
-    else if (selected === highlighter) setPointerModeAll('highlight');
-    else if (selected === eraser) setPointerModeAll('erase');
-
-    clearShapeSelection();
-    setShapeToolAll(null);
-
-    if (selected === hand) {
-        setPointerModeAll('hand');
-        setShapeSidebarVisible(false);
-    } else if (selected === pen) {
-        setPointerModeAll('draw');
-        setShapeModeAll('draw');
-        setShapeSidebarVisible(true);
-    } else if (selected === highlighter) {
-        setPointerModeAll('highlight');
-        setShapeModeAll('highlight');
-        setShapeSidebarVisible(true);
-    } else if (selected === eraser) {
-        setPointerModeAll('erase');
-        setShapeModeAll('erase');
-        setShapeSidebarVisible(true);
-    }
-    updateFloatingPanelSize();
-}
-
-toolSelector.buttons.forEach(item => {
-    item.el.addEventListener('click', () => onToolSelected(item));
-});
-
-colorBtns.forEach(btn => {
-  btn.onClick(() => {
-    const color = getComputedStyle(btn.el).backgroundColor;
-    annCvs.setStrokeColor(color);
-  });
-});
-
-brushMinusBtn.onClick(() => {
-    let val = parseInt(brushSizeLbl.get());
-    if (val > 1) val--;
-    brushSizeLbl.set(String(val));
-    annCvs.setStrokeWidth(val);
-});
-
-brushPlusBtn.onClick(() => {
-    let val = parseInt(brushSizeLbl.get());
-    if (val < 9) val++;
-    brushSizeLbl.set(String(val));
-    annCvs.setStrokeWidth(val);
-});
-
-clearBtn.onClick(() => {
-    annCvs.clearAndCommit();
-    // Clear current slide annotations locally and notify server
-    annotations[currentSlide] = null;
-    socket.emit('clear_annotations');
-});
+applyPenSlot(activePenSlot);
 
 undoBtn.onClick(async () => {
     await annCvs.undo();
@@ -726,6 +753,20 @@ const pdfInput = document.getElementById("upload-pdf");
 uploadBtn.onClick(() => {
     showUploadModal();
 });
+
+// Keep slide-area main menu hidden; uploads are triggered from top-right controls.
+const mainMenu = document.getElementById('main-menu');
+if (mainMenu) {
+    mainMenu.classList.add('hidden');
+    mainMenu.innerHTML = '';
+}
+
+function hideMainMenu() {
+    const mainMenu = document.getElementById('main-menu');
+    if (mainMenu) {
+        mainMenu.classList.add('hidden');
+    }
+}
 
 function showUploadModal() {
     const existingModal = document.querySelector('.upload-modal-overlay');
@@ -923,10 +964,6 @@ function openBookmarkInput(item, slideIndex) {
             }
             item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
             populateBookmarkPins();
-
-            if (splitViewEnabled) {
-                populateSlideNavigatorRight();
-            }
         }
         input.remove();
         label.style.display = '';
@@ -1026,7 +1063,6 @@ function populateBookmarkPins() {
         }
 
         pin.onclick = () => goToSlide(slideIndex);
-        attachTooltip(pin, slideIndex);
         pins.appendChild(pin);
     });
 }
@@ -1058,7 +1094,6 @@ function createNavItem(slideIndex) {
         goToSlide(slideIndex);
     });
 
-    attachTooltip(item, slideIndex);
     return item;
 }
 
@@ -1168,6 +1203,7 @@ async function getSlideThumbnail(logicalIndex) {
 async function addPreviewToNavItem(item, slideIndex) {
     const preview = document.createElement('div');
     preview.className = 'slide-preview';
+    preview.dataset.slideNumber = slideIndex + 1;
     item.insertBefore(preview, item.firstChild);
 
     const info = await getSlidePreviewInfo(slideIndex);
@@ -1220,18 +1256,48 @@ function toggleParentCollapsed(parentPdfIndex) {
     }
 
     populateSlideNavigator();
+}
 
-    if (splitViewEnabled) {
-        populateSlideNavigatorRight();
-    }
+async function copyCurrentSlideToRight() {
+    if (!splitViewEnabled || !slideStructure[currentSlide]) return;
+    rightSlideIndex = currentSlide;
+    await renderLogicalSlideRight(currentSlide);
+}
+
+function createCopyToRightNavButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn slide-nav-copy-current-btn';
+    button.title = 'Show current left slide on right';
+
+    button.innerHTML = '<i class="fa-solid fa-right-left"></i>';
+    button.addEventListener('click', () => {
+        copyCurrentSlideToRight();
+    });
+
+    return button;
 }
 
 function populateSlideNavigator() {
     const navigator = document.getElementById('slide-navigator');
+    const topActions = document.getElementById('slide-nav-top-actions');
     const pins = document.getElementById('bookmark-pins');
+    const bottomActions = document.getElementById('slide-nav-bottom-actions');
+    const slideScroller = document.createElement('div');
+
+    slideScroller.id = 'slide-nav-slides';
+
+    bottomActions?.querySelector('.slide-nav-copy-current-btn')?.remove();
 
     navigator.innerHTML = '';
-    navigator.appendChild(pins);
+    if (topActions) {
+        navigator.appendChild(topActions);
+    }
+    navigator.appendChild(slideScroller);
+
+    if (pins && !splitViewEnabled) {
+        slideScroller.appendChild(pins);
+    }
 
     for (let i = 0; i < slideStructure.length; i++) {
         const slide = slideStructure[i];
@@ -1264,7 +1330,8 @@ function populateSlideNavigator() {
                 item.appendChild(toggleBtn);
             }
 
-            navigator.appendChild(item);
+            slideScroller.appendChild(item);
+            addPreviewToNavItem(item, i);
             continue;
         }
 
@@ -1284,16 +1351,20 @@ function populateSlideNavigator() {
             item.style.paddingLeft = '0';
             item.style.fontSize = '0.95em';
 
-            navigator.appendChild(item);
+            slideScroller.appendChild(item);
+            addPreviewToNavItem(item, i);
         }
+    }
+
+    if (bottomActions) {
+        if (splitViewEnabled) {
+            bottomActions.prepend(createCopyToRightNavButton());
+        }
+        navigator.appendChild(bottomActions);
     }
 
     updateSlideNavigator();
     populateBookmarkPins();
-
-    if (splitViewEnabled) {
-        populateSlideNavigatorRight();
-    }
 }
 
 function updateSlideNavigator() {
@@ -1301,18 +1372,22 @@ function updateSlideNavigator() {
 
     items.forEach((item) => {
         const slideIndex = Number(item.dataset.slideIndex);
+        const isCurrentSlide = slideIndex === currentSlide;
 
-        if (slideIndex === currentSlide) {
+        if (isCurrentSlide) {
             item.classList.add('active');
+            item.classList.add('current-slide');
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
             item.classList.remove('active');
+            item.classList.remove('current-slide');
         }
     });
 }
 
 function populateSlideNavigatorRight() {
     const navigator = document.getElementById('slide-navigator-right');
+    if (!navigator) return;
     navigator.innerHTML = '';
 
     for (let i = 0; i < slideStructure.length; i++) {
@@ -1329,8 +1404,6 @@ function populateSlideNavigatorRight() {
             label.className = 'slide-nav-label';
             label.textContent = getLogicalSlideLabel(slide, i);
             item.appendChild(label);
-
-            attachTooltip(item, i);
 
             const blankChildren = getBlankChildren(slide.pdfIndex);
 
@@ -1378,8 +1451,6 @@ function populateSlideNavigatorRight() {
             label.className = 'slide-nav-label';
             label.textContent = getLogicalSlideLabel(slide, i);
             item.appendChild(label);
-
-            attachTooltip(item, i);
 
             item.onclick = async () => {
                 if (i === currentSlide) return;
@@ -1567,14 +1638,6 @@ async function goToSlide(slideIndex) {
     await renderLogicalSlide(currentSlide);
     updateSlideNavigator();
     updateBlankSlideButtons();
-
-    if (splitViewEnabled) {
-        if (rightSlideIndex === currentSlide) {
-            autoAdvanceRight();
-        } else {
-            updateSlideNavigatorRight();
-        }
-    }
 
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
@@ -2231,6 +2294,7 @@ folderInput.addEventListener('change', async (e) => {
     });
     // Enable controls now that a presentation is loaded
     uploadModal.close();
+    hideMainMenu();
     setControlsEnabledAfterUpload(true, __beamer_controls);
     updateBlankSlideButtons();
     
@@ -2328,6 +2392,7 @@ zipInput.addEventListener('change', async (e) => {
         });
         // Enable controls now that a presentation is loaded
         uploadModal.close();
+        hideMainMenu();
         setControlsEnabledAfterUpload(true, __beamer_controls);
         updateBlankSlideButtons();
         
@@ -2387,6 +2452,7 @@ pdfInput.addEventListener('change', async (e) => {
 
         socket.emit('presentation_loaded', { totalSlides });
         uploadModal.close();
+        hideMainMenu();
         setControlsEnabledAfterUpload(true, __beamer_controls);
         updateBlankSlideButtons();
 

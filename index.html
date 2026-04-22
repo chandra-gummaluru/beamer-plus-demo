@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/static/css/timer.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/splash.css">
+  <link rel="stylesheet" href="/static/css/floating-toolbar.css">
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
@@ -53,34 +54,37 @@
     </svg>
   </div>
 
-  <div id="control-panel">
-    <div class="controls-left">
-      <div id="display-controls"></div>
-      <input type="file" id="upload-zip" accept=".zip" style="display: none;">
-      <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
-      <input type="file" id="upload-pdf" accept=".pdf" style="display: none;">
-      <div id="screen-share-container"></div>
-      <div id="record-container"></div>
-      <div id="nav-container"></div>
-      <div id="split-view-button-container"></div>
-    </div>
-
-  <div class="controls-right">
-
-    <div id="tool-container"></div>
-    <div id="shape-sidebar"></div>
-    <div id="color-picker"></div>
-    <div id="brush-controls"></div>
-    <div id="other-controls"></div>
+  <input type="file" id="upload-zip" accept=".zip" style="display: none;">
+  <input type="file" id="upload-folder" webkitdirectory directory multiple style="display: none;">
+  <input type="file" id="upload-pdf" accept=".pdf" style="display: none;">
+  <div id="top-controls-panel" aria-hidden="true"></div>
+  <div id="display-controls" style="display: none;"></div>
+  <div id="nav-container" style="display: none;"></div>
+  <div id="top-right-controls">
+    <div id="upload-container"></div>
+    <div id="screen-share-container"></div>
+    <div id="record-container"></div>
     <div id="timer-container"></div>
   </div>
-</div>
+
+  <!-- Floating Annotation Toolbar -->
+  <div id="floating-annotation-toolbar">
+    <div id="tool-container"></div>
+    <div id="annotation-undo-redo"></div>
+    <div id="annotation-clear"></div>
+  </div>
+
+  <div id="shape-sidebar"></div>
 
   <div id="slide-navigator">
+    <div id="slide-nav-top-actions"></div>
     <div id="bookmark-pins"></div>
+    <div id="slide-nav-bottom-actions"></div>
   </div>
 
   <div id="main-content">
+        <div id="main-menu" class="hidden"></div>
+        
         <div id="pdf-container">
         <div id="ann-canvas"></div>
         <div id="pdf-canvas">
@@ -104,8 +108,6 @@
     </div>
 
   </div>
-
-  <div id="slide-navigator-right"></div>
 
   <script>
     // Hide splash screen after 2 seconds
