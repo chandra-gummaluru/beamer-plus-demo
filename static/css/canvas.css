@@ -48,6 +48,15 @@ body.split-view-active #pdf-container-2 {
     width: 50%;
 }
 
+/* Normal vertical navigator: blank child slides are smaller, centered boxes */
+#slide-navigator .slide-nav-child {
+    width: 44px;
+    height: 44px;
+    margin: 6px auto;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
 /* Move left navigator to bottom in split view */
 body.split-view-active #slide-navigator {
     left: 10px;
@@ -74,16 +83,59 @@ body.split-view-active #slide-navigator-right {
     border-radius: 4px;
 }
 
-
-/* Slide nav items horizontal in split view */
-body.split-view-active .slide-nav-item {
+/* Split view: parent slides use larger horizontal buttons */
+body.split-view-active #slide-navigator .slide-nav-item,
+body.split-view-active #slide-navigator-right .slide-nav-item {
     margin: 0 4px;
+    flex: 0 0 72px;
+    width: 72px;
+    min-width: 72px;
+    height: 55px;
+    box-sizing: border-box;
+    padding: 0;
+}
+
+/* Split view: blank child slides stay visually smaller than parent slides */
+body.split-view-active #slide-navigator .slide-nav-child,
+body.split-view-active #slide-navigator-right .slide-nav-child {
+    margin-left: 0;
+    flex: 0 0 56px;
+    width: 56px;
+    min-width: 56px;
+    height: 44px;
+    font-size: 14px;
 }
 
 .slide-nav-item.disabled {
     opacity: 0.35;
     cursor: not-allowed;
     pointer-events: none;
+}
+
+/* Keep bookmarked slides yellow in both split-view navigators */
+body.split-view-active #slide-navigator .slide-nav-item.bookmarked,
+body.split-view-active #slide-navigator-right .slide-nav-item.bookmarked {
+    background: #e8c84a;
+    border-color: #b8941a;
+    color: #3a2a00;
+}
+
+body.split-view-active #slide-navigator .slide-nav-item.bookmarked:hover,
+body.split-view-active #slide-navigator-right .slide-nav-item.bookmarked:hover {
+    background: #d4b030;
+    border-color: #8a6c0e;
+}
+
+body.split-view-active #slide-navigator .slide-nav-item.active.bookmarked,
+body.split-view-active #slide-navigator-right .slide-nav-item.active.bookmarked {
+    background: #c9a828;
+    border-color: #7a5c08;
+}
+
+body.split-view-active #slide-navigator-right .slide-nav-item.disabled.bookmarked {
+    background: #e8c84a;
+    border-color: #b8941a;
+    color: #3a2a00;
 }
 
 #pdf-container video, #pdf-container-2 video {
@@ -220,4 +272,66 @@ model-viewer {
     0%   { stroke-dashoffset: 150; opacity: 0.6; }
     40%  { stroke-dashoffset: 0;   opacity: 1;   }
     100% { stroke-dashoffset: -150; opacity: 0.6; }
+}
+
+/* Slide navigator hover previews */
+.slide-nav-label {
+    display: inline;
+}
+
+#bookmark-tooltip.slide-preview-tooltip {
+    position: fixed;
+    z-index: 600;
+    width: 180px;
+    min-height: 126px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #333;
+    border: 1px solid #777;
+    border-radius: 4px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+    padding: 6px;
+    pointer-events: none;
+    transform: translateY(-50%);
+    box-sizing: border-box;
+}
+
+.slide-preview-tooltip-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+.slide-preview-tooltip-body {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #fff;
+    border: 1px solid #bbb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.slide-preview-tooltip-body img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.slide-preview-tooltip-label,
+.slide-preview-tooltip-widget {
+    padding: 8px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: #333;
+}
+
+.slide-preview-tooltip-widget {
+    background: #f6f6f6;
 }

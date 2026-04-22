@@ -24,6 +24,8 @@ const toolContainer = document.getElementById('tool-container');
 
 let splitViewEnabled = false; // initialize
 let rightSlideIndex = 0; // track which slide is shown on the right
+let slideThumbnailCache = {};
+let thumbnailPdfDoc = null;
 
 const hand = new Button(toolContainer, {
     label: '<i class="fa-solid fa-hand-pointer"></i>',
@@ -156,12 +158,13 @@ splitViewBtn.onClick(() => {
         setTimeout(() => {
             initializeSecondCanvases();
 
-            // Set right slide to the slide adjacent to left on each open
-            rightSlideIndex = (currentSlide + 1 < totalSlides)
+            // Set right slide to an adjacent logical slide on each open
+            rightSlideIndex = (currentSlide + 1 < slideStructure.length)
                 ? currentSlide + 1
                 : Math.max(0, currentSlide - 1);
 
             // Populate right navigator
+            populateSlideNavigator();
             populateSlideNavigatorRight();
 
             // Resize all canvases after layout settles
@@ -175,7 +178,7 @@ splitViewBtn.onClick(() => {
                 // Re-render slides at new sizes
                 if (zipFile) {
                     await renderLogicalSlide(currentSlide);
-                    await renderSlideRight(rightSlideIndex);
+                    await renderLogicalSlideRight(rightSlideIndex);
                 }
 
                 // Restore the current pointer mode on both canvases
@@ -196,6 +199,10 @@ splitViewBtn.onClick(() => {
             if (zipFile) {
                 await renderLogicalSlide(currentSlide);
             }
+
+            // Refresh navigator after leaving split view
+            populateSlideNavigator();
+            updateBlankSlideButtons();
         }, 100);
     }
 });
@@ -580,6 +587,15 @@ const updateHistoryButtons = () => {
     redoBtn.el.disabled = !annCvs.canRedo();
 };
 
+function updateBlankSlideButtons() {
+    const currentObj = slideStructure[currentSlide];
+    const isBlankSlide = currentObj?.type === 'blank';
+
+    deleteBlankBtn.el.disabled = !isBlankSlide;
+    deleteBlankBtn.el.style.opacity = isBlankSlide ? '1' : '0.5';
+    deleteBlankBtn.el.style.cursor = isBlankSlide ? 'pointer' : 'not-allowed';
+}
+
 annCvs.setHistoryChangeHandler(updateHistoryButtons);
 updateHistoryButtons();
 
@@ -815,17 +831,67 @@ bookmarkTooltip.id = 'bookmark-tooltip';
 document.body.appendChild(bookmarkTooltip);
 
 function attachTooltip(item, slideIndex) {
-    item.addEventListener('mouseenter', () => {
-        const name = bookmarks[slideIndex];
-        if (!name) return;
+    item.addEventListener('mouseenter', async () => {
+        const slide = slideStructure[slideIndex];
+        const info = await getSlidePreviewInfo(slideIndex);
+        const name = info.type === 'pdf'
+            ? (bookmarks[slideIndex] || getLogicalSlideLabel(slide, slideIndex))
+            : getLogicalSlideLabel(slide, slideIndex);
+
+        const hoverId = `${slideIndex}-${Date.now()}`;
+
+        item.dataset.tooltipHoverId = hoverId;
+
         const rect = item.getBoundingClientRect();
-        bookmarkTooltip.textContent = name;
+        bookmarkTooltip.className = 'slide-preview-tooltip';
+        bookmarkTooltip.innerHTML = '';
+
+        const title = document.createElement('div');
+        title.className = 'slide-preview-tooltip-title';
+        title.textContent = name;
+        bookmarkTooltip.appendChild(title);
+
+        const preview = document.createElement('div');
+        preview.className = 'slide-preview-tooltip-body';
+        bookmarkTooltip.appendChild(preview);
+
         bookmarkTooltip.style.display = 'block';
-        bookmarkTooltip.style.top = `${rect.top + rect.height / 2}px`;
-        bookmarkTooltip.style.left = `${rect.right + 8}px`;
+
+        if (splitViewEnabled) {
+            bookmarkTooltip.style.transform = 'translate(-50%, -100%)';
+            bookmarkTooltip.style.top = `${rect.top - 10}px`;
+            bookmarkTooltip.style.left = `${rect.left + rect.width / 2}px`;
+        } else {
+            bookmarkTooltip.style.transform = 'translateY(-50%)';
+            bookmarkTooltip.style.top = `${rect.top + rect.height / 2}px`;
+            bookmarkTooltip.style.left = `${rect.right + 10}px`;
+        }
+
+        if (item.dataset.tooltipHoverId !== hoverId) return;
+
+        if (info.type === 'pdf') {
+            const src = await getSlideThumbnail(slideIndex);
+
+            if (item.dataset.tooltipHoverId !== hoverId) return;
+
+            if (src) {
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = '';
+                preview.appendChild(img);
+            }
+        } else {
+            const text = document.createElement('span');
+            text.textContent = info.text;
+            preview.classList.add(`slide-preview-tooltip-${info.type}`);
+            preview.appendChild(text);
+        }
     });
+
     item.addEventListener('mouseleave', () => {
+        item.dataset.tooltipHoverId = '';
         bookmarkTooltip.style.display = 'none';
+        bookmarkTooltip.innerHTML = '';
     });
 }
 
@@ -857,6 +923,10 @@ function openBookmarkInput(item, slideIndex) {
             }
             item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
             populateBookmarkPins();
+
+            if (splitViewEnabled) {
+                populateSlideNavigatorRight();
+            }
         }
         input.remove();
         label.style.display = '';
@@ -873,18 +943,88 @@ function openBookmarkInput(item, slideIndex) {
 function populateBookmarkPins() {
     const pins = document.getElementById('bookmark-pins');
     pins.innerHTML = '';
-    const indices = Object.keys(bookmarks).map(Number).sort((a, b) => a - b);
-    if (indices.length === 0) {
+
+    const indices = Object.keys(bookmarks)
+        .map(Number)
+        .filter(index => index >= 0 && index < slideStructure.length)
+        .sort((a, b) => a - b);
+
+    // Clean up stale bookmarks that point to removed slides
+    Object.keys(bookmarks).forEach((key) => {
+        const index = Number(key);
+        if (index < 0 || index >= slideStructure.length) {
+            delete bookmarks[index];
+        }
+    });
+
+    const visibleIndices = indices.filter((slideIndex) => {
+        const slide = slideStructure[slideIndex];
+
+        if (slide?.type !== 'blank') {
+            return true;
+        }
+
+        const parentIsBookmarked = indices.some((index) => {
+            const candidate = slideStructure[index];
+            return candidate?.type === 'pdf' && candidate.pdfIndex === slide.parent;
+        });
+
+        return !parentIsBookmarked || !isParentCollapsed(slide.parent);
+    });
+
+    if (visibleIndices.length === 0) {
         pins.style.display = 'none';
         return;
     }
+
     pins.style.display = 'flex';
-    indices.forEach(slideIndex => {
+
+    visibleIndices.forEach((slideIndex) => {
+        const slide = slideStructure[slideIndex];
+
         const pin = document.createElement('div');
         pin.className = 'slide-nav-item bookmarked';
+
+        if (slide?.type === 'pdf') {
+            pin.classList.add('slide-nav-parent');
+            pin.style.position = 'relative';
+        }
+
+        if (slide?.type === 'blank') {
+            pin.classList.add('slide-nav-child');
+        }
+
         const label = document.createElement('span');
-        label.textContent = slideIndex + 1;
+        label.className = 'slide-nav-label';
+        label.textContent = getLogicalSlideLabel(slide, slideIndex);
         pin.appendChild(label);
+
+        if (slide?.type === 'pdf') {
+            const hasBookmarkedBlankChildren = indices.some((index) => {
+                const candidate = slideStructure[index];
+                return candidate?.type === 'blank' && candidate.parent === slide.pdfIndex;
+            });
+
+            if (hasBookmarkedBlankChildren) {
+                const toggleBtn = document.createElement('span');
+                toggleBtn.textContent = getCollapseIndicator(slide.pdfIndex);
+                toggleBtn.style.position = 'absolute';
+                toggleBtn.style.right = '8px';
+                toggleBtn.style.top = '50%';
+                toggleBtn.style.transform = 'translateY(-50%)';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.fontSize = '12px';
+                toggleBtn.style.lineHeight = '1';
+
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleParentCollapsed(slide.pdfIndex);
+                };
+
+                pin.appendChild(toggleBtn);
+            }
+        }
+
         pin.onclick = () => goToSlide(slideIndex);
         attachTooltip(pin, slideIndex);
         pins.appendChild(pin);
@@ -897,8 +1037,11 @@ function createNavItem(slideIndex) {
     if (bookmarks[slideIndex]) item.classList.add('bookmarked');
     item.dataset.slideIndex = slideIndex;
 
+    const slide = slideStructure[slideIndex];
+
     const label = document.createElement('span');
-    label.textContent = slideIndex + 1;
+    label.className = 'slide-nav-label';
+    label.textContent = getLogicalSlideLabel(slide, slideIndex);
     item.appendChild(label);
 
     let holdFired = false;
@@ -908,12 +1051,145 @@ function createNavItem(slideIndex) {
     }, 500);
 
     item.addEventListener('click', () => {
-        if (holdFired) { holdFired = false; return; }
+        if (holdFired) {
+            holdFired = false;
+            return;
+        }
         goToSlide(slideIndex);
     });
 
     attachTooltip(item, slideIndex);
     return item;
+}
+
+function getLogicalSlideLabel(slide, logicalIndex) {
+    if (!slide) return String(logicalIndex + 1);
+
+    if (slide.type === 'pdf') {
+        return String(slide.pdfIndex + 1);
+    }
+
+    if (slide.type === 'blank') {
+        const letter = String.fromCharCode(96 + slide.subIndex);
+        return `${slide.parent + 1}.${letter}`;
+    }
+
+    return String(logicalIndex + 1);
+}
+
+async function getThumbnailPdfDoc() {
+    if (thumbnailPdfDoc) return thumbnailPdfDoc;
+
+    const pdfFile = zipFile?.file("slides.pdf");
+    if (!pdfFile) return null;
+
+    const pdfData = await pdfFile.async("arraybuffer");
+    thumbnailPdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    return thumbnailPdfDoc;
+}
+
+function getWidgetPreviewName(widget) {
+    const raw = widget?.type || widget?.src || '';
+    const key = raw
+        .split('/')
+        .pop()
+        .replace('.html', '')
+        .replace(/[_-]/g, ' ');
+
+    const names = {
+        counter: 'Counter',
+        'function plotter': 'Function Plotter',
+        physics: 'Physics',
+        'python repl': 'Python REPL',
+        survey: 'Survey',
+        'survey result': 'Survey Results',
+        webcam: 'Webcam',
+        'word cloud': 'Word Cloud'
+    };
+
+    return names[key] || key || 'Widget';
+}
+
+async function getSlidePreviewInfo(logicalIndex) {
+    const slide = slideStructure[logicalIndex];
+
+    if (!slide) {
+        return { type: 'label', text: String(logicalIndex + 1) };
+    }
+
+    if (slide.type === 'blank') {
+        return {
+            type: 'label',
+            text: bookmarks[logicalIndex] || 'Blank Page'
+        };
+    }
+
+    const config = await loadSlideConfig(slide.pdfIndex);
+    if (config?.widgets?.length > 0) {
+        return {
+            type: 'widget',
+            text: bookmarks[logicalIndex] || config.widgets.map(getWidgetPreviewName).join(' + ')
+        };
+    }
+
+    return { type: 'pdf' };
+}
+
+async function getSlideThumbnail(logicalIndex) {
+    if (slideThumbnailCache[logicalIndex]) {
+        return slideThumbnailCache[logicalIndex];
+    }
+
+    const slide = slideStructure[logicalIndex];
+    if (!slide || slide.type !== 'pdf') return null;
+
+    const pdfDoc = await getThumbnailPdfDoc();
+    if (!pdfDoc) return null;
+
+    const page = await pdfDoc.getPage(slide.pdfIndex + 1);
+    const viewport = page.getViewport({ scale: 0.5 });
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+        canvasContext: ctx,
+        viewport
+    }).promise;
+
+    const thumbnail = canvas.toDataURL('image/png');
+    slideThumbnailCache[logicalIndex] = thumbnail;
+    return thumbnail;
+}
+
+async function addPreviewToNavItem(item, slideIndex) {
+    const preview = document.createElement('div');
+    preview.className = 'slide-preview';
+    item.insertBefore(preview, item.firstChild);
+
+    const info = await getSlidePreviewInfo(slideIndex);
+
+    if (info.type === 'pdf') {
+        const src = await getSlideThumbnail(slideIndex);
+
+        if (src) {
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = '';
+            preview.appendChild(img);
+        }
+
+        return;
+    }
+
+    preview.classList.add(`slide-preview-${info.type}`);
+
+    const text = document.createElement('span');
+    text.textContent = info.text;
+    preview.appendChild(text);
 }
 
 function getBlankChildren(parentPdfIndex) {
@@ -926,13 +1202,28 @@ function isParentCollapsed(parentPdfIndex) {
     return collapsedParents.has(parentPdfIndex);
 }
 
+function getCollapseIndicator(parentPdfIndex) {
+    const collapsed = isParentCollapsed(parentPdfIndex);
+
+    if (splitViewEnabled) {
+        return collapsed ? '▾' : '▸';
+    }
+
+    return collapsed ? '▸' : '▾';
+}
+
 function toggleParentCollapsed(parentPdfIndex) {
     if (collapsedParents.has(parentPdfIndex)) {
         collapsedParents.delete(parentPdfIndex);
     } else {
         collapsedParents.add(parentPdfIndex);
     }
+
     populateSlideNavigator();
+
+    if (splitViewEnabled) {
+        populateSlideNavigatorRight();
+    }
 }
 
 function populateSlideNavigator() {
@@ -956,7 +1247,7 @@ function populateSlideNavigator() {
 
             if (blankChildren.length > 0) {
                 const toggleBtn = document.createElement('span');
-                toggleBtn.textContent = isParentCollapsed(slide.pdfIndex) ? '▸' : '▾';
+                toggleBtn.textContent = getCollapseIndicator(slide.pdfIndex);
                 toggleBtn.style.position = 'absolute';
                 toggleBtn.style.right = '8px';
                 toggleBtn.style.top = '50%';
@@ -983,25 +1274,15 @@ function populateSlideNavigator() {
                 continue;
             }
 
-            const item = document.createElement('div');
-            item.className = 'slide-nav-item slide-nav-child';
-
-            const letter = String.fromCharCode(96 + slide.subIndex);
-            item.textContent = `${slide.parent + 1}.${letter}`;
-            item.dataset.slideIndex = i;
+            const item = createNavItem(i);
+            item.classList.add('slide-nav-child');
 
             item.style.display = 'flex';
             item.style.alignItems = 'center';
             item.style.justifyContent = 'center';
-            item.style.width = '76%';
-            item.style.marginLeft = '16px';
             item.style.boxSizing = 'border-box';
             item.style.paddingLeft = '0';
             item.style.fontSize = '0.95em';
-
-            item.onclick = () => {
-                goToSlide(i);
-            };
 
             navigator.appendChild(item);
         }
@@ -1034,23 +1315,81 @@ function populateSlideNavigatorRight() {
     const navigator = document.getElementById('slide-navigator-right');
     navigator.innerHTML = '';
 
-    for (let i = 0; i < totalSlides; i++) {
-        const item = document.createElement('div');
-        item.className = 'slide-nav-item';
-        item.textContent = i + 1;
-        item.dataset.slideIndex = i;
+    for (let i = 0; i < slideStructure.length; i++) {
+        const slide = slideStructure[i];
 
-        item.onclick = () => {
-            if (i === currentSlide) return;
+        if (slide.type === 'pdf') {
+            const item = document.createElement('div');
+            item.className = 'slide-nav-item slide-nav-parent';
+            if (bookmarks[i]) item.classList.add('bookmarked');
+            item.dataset.slideIndex = i;
+            item.style.position = 'relative';
 
-            // Save current annotations before switching
-            saveRightAnnotations();
-            rightSlideIndex = i;
-            renderSlideRight(i);
-            updateSlideNavigatorRight();
-        };
+            const label = document.createElement('span');
+            label.className = 'slide-nav-label';
+            label.textContent = getLogicalSlideLabel(slide, i);
+            item.appendChild(label);
 
-        navigator.appendChild(item);
+            attachTooltip(item, i);
+
+            const blankChildren = getBlankChildren(slide.pdfIndex);
+
+            if (blankChildren.length > 0) {
+                const toggleBtn = document.createElement('span');
+                toggleBtn.textContent = getCollapseIndicator(slide.pdfIndex);
+                toggleBtn.style.position = 'absolute';
+                toggleBtn.style.right = '8px';
+                toggleBtn.style.top = '50%';
+                toggleBtn.style.transform = 'translateY(-50%)';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.fontSize = '12px';
+                toggleBtn.style.lineHeight = '1';
+
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleParentCollapsed(slide.pdfIndex);
+                };
+
+                item.appendChild(toggleBtn);
+            }
+
+            item.onclick = async () => {
+                if (i === currentSlide) return;
+                rightSlideIndex = i;
+                await renderLogicalSlideRight(i);
+                updateSlideNavigatorRight();
+            };
+
+            navigator.appendChild(item);
+            continue;
+        }
+
+        if (slide.type === 'blank') {
+            if (isParentCollapsed(slide.parent)) {
+                continue;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'slide-nav-item slide-nav-child';
+            if (bookmarks[i]) item.classList.add('bookmarked');
+            item.dataset.slideIndex = i;
+
+            const label = document.createElement('span');
+            label.className = 'slide-nav-label';
+            label.textContent = getLogicalSlideLabel(slide, i);
+            item.appendChild(label);
+
+            attachTooltip(item, i);
+
+            item.onclick = async () => {
+                if (i === currentSlide) return;
+                rightSlideIndex = i;
+                await renderLogicalSlideRight(i);
+                updateSlideNavigatorRight();
+            };
+
+            navigator.appendChild(item);
+        }
     }
 
     updateSlideNavigatorRight();
@@ -1058,25 +1397,26 @@ function populateSlideNavigatorRight() {
 
 function updateSlideNavigatorRight() {
     const items = document.querySelectorAll('#slide-navigator-right .slide-nav-item');
-    items.forEach((item, index) => {
-        item.classList.toggle('active', index === rightSlideIndex);
-        item.classList.toggle('disabled', index === currentSlide);
-        if (index === rightSlideIndex) {
-            item.classList.add('active');
+
+    items.forEach((item) => {
+        const slideIndex = Number(item.dataset.slideIndex);
+
+        item.classList.toggle('active', slideIndex === rightSlideIndex);
+        item.classList.toggle('disabled', slideIndex === currentSlide);
+
+        if (slideIndex === rightSlideIndex) {
             item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else {
-            item.classList.remove('active');
         }
     });
 }
 
 function autoAdvanceRight() {
     const candidates = [];
-    if (currentSlide + 1 < totalSlides) candidates.push(currentSlide + 1);
+    if (currentSlide + 1 < slideStructure.length) candidates.push(currentSlide + 1);
     if (currentSlide - 1 >= 0) candidates.push(currentSlide - 1);
     if (candidates.length === 0) return;
     rightSlideIndex = candidates[0];
-    renderSlideRight(rightSlideIndex);
+    renderLogicalSlideRight(rightSlideIndex);
     updateSlideNavigatorRight();
 }
 
@@ -1226,6 +1566,7 @@ async function goToSlide(slideIndex) {
 
     await renderLogicalSlide(currentSlide);
     updateSlideNavigator();
+    updateBlankSlideButtons();
 
     if (splitViewEnabled) {
         if (rightSlideIndex === currentSlide) {
@@ -1247,7 +1588,8 @@ async function renderLogicalSlide(logicalIndex) {
     if (!slideObj) return;
 
     if (slideObj.type === 'pdf') {
-        slide_canvas_container.style.display = 'block';
+        slide_canvas_container.style.display = 'flex';
+        if (pdfCvs?.canvas) pdfCvs.canvas.style.visibility = 'visible';
         ann_canvas_container.style.background = '';
 
         await renderSlide(slideObj.pdfIndex);
@@ -1255,12 +1597,13 @@ async function renderLogicalSlide(logicalIndex) {
     }
 
     if (slideObj.type === 'blank') {
-        slide_canvas_container.style.display = 'none';
+        slide_canvas_container.style.display = 'flex';
+        if (pdfCvs?.canvas) pdfCvs.canvas.style.visibility = 'hidden';
         annCvs.clear();
 
         try {
-            if (annotations[currentSlide]) {
-                await annCvs.loadAnnotations(annotations[currentSlide]);
+            if (annotations[logicalIndex]) {
+                await annCvs.loadAnnotations(annotations[logicalIndex]);
             } else {
                 annCvs.resetHistory();
             }
@@ -1290,7 +1633,8 @@ async function renderSlide(slideIndex) {
     const pdfData = await pdfFile.async("arraybuffer");
     const pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
     const page = await pdfDoc.getPage(slideIndex + 1);
-    
+
+    if (pdfCvs?.canvas) pdfCvs.canvas.style.visibility = 'visible';
     await pdfCvs.renderPDFPage(page);
 
     // Load per-slide annotations (clear then draw saved image if present)
@@ -1466,38 +1810,76 @@ async function renderSlide(slideIndex) {
 
 function insertBlankAfterCurrent() {
     const currentObj = slideStructure[currentSlide];
+    if (!currentObj) return;
 
-    if (!currentObj || currentObj.type !== 'pdf') {
-        return;
-    }
-
-    const parentPdfIndex = currentObj.pdfIndex;
-
-    const existingBlanks = slideStructure.filter(
-        s => s.type === 'blank' && s.parent === parentPdfIndex
-    );
-
-    const newSubIndex = existingBlanks.length + 1;
+    const parentPdfIndex =
+        currentObj.type === 'pdf' ? currentObj.pdfIndex : currentObj.parent;
 
     const blankSlide = {
         type: 'blank',
         parent: parentPdfIndex,
-        subIndex: newSubIndex
+        subIndex: 1
     };
 
-    let insertIndex = currentSlide + 1;
+    let insertIndex;
 
-    while (
-        insertIndex < slideStructure.length &&
-        slideStructure[insertIndex].type === 'blank' &&
-        slideStructure[insertIndex].parent === parentPdfIndex
-    ) {
-        insertIndex++;
+    if (currentObj.type === 'blank') {
+        // Add directly after the current blank page
+        insertIndex = currentSlide + 1;
+    } else {
+        // Add after all existing blank children of this PDF page
+        insertIndex = currentSlide + 1;
+        while (
+            insertIndex < slideStructure.length &&
+            slideStructure[insertIndex].type === 'blank' &&
+            slideStructure[insertIndex].parent === parentPdfIndex
+        ) {
+            insertIndex++;
+        }
     }
 
+    annotations = shiftIndexedObjectAfterInsert(annotations, insertIndex);
+    bookmarks = shiftIndexedObjectAfterInsert(bookmarks, insertIndex);
     slideStructure.splice(insertIndex, 0, blankSlide);
+
+    let counter = 1;
+    slideStructure.forEach((s) => {
+        if (s.type === 'blank' && s.parent === parentPdfIndex) {
+            s.subIndex = counter++;
+        }
+    });
+
     collapsedParents.delete(parentPdfIndex);
     populateSlideNavigator();
+
+    goToSlide(insertIndex);
+}
+
+function shiftIndexedObjectAfterInsert(obj, insertIndex) {
+    const shifted = {};
+
+    Object.keys(obj).forEach((key) => {
+        const index = Number(key);
+        shifted[index >= insertIndex ? index + 1 : index] = obj[index];
+    });
+
+    return shifted;
+}
+
+function shiftBookmarksAfterDelete(deletedIndex) {
+    const shifted = {};
+
+    Object.keys(bookmarks).forEach((key) => {
+        const index = Number(key);
+
+        if (index < deletedIndex) {
+            shifted[index] = bookmarks[index];
+        } else if (index > deletedIndex) {
+            shifted[index - 1] = bookmarks[index];
+        }
+    });
+
+    bookmarks = shifted;
 }
 
 function shiftAnnotationsAfterDelete(deletedIndex) {
@@ -1530,6 +1912,7 @@ async function deleteCurrentBlank() {
     clearTimeout(annotationSyncTimeout);
 
     shiftAnnotationsAfterDelete(deletedIndex);
+    shiftBookmarksAfterDelete(deletedIndex);
 
     slideStructure.splice(deletedIndex, 1);
 
@@ -1540,13 +1923,38 @@ async function deleteCurrentBlank() {
         }
     });
 
-    const parentLogicalIndex = slideStructure.findIndex(
-        s => s.type === 'pdf' && s.pdfIndex === parentIndex
-    );
+    let nextSlideIndex;
 
-    currentSlide = parentLogicalIndex;
+    // Stay at the same position if another blank now occupies it
+    if (
+        deletedIndex < slideStructure.length &&
+        slideStructure[deletedIndex].type === 'blank' &&
+        slideStructure[deletedIndex].parent === parentIndex
+    ) {
+        nextSlideIndex = deletedIndex;
+    }
+
+    // Otherwise move to the previous blank sibling if it exists
+    else if (
+        deletedIndex - 1 >= 0 &&
+        slideStructure[deletedIndex - 1].type === 'blank' &&
+        slideStructure[deletedIndex - 1].parent === parentIndex
+    ) {
+        nextSlideIndex = deletedIndex - 1;
+    }
+
+    // Finally, fall back to the parent PDF slide
+    else {
+        nextSlideIndex = slideStructure.findIndex(
+            s => s.type === 'pdf' && s.pdfIndex === parentIndex
+        );
+    }
+
+    currentSlide = nextSlideIndex;
     populateSlideNavigator();
     await renderLogicalSlide(currentSlide);
+    updateSlideNavigator();
+    updateBlankSlideButtons();
 
     const annData = annCvs.canvas.toDataURL("image/png");
     socket.emit('slide_change', {
@@ -1555,8 +1963,39 @@ async function deleteCurrentBlank() {
     });
 }
 
+async function renderLogicalSlideRight(logicalIndex) {
+    const slideObj = slideStructure[logicalIndex];
+    if (!slideObj || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
+
+    if (slideObj.type === 'pdf') {
+        slide_canvas_container2.style.display = 'flex';
+        if (pdfCvs2?.canvas) pdfCvs2.canvas.style.visibility = 'visible';
+        ann_canvas_container2.style.background = '';
+        await renderSlideRight(slideObj.pdfIndex, logicalIndex);
+        return;
+    }
+
+    if (slideObj.type === 'blank') {
+        slide_canvas_container2.style.display = 'flex';
+        if (pdfCvs2?.canvas) pdfCvs2.canvas.style.visibility = 'hidden';
+        annCvs2.clear();
+
+        try {
+            if (annotations[logicalIndex]) {
+                await annCvs2.loadAnnotations(annotations[logicalIndex]);
+            } else {
+                annCvs2.resetHistory();
+            }
+        } catch (e) {
+            console.warn('Error loading right annotations for blank slide', logicalIndex, e);
+        }
+
+        ann_canvas_container2.style.background = 'white';
+    }
+}
+
 // Render a slide on the right (split view) canvas - full featured with widgets and annotations
-async function renderSlideRight(slideIndex) {
+async function renderSlideRight(slideIndex, logicalIndex = null) {
     if (!zipFile || !splitViewEnabled || !pdfCvs2 || !annCvs2) return;
 
     const pdfFile = zipFile.file("slides.pdf");
@@ -1568,11 +2007,16 @@ async function renderSlideRight(slideIndex) {
 
     await pdfCvs2.renderPDFPage(page);
 
-    // Load per-slide annotations for right canvas
+    const effectiveLogicalIndex =
+        logicalIndex !== null
+            ? logicalIndex
+            : slideStructure.findIndex(s => s.type === 'pdf' && s.pdfIndex === slideIndex);
+
+    // Load annotations for the corresponding logical slide
     try {
         annCvs2.clear();
-        if (annotationsRight[slideIndex]) {
-            await annCvs2.loadAnnotations(annotationsRight[slideIndex]);
+        if (effectiveLogicalIndex !== -1 && annotations[effectiveLogicalIndex]) {
+            await annCvs2.loadAnnotations(annotations[effectiveLogicalIndex]);
         } else {
             annCvs2.resetHistory();
         }
@@ -1770,12 +2214,14 @@ folderInput.addEventListener('change', async (e) => {
     slideConfigs = {};
     mediaCache = {};
     annotations = {};
+    slideThumbnailCache = {};
+    thumbnailPdfDoc = null;
 
     await renderLogicalSlide(0);
 
     // Populate slide navigator
     populateSlideNavigator();
-
+    updateBlankSlideButtons();
 
     // Locate the slide that contains the survey_result widget (if any)
     await locateSurveyWidgetSlide();
@@ -1786,6 +2232,7 @@ folderInput.addEventListener('change', async (e) => {
     // Enable controls now that a presentation is loaded
     uploadModal.close();
     setControlsEnabledAfterUpload(true, __beamer_controls);
+    updateBlankSlideButtons();
     
     // Enable screen share button
     screenShareBtn.el.disabled = false;
@@ -1871,6 +2318,7 @@ zipInput.addEventListener('change', async (e) => {
 
         // Populate slide navigator
         populateSlideNavigator();
+        updateBlankSlideButtons();
 
         // Locate the slide that contains the survey_result widget (if any)
         await locateSurveyWidgetSlide();
@@ -1881,6 +2329,7 @@ zipInput.addEventListener('change', async (e) => {
         // Enable controls now that a presentation is loaded
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
+        updateBlankSlideButtons();
         
         // Enable screen share button
         screenShareBtn.el.disabled = false;
@@ -1933,11 +2382,13 @@ pdfInput.addEventListener('change', async (e) => {
 
         await renderLogicalSlide(0);
         populateSlideNavigator();
+        updateBlankSlideButtons();
         await locateSurveyWidgetSlide();
 
         socket.emit('presentation_loaded', { totalSlides });
         uploadModal.close();
         setControlsEnabledAfterUpload(true, __beamer_controls);
+        updateBlankSlideButtons();
 
         screenShareBtn.el.disabled = false;
         screenShareBtn.el.style.opacity = '1';
