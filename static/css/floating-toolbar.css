@@ -122,10 +122,10 @@ body.split-view-active #top-right-controls {
 }
 
 body.split-view-active #floating-annotation-toolbar {
-    top: 6px;
-    left: 10px;
+    top: 10px;
+    left: 50%;
     right: auto;
-    transform: none;
+    transform: translateX(-50%);
     width: auto;
     max-width: calc(100vw - 140px);
     flex-direction: row;

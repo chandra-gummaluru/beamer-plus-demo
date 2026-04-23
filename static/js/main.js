@@ -217,6 +217,7 @@ for (let i = 0; i < penProfiles.length; i++) {
     });
 
     btn.el.classList.add('pen-slot-btn');
+    penSlotButtons.push(btn);
     refreshPenSlotButtonStyle(i);
 
     let holdFired = false;
@@ -233,7 +234,6 @@ for (let i = 0; i < penProfiles.length; i++) {
         applyPenSlot(i);
     });
 
-    penSlotButtons.push(btn);
 }
 
 hand.el.classList.add('btn_selected');
@@ -875,9 +875,7 @@ function attachTooltip(item, slideIndex) {
     item.addEventListener('mouseenter', async () => {
         const slide = slideStructure[slideIndex];
         const info = await getSlidePreviewInfo(slideIndex);
-        const name = info.type === 'pdf'
-            ? (bookmarks[slideIndex] || getLogicalSlideLabel(slide, slideIndex))
-            : getLogicalSlideLabel(slide, slideIndex);
+        const name = getLogicalSlideLabel(slide, slideIndex);
 
         const hoverId = `${slideIndex}-${Date.now()}`;
 
@@ -936,49 +934,24 @@ function attachTooltip(item, slideIndex) {
     });
 }
 
-function openBookmarkInput(item, slideIndex) {
-    const label = item.querySelector('span');
-    const currentName = bookmarks[slideIndex] || '';
-    label.style.display = 'none';
+function toggleBookmark(item, slideIndex) {
+    if (bookmarks[slideIndex]) {
+        delete bookmarks[slideIndex];
+    } else {
+        bookmarks[slideIndex] = true;
+    }
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'bookmark-input';
-    input.maxLength = 20;
-    input.placeholder = 'Name…';
-    input.value = currentName;
-    item.appendChild(input);
-    input.focus();
-    input.select();
+    item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
+    populateBookmarkPins();
 
-    let committed = false;
-    const commit = (save) => {
-        if (committed) return;
-        committed = true;
-        if (save) {
-            const name = input.value.trim();
-            if (name === '') {
-                delete bookmarks[slideIndex];
-            } else {
-                bookmarks[slideIndex] = name;
-            }
-            item.classList.toggle('bookmarked', !!bookmarks[slideIndex]);
-            populateBookmarkPins();
-        }
-        input.remove();
-        label.style.display = '';
-    };
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') commit(true);
-        if (e.key === 'Escape') commit(false);
-        e.stopPropagation();
-    });
-    input.addEventListener('blur', () => commit(true));
+    if (splitViewEnabled) {
+        populateSlideNavigatorRight();
+    }
 }
 
 function populateBookmarkPins() {
     const pins = document.getElementById('bookmark-pins');
+    if (!pins) return;
     pins.innerHTML = '';
 
     const indices = Object.keys(bookmarks)
@@ -1036,6 +1009,13 @@ function populateBookmarkPins() {
         label.textContent = getLogicalSlideLabel(slide, slideIndex);
         pin.appendChild(label);
 
+        addPreviewToNavItem(pin, slideIndex).then(() => {
+            const preview = pin.querySelector('.slide-preview');
+            if (preview) {
+                preview.classList.add('bookmark-preview');
+            }
+        });
+
         if (slide?.type === 'pdf') {
             const hasBookmarkedBlankChildren = indices.some((index) => {
                 const candidate = slideStructure[index];
@@ -1083,7 +1063,7 @@ function createNavItem(slideIndex) {
     let holdFired = false;
     addHoldListener(item, () => {
         holdFired = true;
-        openBookmarkInput(item, slideIndex);
+        toggleBookmark(item, slideIndex);
     }, 500);
 
     item.addEventListener('click', () => {
@@ -1106,7 +1086,7 @@ function getLogicalSlideLabel(slide, logicalIndex) {
 
     if (slide.type === 'blank') {
         const letter = String.fromCharCode(96 + slide.subIndex);
-        return `${slide.parent + 1}.${letter}`;
+        return `${slide.parent + 1}${letter}`;
     }
 
     return String(logicalIndex + 1);
@@ -1155,7 +1135,7 @@ async function getSlidePreviewInfo(logicalIndex) {
     if (slide.type === 'blank') {
         return {
             type: 'label',
-            text: bookmarks[logicalIndex] || 'Blank Page'
+            text: 'Blank Page'
         };
     }
 
@@ -1163,7 +1143,7 @@ async function getSlidePreviewInfo(logicalIndex) {
     if (config?.widgets?.length > 0) {
         return {
             type: 'widget',
-            text: bookmarks[logicalIndex] || config.widgets.map(getWidgetPreviewName).join(' + ')
+            text: config.widgets.map(getWidgetPreviewName).join(' + ')
         };
     }
 
@@ -1203,7 +1183,7 @@ async function getSlideThumbnail(logicalIndex) {
 async function addPreviewToNavItem(item, slideIndex) {
     const preview = document.createElement('div');
     preview.className = 'slide-preview';
-    preview.dataset.slideNumber = slideIndex + 1;
+    preview.dataset.slideNumber = getLogicalSlideLabel(slideStructure[slideIndex], slideIndex);
     item.insertBefore(preview, item.firstChild);
 
     const info = await getSlidePreviewInfo(slideIndex);
@@ -1293,11 +1273,12 @@ function populateSlideNavigator() {
     if (topActions) {
         navigator.appendChild(topActions);
     }
-    navigator.appendChild(slideScroller);
 
-    if (pins && !splitViewEnabled) {
-        slideScroller.appendChild(pins);
+    if (pins) {
+        navigator.appendChild(pins);
     }
+
+    navigator.appendChild(slideScroller);
 
     for (let i = 0; i < slideStructure.length; i++) {
         const slide = slideStructure[i];
@@ -1875,6 +1856,10 @@ function insertBlankAfterCurrent() {
     const currentObj = slideStructure[currentSlide];
     if (!currentObj) return;
 
+    // Persist current drawing state before reindexing slide/annotation maps.
+    clearTimeout(annotationSyncTimeout);
+    saveCurrentAnnotations();
+
     const parentPdfIndex =
         currentObj.type === 'pdf' ? currentObj.pdfIndex : currentObj.parent;
 
@@ -1903,6 +1888,7 @@ function insertBlankAfterCurrent() {
 
     annotations = shiftIndexedObjectAfterInsert(annotations, insertIndex);
     bookmarks = shiftIndexedObjectAfterInsert(bookmarks, insertIndex);
+    slideThumbnailCache = shiftIndexedObjectAfterInsert(slideThumbnailCache, insertIndex);
     slideStructure.splice(insertIndex, 0, blankSlide);
 
     let counter = 1;
@@ -1930,36 +1916,27 @@ function shiftIndexedObjectAfterInsert(obj, insertIndex) {
 }
 
 function shiftBookmarksAfterDelete(deletedIndex) {
-    const shifted = {};
-
-    Object.keys(bookmarks).forEach((key) => {
-        const index = Number(key);
-
-        if (index < deletedIndex) {
-            shifted[index] = bookmarks[index];
-        } else if (index > deletedIndex) {
-            shifted[index - 1] = bookmarks[index];
-        }
-    });
-
-    bookmarks = shifted;
+    bookmarks = shiftIndexedObjectAfterDelete(bookmarks, deletedIndex);
 }
 
 function shiftAnnotationsAfterDelete(deletedIndex) {
-    const newAnnotations = {};
+    annotations = shiftIndexedObjectAfterDelete(annotations, deletedIndex);
+}
 
-    Object.keys(annotations).forEach((key) => {
+function shiftIndexedObjectAfterDelete(obj, deletedIndex) {
+    const shifted = {};
+
+    Object.keys(obj).forEach((key) => {
         const index = Number(key);
 
         if (index < deletedIndex) {
-            newAnnotations[index] = annotations[index];
+            shifted[index] = obj[index];
         } else if (index > deletedIndex) {
-            newAnnotations[index - 1] = annotations[index];
+            shifted[index - 1] = obj[index];
         }
-        // skip deletedIndex
     });
 
-    annotations = newAnnotations;
+    return shifted;
 }
 
 async function deleteCurrentBlank() {
@@ -1976,6 +1953,7 @@ async function deleteCurrentBlank() {
 
     shiftAnnotationsAfterDelete(deletedIndex);
     shiftBookmarksAfterDelete(deletedIndex);
+    slideThumbnailCache = shiftIndexedObjectAfterDelete(slideThumbnailCache, deletedIndex);
 
     slideStructure.splice(deletedIndex, 1);
 

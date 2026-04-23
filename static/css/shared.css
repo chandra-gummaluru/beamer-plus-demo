@@ -226,8 +226,8 @@ input[type=file] {
     align-items: center;
     width: 100%;
     flex-shrink: 0;
-    position: sticky;
-    top: 62px;
+    position: relative;
+    top: auto;
     z-index: 1;
     background: #ddd;
     padding: 10px 0 4px;
@@ -236,18 +236,25 @@ input[type=file] {
 
 .slide-nav-item.bookmarked {
     background: #e8c84a;
-    border-color: #b8941a;
+    border-color: #111;
     color: #3a2a00;
 }
 
 .slide-nav-item.bookmarked:hover {
     background: #d4b030;
-    border-color: #8a6c0e;
+    border-color: #111;
 }
 
 .slide-nav-item.active.bookmarked {
     background: #c9a828;
-    border-color: #7a5c08;
+    border-color: #111;
+}
+
+.slide-nav-item.bookmarked .slide-nav-label::after {
+    content: '★';
+    margin-left: 5px;
+    font-size: 0.75em;
+    color: #3a2a00;
 }
 
 #bookmark-tooltip {
@@ -265,21 +272,19 @@ input[type=file] {
     display: none;
 }
 
-.bookmark-input {
-    width: 85%;
-    background: #fff;
-    border: 1px solid #666;
-    border-radius: 2px;
-    font-size: 12px;
-    font-family: "Computer Modern Sans", sans-serif;
-    text-align: center;
-    padding: 2px 3px;
-    outline: none;
-    color: #333;
-}
-
 body.split-view-active #bookmark-pins {
-    display: none !important;
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    height: 100%;
+    padding: 0 4px;
+    margin: 0;
+    border-bottom: none;
+    border-right: 2px solid #888;
+    border-left: 2px solid #888;
+    background: transparent;
+    overflow: hidden;
+    flex: 0 0 auto;
 }
 
 /* Split-view navigator uses a horizontal row, so action bars must be compact inline controls. */
@@ -298,16 +303,18 @@ body.split-view-active #slide-nav-bottom-actions {
 }
 
 body.split-view-active #slide-nav-top-actions {
-    margin-right: 6px;
+    margin-right: 0;
     padding-right: 6px;
-    border-right: 2px solid #aaa;
+    border-right: none;
 }
 
 body.split-view-active #slide-nav-bottom-actions {
     margin-top: 0;
     margin-left: 0;
-    padding-left: 6px;
-    border-left: 2px solid #aaa;
+    margin-right: 6px;
+    padding: 0 4px;
+    border-left: 2px solid #888;
+    border-right: 2px solid #888;
 }
 
 body.split-view-active #slide-nav-top-actions .btn,
