@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Not Found</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        oklch(99% 0.003 80);
+      --bg-3:      oklch(94% 0.007 80);
+      --ink-1:     oklch(22% 0.012 260);
+      --ink-3:     oklch(55% 0.008 260);
+      --ink-4:     oklch(72% 0.006 260);
+      --err:       oklch(58% 0.18 25);
+      --line:      1px solid oklch(85% 0.005 260);
+      --font:      "EB Garamond", Georgia, serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); font-family: var(--font); color: var(--ink-1); }
+    body { display: flex; flex-direction: column; }
+
+    .page-header {
+      padding: 12px 20px; background: var(--bg-3); border-bottom: var(--line);
+      text-align: center;
+    }
+    .page-header h1 { font-size: 12px; font-weight: 400; color: var(--ink-4); letter-spacing: 0.06em; text-transform: uppercase; }
+
+    .content {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 32px 20px; gap: 10px; text-align: center;
+    }
+    .title { font-size: 1.5rem; font-weight: 500; color: var(--err); }
+    .sub { font-size: 1rem; color: var(--ink-3); }
+  </style>
+</head>
+<body>
+  <div class="page-header"><h1>Beamer+</h1></div>
+  <div class="content">
+    <div class="title">Survey not found</div>
+    <div class="sub">This link is invalid or the survey has been removed.</div>
+  </div>
+</body>
+</html>

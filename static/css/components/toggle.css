@@ -1,0 +1,3 @@
+/* Toggle (legacy class) */
+.toggle_on { background: var(--accent); color: var(--ink-on-accent); }
+.toggle_off { background: var(--surface-cream-2); color: var(--ink-2); }

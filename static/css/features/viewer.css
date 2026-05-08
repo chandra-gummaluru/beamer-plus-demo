@@ -1,0 +1,160 @@
+/* Viewer page — full-viewport read-only slide display */
+
+body {
+    margin: 0;
+    background: var(--surface-cream-1);
+    overflow: hidden;
+}
+
+#viewer-stage {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    gap: 0;
+}
+
+/* Inherit the shared #pdf-container / canvas styles from slides.css,
+   but override positioning so it fills the full stage */
+#viewer-stage #pdf-container,
+#viewer-stage #pdf-container-2 {
+    position: relative;
+    inset: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+}
+
+#viewer-stage #pdf-container-2 {
+    display: none;
+}
+
+#viewer-split-divider {
+    display: none;
+    width: 6px;
+    height: 100%;
+    background: var(--line-soft);
+    flex: 0 0 6px;
+}
+
+body.viewer-split-active #viewer-stage #pdf-container {
+    flex: 1 1 50%;
+}
+
+body.viewer-split-active #viewer-stage #pdf-container-2 {
+    display: flex;
+    flex: 1 1 50%;
+}
+
+body.viewer-split-active #viewer-split-divider {
+    display: block;
+}
+
+body.viewer-split-active #pdf-canvas,
+body.viewer-split-active #pdf-canvas-2 {
+    width: 95%;
+    height: auto;
+    max-height: 95%;
+}
+
+body.viewer-split-active #ann-canvas,
+body.viewer-split-active #ann-canvas-2 {
+    width: 95%;
+    height: auto;
+    max-height: 95%;
+}
+
+/* Annotation canvas is display-only: block pointer events so touches
+   pass through to the stage (e.g. future swipe gestures) */
+#viewer-stage #ann-canvas {
+    pointer-events: none;
+}
+
+#viewer-stage #ann-canvas-2 {
+    pointer-events: none;
+}
+
+/* Waiting state — shown before presenter loads a presentation */
+#viewer-waiting {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--ink-2);
+    font-family: var(--font-sans);
+    font-size: var(--fs-md);
+    position: absolute;
+    inset: 0;
+    justify-content: center;
+    background: var(--surface-cream-1);
+    z-index: 10;
+}
+
+#viewer-waiting .splash-squiggle {
+    width: 80px;
+    opacity: 0.4;
+    animation: squiggle-draw 2s ease-in-out infinite alternate;
+}
+
+#viewer-waiting p {
+    margin: 0;
+    line-height: 1.5;
+    letter-spacing: 0;
+}
+
+/* Survey overlay — slides up from bottom on mobile, centered on tablet+ */
+#survey-overlay {
+    position: fixed;
+    inset: 0;
+    background: oklch(0% 0 0 / 50%);
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--space-3);
+    box-sizing: border-box;
+}
+
+.viewer-survey-card {
+    background: var(--surface-cream-1);
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    width: 100%;
+    max-width: 600px;
+    height: min(80vh, 700px);
+    overflow: hidden;
+    box-shadow: var(--shadow-float);
+    animation: survey-slide-up 0.3s var(--ease-out) both;
+}
+
+.viewer-survey-card iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+@keyframes survey-slide-up {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Tablet and up — center the survey card */
+@media (min-width: 640px) {
+    #survey-overlay {
+        align-items: center;
+        padding: var(--space-5);
+    }
+    .viewer-survey-card {
+        border-radius: var(--radius-card);
+        animation: survey-fade-in 0.2s var(--ease-out) both;
+    }
+}
+
+@keyframes survey-fade-in {
+    from { transform: scale(0.96); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+}

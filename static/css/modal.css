@@ -118,18 +118,22 @@
     flex-direction: column;
     gap: 12px;
     margin: 0 0 14px 0;
+    align-items: center;
 }
 
 .custom-modal-setting-group {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    align-items: center;
+    width: 100%;
 }
 
 .custom-modal-setting-label {
     color: #333;
     font-size: 0.95rem;
     font-weight: 600;
+    text-align: center;
 }
 
 .custom-modal-button-group,
@@ -139,6 +143,7 @@
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .custom-modal-tool-btn {
@@ -261,7 +266,7 @@
 
 /* Loading state */
 .modal-loading {
-    pointer-events: none;
+    pointer-events: auto;
 }
 
 .modal-loading .custom-modal-content {

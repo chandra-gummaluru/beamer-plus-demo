@@ -1,0 +1,521 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Word Cloud</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+  <style>
+    :root {
+      --bg:         oklch(99% 0.003 80);
+      --bg-2:       oklch(97% 0.005 80);
+      --bg-3:       oklch(94% 0.007 80);
+      --bg-4:       oklch(90% 0.008 80);
+      --ink-1:      oklch(22% 0.012 260);
+      --ink-2:      oklch(38% 0.010 260);
+      --ink-3:      oklch(55% 0.008 260);
+      --ink-4:      oklch(72% 0.006 260);
+      --accent:     oklch(45% 0.005 260);
+      --accent-hi:  oklch(32% 0.006 260);
+      --ok:         oklch(48% 0.13 155);
+      --line:       1px solid oklch(85% 0.005 260);
+      --r:          8px;
+      --font:       "EB Garamond", Georgia, serif;
+      --mono:       ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink-1); }
+
+    #shell { display: flex; flex-direction: column; height: 100%; }
+
+    /* Prompt header */
+    #question-header {
+      flex-shrink: 0;
+      padding: 28px 32px 22px;
+      border-bottom: var(--line);
+      background: var(--bg);
+      display: none;
+    }
+    #question-text {
+      font-size: clamp(1.4rem, 4vw, 2.1rem);
+      font-weight: 500;
+      line-height: 1.25;
+      color: var(--ink-1);
+      text-align: center;
+    }
+
+    /* Body */
+    #body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+    /* Setup */
+    #setup-view {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .setup-card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--bg-2);
+      border: var(--line);
+      border-radius: var(--r);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .setup-title { font-size: 1.3rem; font-weight: 500; }
+    .field label { display: block; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+    .field input, .field select {
+      width: 100%; padding: 8px 10px; font-family: var(--font); font-size: 14px;
+      background: var(--bg); color: var(--ink-1); border: var(--line); border-radius: var(--r);
+      outline: none; transition: border-color 120ms;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+
+    /* QR collect view */
+    #collect-view {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 24px;
+    }
+    .scan-hint {
+      font-size: 0.85rem;
+      color: var(--ink-4);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    #qrcode {
+      padding: 10px;
+      background: white;
+      border: var(--line);
+      border-radius: var(--r);
+    }
+    #join-url {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-4);
+      text-align: center;
+      max-width: 400px;
+      word-break: break-all;
+      cursor: pointer;
+    }
+    #count-badge {
+      font-size: 14px;
+      color: var(--ink-3);
+      padding: 5px 16px;
+      border: var(--line);
+      border-radius: 999px;
+      background: var(--bg-2);
+    }
+    #count-badge strong { color: var(--ink-1); font-size: 15px; }
+
+    /* Cloud results view */
+    #cloud-view {
+      flex: 1;
+      display: none;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg);
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    #cloud-view.visible { opacity: 1; }
+    #cloud-canvas { display: block; width: 100%; height: 100%; }
+    #cloud-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--ink-4);
+      font-style: italic;
+      pointer-events: none;
+    }
+
+    /* Footer */
+    #footer-panel {
+      flex-shrink: 0;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      border-top: var(--line);
+      background: var(--bg);
+      gap: 12px;
+    }
+    #resp-count-row { font-size: 14px; color: var(--ink-3); }
+    #resp-count-row strong { color: var(--ink-1); font-size: 15px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 22px;
+      font-family: var(--font);
+      font-size: 1rem;
+      background: var(--bg);
+      color: var(--ink-2);
+      border: var(--line);
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: background 100ms;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) { background: var(--bg-4); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn.primary {
+      background: var(--accent);
+      color: oklch(97% 0.003 80);
+      border-color: var(--accent-hi);
+    }
+    .btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
+    #btn-row { display: flex; align-items: center; gap: 8px; }
+  </style>
+</head>
+<body>
+<div id="shell">
+  <div id="question-header"><div id="question-text"></div></div>
+
+  <div id="body">
+    <!-- Setup -->
+    <div id="setup-view">
+      <div class="setup-card">
+        <div class="setup-title">Word Cloud</div>
+        <div class="field">
+          <label>Question</label>
+          <input type="text" id="setup-question" placeholder="Enter your question…">
+        </div>
+        <div class="field">
+          <label>Response mode</label>
+          <select id="setup-mode">
+            <option value="1">Single word</option>
+            <option value="2">Two words</option>
+          </select>
+        </div>
+        <button class="btn primary" onclick="launch()">Start</button>
+      </div>
+    </div>
+
+    <!-- QR collect -->
+    <div id="collect-view">
+      <div id="qrcode"></div>
+      <div id="join-url" onclick="copyUrl(this)" title="Click to copy"></div>
+    </div>
+
+    <!-- Cloud results -->
+    <div id="cloud-view">
+      <canvas id="cloud-canvas"></canvas>
+      <div id="cloud-placeholder">Waiting for responses…</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div id="footer-panel">
+    <div id="resp-count-row"><strong id="footer-resp-count">0</strong> responses</div>
+    <div id="btn-row">
+      <button class="btn primary" id="close-btn" onclick="showCloud()">Close</button>
+      <button class="btn" id="reset-btn" onclick="resetCloud()" style="display:none">Reset</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  if (performance.getEntriesByType('navigation')[0]?.type === 'reload') sessionStorage.clear();
+
+  const CLOUD_COLORS = [
+    'oklch(40% 0.008 260)',
+    'oklch(46% 0.010 260)',
+    'oklch(34% 0.006 260)',
+    'oklch(52% 0.012 240)',
+    'oklch(44% 0.009 280)',
+    'oklch(38% 0.007 250)',
+  ];
+
+  let cfg = {}, socket = null, role = 'presenter';
+  let widgetId = 'word-cloud-default', serverUrl = '', publicBaseUrl = '';
+  let surveyId     = sessionStorage.getItem('wc_id');
+  let wordFreq     = JSON.parse(sessionStorage.getItem('wc_freq') || '{}');
+  let wordColor    = JSON.parse(sessionStorage.getItem('wc_color') || '{}');
+  let question     = sessionStorage.getItem('wc_q') || '';
+  let cloudUrl     = sessionStorage.getItem('wc_url') || '';
+  let inputMode    = parseInt(sessionStorage.getItem('wc_mode') || '1');
+  let totalResp    = parseInt(sessionStorage.getItem('wc_total') || '0');
+  let lastSynced   = parseInt(sessionStorage.getItem('wc_synced') || '0');
+  let phase = 'setup';
+
+  function deriveServer() {
+    try { return window.parent.location.origin; } catch(e) { return window.location.origin; }
+  }
+
+  function getHeaderQuestion() {
+    return question || cfg.question || document.getElementById('setup-question').value.trim() || '';
+  }
+
+  function refreshHeader() {
+    const title = getHeaderQuestion();
+    const header = document.getElementById('question-header');
+    document.getElementById('question-text').textContent = title;
+    header.style.display = title ? 'block' : 'none';
+  }
+
+  function save() {
+    sessionStorage.setItem('wc_freq',   JSON.stringify(wordFreq));
+    sessionStorage.setItem('wc_color',  JSON.stringify(wordColor));
+    sessionStorage.setItem('wc_total',  String(totalResp));
+    sessionStorage.setItem('wc_synced', String(lastSynced));
+  }
+
+  function setRespCount(n) {
+    totalResp = n;
+    document.getElementById('footer-resp-count').textContent = String(n);
+  }
+
+  function showPhase(p) {
+    phase = p;
+    document.getElementById('setup-view').style.display   = p === 'setup'   ? ''    : 'none';
+    document.getElementById('collect-view').style.display = p === 'collect' ? 'flex': 'none';
+    document.getElementById('cloud-view').style.display   = p === 'cloud'   ? ''    : 'none';
+    document.getElementById('footer-panel').style.display = p !== 'setup' ? 'flex' : 'none';
+
+    if (role !== 'presenter') {
+      document.getElementById('btn-row').style.display = 'none';
+    } else {
+      document.getElementById('close-btn').style.display  = p === 'collect' ? '' : 'none';
+      document.getElementById('reset-btn').style.display  = p === 'cloud'   ? '' : 'none';
+    }
+    refreshHeader();
+
+    if (p === 'cloud') {
+      requestAnimationFrame(() => {
+        document.getElementById('cloud-view').classList.add('visible');
+      });
+    } else {
+      document.getElementById('cloud-view').classList.remove('visible');
+    }
+  }
+
+  /* Socket */
+  function emitState() {
+    if (!socket || role !== 'presenter') return;
+    socket.emit('widget_state', {
+      widgetId,
+      state: { phase, question, cloudUrl, inputMode, totalResp, wordFreq, wordColor, surveyId },
+    });
+  }
+
+  function applyState(s) {
+    if (!s || s.phase === 'setup') return;
+    question  = s.question || question;
+    cloudUrl  = s.cloudUrl || cloudUrl;
+    inputMode = s.inputMode || inputMode;
+    wordFreq  = s.wordFreq || {};
+    wordColor = s.wordColor || {};
+    surveyId  = s.surveyId || surveyId;
+    setRespCount(s.totalResp || 0);
+    save();
+    if (s.phase === 'cloud') {
+      showPhase('cloud');
+      renderCloud();
+    } else {
+      const base = publicBaseUrl || serverUrl;
+      showQR(base + cloudUrl);
+      showPhase('collect');
+    }
+  }
+
+  function initSocket() {
+    const url = cfg.socketUrl || serverUrl;
+    if (!url || socket) return;
+    socket = io(url);
+    socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
+    socket.on('widget_state', data => {
+      if (role !== 'viewer' || data?.widgetId !== widgetId) return;
+      applyState(data.state);
+    });
+    socket.on('survey_response', data => {
+      if (role !== 'presenter' || data.survey_id !== surveyId) return;
+      processText(data.response.text);
+      setRespCount(data.total);
+      lastSynced = totalResp;
+      save(); emitState();
+    });
+    socket.on('presentation_loaded', () => { if (role === 'presenter') resetCloud(); });
+  }
+
+  /* QR */
+  function showQR(url) {
+    document.getElementById('join-url').textContent = url;
+    const qrEl = document.getElementById('qrcode');
+    qrEl.innerHTML = '';
+    new QRCode(qrEl, { text: url, width: 180, height: 180, colorDark: '#222', colorLight: '#ffffff' });
+  }
+
+  function copyUrl(el) { navigator.clipboard?.writeText(el.textContent).catch(()=>{}); }
+
+  /* Launch */
+  async function launch() {
+    question  = document.getElementById('setup-question').value.trim();
+    inputMode = parseInt(document.getElementById('setup-mode').value);
+    if (!question) { document.getElementById('setup-question').focus(); return; }
+    try {
+      const res = await fetch(`${serverUrl}/api/survey/create`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ question, model: null, num_summaries: 0, is_wordcloud: true }),
+      });
+      const data = await res.json();
+      surveyId = data.survey_id;
+      cloudUrl = data.url;
+      sessionStorage.setItem('wc_id',   surveyId);
+      sessionStorage.setItem('wc_q',    question);
+      sessionStorage.setItem('wc_url',  cloudUrl);
+      sessionStorage.setItem('wc_mode', String(inputMode));
+      setRespCount(0);
+      const base = publicBaseUrl || serverUrl;
+      showQR(base + cloudUrl);
+      showPhase('collect');
+      initSocket();
+      emitState();
+    } catch(e) { console.error(e); }
+  }
+
+  /* Cloud display */
+  function showCloud() {
+    if (surveyId) fetch(`${serverUrl}/api/survey/${surveyId}/close`, {method:'POST'}).catch(()=>{});
+    showPhase('cloud');
+    renderCloud();
+    emitState();
+    window.addEventListener('resize', renderCloud);
+  }
+
+  function processText(text) {
+    if (!text) return;
+    const STOP = new Set(['the','a','an','is','are','was','were','be','been','it','in','on','at','to','of','and','or','but','for','with','this','that','i','we','you','he','she','they']);
+    const tokens = text.toLowerCase().replace(/[^\w\s]/g,'').split(/\s+/).filter(t => t.length > 1 && !STOP.has(t));
+    const phrase = tokens.slice(0, inputMode).join(' ');
+    if (!phrase) return;
+    wordFreq[phrase] = (wordFreq[phrase] || 0) + 1;
+    if (!wordColor[phrase]) wordColor[phrase] = CLOUD_COLORS[Math.floor(Math.random() * CLOUD_COLORS.length)];
+    document.getElementById('cloud-placeholder').style.display = 'none';
+    if (phase === 'cloud') renderCloud();
+  }
+
+  function renderCloud() {
+    const entries = Object.entries(wordFreq);
+    if (!entries.length) return;
+    document.getElementById('cloud-placeholder').style.display = 'none';
+    const canvas = document.getElementById('cloud-canvas');
+    canvas.width  = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+    const maxFreq = Math.max(...entries.map(([,c])=>c));
+    const list = entries
+      .sort((a,b)=>b[1]-a[1])
+      .map(([w,c]) => [w, Math.round(20 + (c / maxFreq) * (canvas.height * 0.18))]);
+    WordCloud(canvas, {
+      list,
+      fontFamily: 'EB Garamond, Georgia, serif',
+      color: w => wordColor[w] || CLOUD_COLORS[0],
+      rotateRatio: 0,
+      gridSize: Math.round(12 * canvas.width / 1024),
+      drawOutOfBound: false,
+      shrinkToFit: true,
+    });
+  }
+
+  async function resetCloud() {
+    const resetQuestion = question || cfg.question || document.getElementById('setup-question').value.trim();
+    const resetMode = inputMode || parseInt(cfg.mode || '1');
+    if (!resetQuestion) { showPhase('setup'); return; }
+    if (surveyId) fetch(`${serverUrl}/api/survey/${surveyId}/close`, {method:'POST'}).catch(()=>{});
+    surveyId = null; wordFreq = {}; wordColor = {}; cloudUrl = '';
+    lastSynced = 0; question = resetQuestion; inputMode = resetMode;
+    sessionStorage.removeItem('wc_id');
+    sessionStorage.removeItem('wc_url');
+    sessionStorage.setItem('wc_q', question);
+    sessionStorage.setItem('wc_mode', String(inputMode));
+    save();
+    document.getElementById('setup-question').value = question;
+    document.getElementById('setup-mode').value = String(inputMode);
+    setRespCount(0);
+    document.getElementById('qrcode').innerHTML = '';
+    const canvas = document.getElementById('cloud-canvas');
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('cloud-placeholder').style.display = '';
+    try {
+      const res = await fetch(`${serverUrl}/api/survey/create`, {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ question, model: null, num_summaries: 0, is_wordcloud: true }),
+      });
+      const data = await res.json();
+      surveyId = data.survey_id; cloudUrl = data.url;
+      sessionStorage.setItem('wc_id', surveyId);
+      sessionStorage.setItem('wc_url', cloudUrl);
+      const base = publicBaseUrl || serverUrl;
+      showQR(base + cloudUrl);
+      showPhase('collect');
+      emitState();
+    } catch(e) { console.error(e); showPhase('setup'); }
+  }
+
+  async function syncMissed() {
+    if (!surveyId) return;
+    try {
+      const res = await fetch(`${serverUrl}/api/survey/${surveyId}/responses?after=${lastSynced}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setRespCount(data.total ?? totalResp);
+      (data.responses || []).forEach(r => processText(r.text));
+      lastSynced = totalResp; save();
+    } catch(e) { console.warn(e); }
+  }
+
+  async function updateConfig(c) {
+    cfg = c || {};
+    role = cfg.role || 'presenter';
+    widgetId = cfg.id || cfg.widgetId || widgetId;
+    serverUrl = cfg.socketUrl || cfg.serverUrl || deriveServer();
+    publicBaseUrl = cfg.publicBaseUrl || serverUrl;
+    if (cfg.question) { question = question || cfg.question; document.getElementById('setup-question').value = cfg.question; }
+    if (cfg.mode) document.getElementById('setup-mode').value = String(cfg.mode);
+    refreshHeader();
+    initSocket();
+    if (role === 'viewer') { document.getElementById('setup-view').style.display = 'none'; showPhase('collect'); return; }
+    if (surveyId) {
+      setRespCount(totalResp);
+      const base = publicBaseUrl || serverUrl;
+      showQR(base + cloudUrl);
+      showPhase('collect');
+      await syncMissed();
+      emitState();
+    } else if (cfg.question && cfg.autoStart !== false) {
+      await launch();
+    }
+  }
+
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'widget-config') updateConfig(e.data.config);
+    if (e.data?.type === 'widget-cleanup') socket?.disconnect();
+  });
+
+  if (surveyId) {
+    serverUrl = deriveServer();
+    setRespCount(totalResp);
+    refreshHeader();
+    showPhase('collect');
+    initSocket();
+    syncMissed();
+  }
+</script>
+</body>
+</html>

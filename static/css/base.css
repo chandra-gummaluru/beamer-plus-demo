@@ -1,0 +1,83 @@
+/* ============================================================
+   Beamer+ Base — reset, typography, scrollbars
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600&display=swap');
+
+@font-face {
+    font-family: "Computer Modern Sans";
+    src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunss.otf") format('opentype');
+    font-display: swap;
+    font-weight: 400;
+}
+@font-face {
+    font-family: "Computer Modern Sans";
+    src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunsx.otf") format('opentype');
+    font-display: swap;
+    font-weight: 600;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--surface-paper);
+    font-family: var(--font-sans);
+    font-size: var(--fs-base);
+    color: var(--ink-1);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1, "liga" 1;
+}
+
+input[type=file] { display: none; }
+
+button { font-family: inherit; }
+
+/* Numerals — tabular for timer, slide numbers */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Focus rings — accent ink blue */
+*:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+}
+
+/* Scrollbars — minimal, paper-toned */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ink-4) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: var(--ink-4);
+    border-radius: var(--r-pill);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
+
+/* Hide scrollbars on slide nav (intentional) */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Headings */
+h1, h2, h3, h4 {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--ink-1);
+    margin: 0;
+}
+
+@media print {
+    .custom-modal-overlay,
+    #floating-annotation-toolbar,
+    #top-right-controls,
+    #slide-navigator { display: none !important; }
+}

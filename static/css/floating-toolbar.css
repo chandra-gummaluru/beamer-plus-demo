@@ -1,4 +1,4 @@
-/* Top-right inline controls (share, record, timer) */
+/* Top-right inline controls (share, timer) */
 #top-controls-panel {
     display: none;
 }
@@ -15,7 +15,6 @@
 }
 
 #top-right-controls #screen-share-container,
-#top-right-controls #record-container,
 #top-right-controls #timer-container {
     display: flex;
     align-items: center;
@@ -59,6 +58,13 @@
 
 #tool-container {
     flex-wrap: nowrap;
+}
+
+#pen-slots {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
 }
 
 #annotation-clear {
@@ -119,23 +125,6 @@
 
 body.split-view-active #top-right-controls {
     top: 6px;
-}
-
-body.split-view-active #floating-annotation-toolbar {
-    top: 10px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    width: auto;
-    max-width: calc(100vw - 140px);
-    flex-direction: row;
-    align-items: center;
-}
-
-body.split-view-active #floating-annotation-toolbar #tool-container,
-body.split-view-active #floating-annotation-toolbar #annotation-undo-redo,
-body.split-view-active #floating-annotation-toolbar #annotation-clear {
-    flex-direction: row;
 }
 
 /* Hide right panel on small screens (mobile toggle handles tools there) */

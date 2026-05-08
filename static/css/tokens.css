@@ -1,0 +1,107 @@
+/* ============================================================
+   Beamer+ Design Tokens
+   Single source of truth for color, type, spacing, motion.
+   Refined academic aesthetic — warm paper, ink graphite,
+   one accent (ink blue), generous whitespace.
+   ============================================================ */
+
+:root {
+    /* ---------- Surfaces (warm paper / cream) ---------- */
+    --surface-paper:    oklch(99% 0.003 80);   /* page background */
+    --surface-cream:    oklch(97% 0.005 80);   /* sidebars, cards */
+    --surface-cream-2:  oklch(94% 0.007 80);   /* nested surfaces */
+    --surface-cream-3:  oklch(90% 0.008 80);   /* hover */
+    --surface-stage:    oklch(96% 0.004 80);   /* slide stage backdrop */
+
+    /* ---------- Ink (text + UI) ---------- */
+    --ink-1:            oklch(22% 0.012 260);  /* primary text / strokes */
+    --ink-2:            oklch(38% 0.010 260);  /* secondary text */
+    --ink-3:            oklch(55% 0.008 260);  /* tertiary / disabled */
+    --ink-4:            oklch(72% 0.006 260);  /* hairlines */
+    --ink-on-accent:    oklch(99% 0.003 80);
+
+    /* ---------- Accent (graphite gray) ---------- */
+    --accent:           oklch(45% 0.005 260);
+    --accent-soft:      oklch(92% 0.004 260);
+    --accent-strong:    oklch(32% 0.006 260);
+
+    /* ---------- Semantic ---------- */
+    --bookmark:         oklch(78% 0.13 85);
+    --bookmark-soft:    oklch(94% 0.06 85);
+    --bookmark-ink:     oklch(32% 0.08 70);
+    --danger:           oklch(58% 0.18 25);
+    --recording:        oklch(58% 0.20 25);
+
+    /* ---------- Hairlines ---------- */
+    --line-hairline:    1px solid oklch(85% 0.005 260);
+    --line-soft:        1px solid oklch(90% 0.005 260);
+    --line-strong:      1px solid oklch(70% 0.008 260);
+
+    /* ---------- Type ---------- */
+    --font-sans: "Computer Modern Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-serif: "EB Garamond", "Computer Modern Serif", Georgia, serif;
+    --font-mono: "Computer Modern Sans", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --fs-xs:   11px;
+    --fs-sm:   13px;
+    --fs-base: 14px;
+    --fs-md:   15px;
+    --fs-lg:   18px;
+    --fs-xl:   22px;
+    --fs-2xl:  28px;
+
+    /* ---------- Spacing ---------- */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+
+    /* ---------- Radii ---------- */
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-pill: 999px;
+
+    /* ---------- Shadows (soft, paper-on-paper) ---------- */
+    --shadow-1: 0 1px 2px oklch(20% 0.01 260 / 0.05),
+                0 1px 1px oklch(20% 0.01 260 / 0.04);
+    --shadow-2: 0 2px 6px oklch(20% 0.01 260 / 0.06),
+                0 1px 2px oklch(20% 0.01 260 / 0.04);
+    --shadow-3: 0 8px 24px oklch(20% 0.01 260 / 0.10),
+                0 2px 6px oklch(20% 0.01 260 / 0.06);
+    --shadow-pop: 0 12px 40px oklch(20% 0.01 260 / 0.18),
+                  0 4px 12px oklch(20% 0.01 260 / 0.08);
+
+    /* ---------- Motion ---------- */
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --dur-fast: 120ms;
+    --dur-base: 180ms;
+    --dur-slow: 280ms;
+
+    /* ---------- Layout ---------- */
+    --nav-width: 132px;
+    --toolbar-w: 52px;
+    --topbar-h: 48px;
+
+    /* ---------- Touch targets ---------- */
+    --hit-min: 40px;
+}
+
+@media (pointer: coarse) {
+    :root {
+        --hit-min: 44px;
+        --toolbar-w: 60px;
+    }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}

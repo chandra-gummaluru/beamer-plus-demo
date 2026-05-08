@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Beamer+</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+</head>
+<body>
+    <!-- Hidden file inputs for upload -->
+    <input type="file" id="upload-zip" accept=".zip">
+    <input type="file" id="upload-folder" webkitdirectory directory multiple>
+    <input type="file" id="upload-pdf" accept=".pdf">
+
+    <!-- Splash -->
+    <div id="splash-screen">
+        <svg class="splash-squiggle" viewBox="0 0 120 40">
+            <path d="M5 20 Q 15 5, 25 20 T 45 20 T 65 20 T 85 20 T 105 20" />
+        </svg>
+        <div class="splash-title">Beamer+</div>
+        <div class="splash-subtitle">Loading app...</div>
+    </div>
+
+    <!-- Slide navigator -->
+    <aside id="slide-navigator">
+        <div id="slide-nav-top-actions">
+            <button class="btn" id="split-toggle" title="Split view"><i class="fa-solid fa-table-columns"></i></button>
+            <button class="btn" id="move-left-to-right-btn" title="Move left to right" style="display: none;"><i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+        <div id="bookmark-pins"></div>
+        <div id="slide-nav-slides"></div>
+        <div id="slide-nav-bottom-actions">
+            <button class="btn" id="add-blank-btn" title="Insert blank slide"><i class="fa-solid fa-plus"></i></button>
+            <button class="btn" id="delete-blank-btn" title="Delete blank slide" disabled><i class="fa-solid fa-xmark"></i></button>
+            <button class="btn" id="bookmark-btn" title="Bookmark slide"><i class="fa-solid fa-bookmark"></i></button>
+        </div>
+    </aside>
+
+    <!-- Main stage -->
+    <main id="main-content">
+        <div id="main-menu" class="hidden"></div>
+        <div id="pdf-container">
+            <div id="pdf-canvas"></div>
+            <div id="ann-canvas"></div>
+            <div class="slide-loading-overlay">
+                <svg class="slide-squiggle" viewBox="0 0 120 40">
+                    <path d="M5 20 Q 15 5, 25 20 T 45 20 T 65 20 T 85 20 T 105 20" />
+                </svg>
+            </div>
+        </div>
+        <div id="split-view-divider"></div>
+        <div id="pdf-container-2">
+            <div id="pdf-canvas-2"></div>
+            <div id="ann-canvas-2"></div>
+        </div>
+    </main>
+
+    <!-- Top-right cluster -->
+    <div id="top-right-controls">
+        <div id="upload-container">
+            <button class="btn" id="upload-presentation-btn" title="Upload presentation"><i class="fa-solid fa-upload"></i></button>
+        </div>
+        <div id="screen-share-container">
+            <button class="btn" id="screen-share-btn" title="Screen share"><i class="fa-solid fa-display"></i></button>
+        </div>
+        <div id="timer-container">
+            <span class="timer_display tabular"><span class="timer-text">00:00</span></span>
+        </div>
+    </div>
+
+    <!-- Annotation toolbar -->
+    <div id="floating-annotation-toolbar">
+        <div id="tool-container">
+            <button class="btn tool-btn" data-tool="hand" id="hand-btn" title="Hand / pointer"><i class="fa-solid fa-hand-pointer"></i></button>
+            <button class="btn tool-btn" data-tool="spotlight" id="spotlight-btn" title="Spotlight"><i class="fa-solid fa-bullseye"></i></button>
+            <div id="pen-slots"></div>
+            <button class="btn tool-btn" data-tool="eraser" title="Eraser"><i class="fa-solid fa-eraser"></i></button>
+        </div>
+        <div id="annotation-undo-redo">
+            <button class="btn" id="annotation-undo" title="Undo"><i class="fa-solid fa-rotate-left"></i></button>
+            <button class="btn" id="annotation-redo" title="Redo"><i class="fa-solid fa-rotate-right"></i></button>
+        </div>
+        <div id="annotation-clear">
+            <button class="btn" id="annotation-clear-btn" title="Clear all"><i class="fa-solid fa-trash"></i></button>
+        </div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => {});
+            });
+        }
+    </script>
+    <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

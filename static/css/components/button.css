@@ -1,0 +1,106 @@
+/* ============================================================
+   Buttons — refined ink/paper aesthetic
+   - Default: paper surface, hairline border, ink text
+   - Hover: tonal lift (cream), no jarring color flip
+   - Selected: accent ink blue background, paper text
+   - Press: subtle 1px depth
+   ============================================================ */
+
+.btn,
+.btn_view_only {
+    --_bg: var(--surface-paper);
+    --_fg: var(--ink-1);
+    --_bd: oklch(82% 0.005 260);
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+
+    min-width: var(--hit-min);
+    min-height: var(--hit-min);
+    padding: 0 0.75em;
+
+    font-family: var(--font-sans);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    line-height: 1;
+
+    color: var(--_fg);
+    background: var(--_bg);
+    border: 1px solid var(--_bd);
+    border-radius: var(--r-md);
+
+    cursor: pointer;
+    text-decoration: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+
+    transition:
+        background-color var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease),
+        transform var(--dur-fast) var(--ease),
+        box-shadow var(--dur-fast) var(--ease);
+}
+
+.btn i { font-size: 15px; line-height: 1; }
+.btn svg { width: 18px; height: 18px; }
+
+.btn:hover {
+    --_bg: var(--surface-cream-2);
+    --_bd: var(--ink-4);
+}
+
+.btn:active {
+    transform: translateY(1px);
+    background: var(--surface-cream-3);
+}
+
+.btn:disabled,
+.btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+    filter: saturate(0);
+}
+
+/* Selected state — accent ink */
+.btn_selected,
+.btn.btn_selected {
+    --_bg: var(--accent);
+    --_fg: var(--ink-on-accent);
+    --_bd: var(--accent-strong);
+    color: var(--_fg);
+    box-shadow: 0 1px 2px oklch(20% 0.01 260 / 0.10),
+                inset 0 0 0 1px oklch(100% 0 0 / 0.08);
+}
+
+.btn_selected:hover {
+    --_bg: var(--accent-strong);
+}
+
+/* Icon-only square variant (toolbar) */
+.btn--icon {
+    width: var(--hit-min);
+    min-width: var(--hit-min);
+    padding: 0;
+}
+
+/* Ghost / secondary */
+.btn--ghost {
+    --_bg: transparent;
+    --_bd: transparent;
+}
+.btn--ghost:hover {
+    --_bg: var(--surface-cream-2);
+    --_bd: oklch(82% 0.005 260);
+}
+
+/* Danger */
+.btn--danger.btn_selected,
+.btn--danger:where(.is-active) {
+    --_bg: var(--danger);
+    --_bd: var(--danger);
+    --_fg: var(--ink-on-accent);
+}

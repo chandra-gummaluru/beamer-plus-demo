@@ -1,13 +1,22 @@
 {
   "widgets": [
     {
-      "id": "sr1",
-      "type": "survey_result",
-      "src": "widgets/survey_result.html",
-      "x": 0.1,
-      "y": 0.15,
-      "width": 0.8,
-      "height": 0.7,
+      "id": "mcq_demo",
+      "type": "mcq",
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
+      "zIndex": 10,
+      "question": "Which demo should we explore next?",
+      "options": [
+        "Python REPL",
+        "Browser",
+        "YouTube",
+        "Timer"
+      ],
+      "correctAnswer": 0,
+      "autoStart": true,
       "interactive": true
     }
   ]

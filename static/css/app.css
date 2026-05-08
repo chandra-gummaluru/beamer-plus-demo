@@ -1,0 +1,18 @@
+/* ============================================================
+   Beamer+ — Root stylesheet
+   Imports tokens, base, components, and feature modules.
+   ============================================================ */
+
+@import url('./tokens.css');
+@import url('./base.css');
+
+@import url('./components/button.css');
+@import url('./components/modal.css');
+@import url('./components/timer.css');
+@import url('./components/toggle.css');
+@import url('./components/selector.css');
+
+@import url('./features/slides.css');
+@import url('./features/annotations.css');
+@import url('./features/top-bar.css');
+@import url('./features/splash.css');

@@ -1,17 +1,14 @@
 {
   "widgets": [
     {
-      "id": "physics_demo",
-      "type": "physics",
+      "id": "browser_demo",
+      "type": "browser",
       "x": 0,
       "y": 0,
       "width": 1,
       "height": 1,
       "zIndex": 10,
-      "gravity": 0.5,
-      "elasticity": 0.8,
-      "friction": 0.98,
-      "initialBalls": 5,
+      "url": "https://jupyter.org/try-jupyter/lab/",
       "interactive": true
     }
   ]

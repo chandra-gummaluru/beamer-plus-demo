@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Respond</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    :root {
+      --bg:        oklch(99% 0.003 80);
+      --bg-2:      oklch(97% 0.005 80);
+      --bg-3:      oklch(94% 0.007 80);
+      --ink-1:     oklch(22% 0.012 260);
+      --ink-2:     oklch(38% 0.010 260);
+      --ink-3:     oklch(55% 0.008 260);
+      --ink-4:     oklch(72% 0.006 260);
+      --accent:    oklch(45% 0.005 260);
+      --accent-hi: oklch(32% 0.006 260);
+      --ok:        oklch(52% 0.14 160);
+      --err:       oklch(58% 0.18 25);
+      --line:      1px solid oklch(85% 0.005 260);
+      --r:         6px;
+      --font:      "EB Garamond", Georgia, serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; background: var(--bg); }
+    body {
+      min-height: 100%; font-family: var(--font); color: var(--ink-1);
+      display: flex; flex-direction: column;
+    }
+
+    /* Loading */
+    #loading-area {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+    }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)} }
+    .loading-text { font-size: 14px; color: var(--ink-4); font-style: italic; }
+
+    /* Main content */
+    #main-area { flex: 1; display: none; flex-direction: column; padding: 24px 20px; gap: 18px; max-width: 520px; width: 100%; margin: 0 auto; }
+
+    .question-text {
+      font-size: 1.5rem; font-weight: 500; line-height: 1.35; color: var(--ink-1); text-align: center;
+    }
+
+    textarea {
+      width: 100%; min-height: 100px;
+      padding: 10px 12px; font-family: var(--font); font-size: 1rem; line-height: 1.5;
+      color: var(--ink-1); background: var(--bg-2);
+      border: var(--line); border-radius: var(--r);
+      outline: none; resize: vertical; transition: border-color 120ms;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea:disabled { opacity: 0.5; }
+
+    .submit-btn {
+      width: 100%; padding: 10px;
+      font-family: var(--font); font-size: 1rem;
+      background: var(--accent); color: oklch(97% 0.003 80);
+      border: none; border-radius: var(--r);
+      cursor: pointer; transition: background 100ms;
+    }
+    .submit-btn:hover:not(:disabled) { background: var(--accent-hi); }
+    .submit-btn:disabled { opacity: 0.4; cursor: default; }
+
+    /* Status cards */
+    .status-card {
+      flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px 20px; gap: 10px; text-align: center;
+    }
+    .status-card.visible { display: flex; }
+    .status-title { font-size: 1.5rem; font-weight: 500; color: var(--ink-1); }
+    .status-sub { font-size: 1rem; color: var(--ink-3); }
+    .status-card.ok .status-title { color: var(--ok); }
+  </style>
+</head>
+<body>
+
+  <div id="loading-area">
+    <div class="pulse"></div>
+    <div class="loading-text">Loading…</div>
+  </div>
+
+  <div id="main-area">
+    <div class="question-text" id="question-text"></div>
+    <textarea id="response-input" placeholder="Type your response…"></textarea>
+    <button class="submit-btn" id="submit-btn" onclick="submit()">Submit</button>
+  </div>
+
+  <div class="status-card ok" id="thanks-card">
+    <div class="status-title">Thank you!</div>
+    <div class="status-sub">Your response has been recorded.</div>
+  </div>
+
+  <div class="status-card" id="already-card">
+    <div class="status-title">Already submitted</div>
+    <div class="status-sub">You have already responded to this survey.</div>
+  </div>
+
+  <div class="status-card" id="closed-card">
+    <div class="status-title">Survey closed</div>
+    <div class="status-sub">This survey is no longer accepting responses.</div>
+  </div>
+
+  <div class="status-card" id="error-card">
+    <div class="status-title">Unavailable</div>
+    <div class="status-sub" id="error-detail">This survey could not be loaded.</div>
+  </div>
+
+  <script>
+    const SURVEY_ID = "{{ survey_id }}";
+    const SESSION_KEY = 'responded_' + SURVEY_ID;
+
+    function hide(id) { document.getElementById(id).style.display = 'none'; }
+    function showCard(id) {
+      hide('loading-area'); hide('main-area');
+      ['thanks-card','already-card','closed-card','error-card'].forEach(c => {
+        document.getElementById(c).classList.toggle('visible', c === id);
+      });
+    }
+
+    async function submit() {
+      const text = document.getElementById('response-input').value.trim();
+      if (!text) { document.getElementById('response-input').focus(); return; }
+
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      document.getElementById('response-input').disabled = true;
+
+      try {
+        const res = await fetch(`/api/survey/${SURVEY_ID}/respond`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ response: text }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(()=>({}));
+          if ((d.error||'').toLowerCase().includes('closed')) { showCard('closed-card'); return; }
+          throw new Error(d.error || 'Failed');
+        }
+        sessionStorage.setItem(SESSION_KEY, '1');
+        showCard('thanks-card');
+      } catch(e) {
+        btn.disabled = false;
+        document.getElementById('response-input').disabled = false;
+        alert('Could not submit. Please try again.');
+      }
+    }
+
+    async function load() {
+      if (sessionStorage.getItem(SESSION_KEY)) { showCard('already-card'); return; }
+      try {
+        const res = await fetch(`/api/survey/${SURVEY_ID}`);
+        if (!res.ok) { showCard('error-card'); return; }
+        const data = await res.json();
+        if (!data.active) { showCard('closed-card'); return; }
+
+        document.getElementById('question-text').textContent = data.question || 'Share your thoughts';
+        hide('loading-area');
+        document.getElementById('main-area').style.display = 'flex';
+
+        // Listen for close event
+        try {
+          const socket = io();
+          socket.on('survey_closed', d => { if (!d?.survey_id || d.survey_id === SURVEY_ID) showCard('closed-card'); });
+        } catch(e) {}
+      } catch(e) {
+        document.getElementById('error-detail').textContent = 'Could not connect to the server.';
+        showCard('error-card');
+      }
+    }
+
+    document.getElementById('response-input').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submit();
+    });
+
+    load();
+  </script>
+</body>
+</html>

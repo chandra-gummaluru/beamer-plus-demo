@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify, request, send_file
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit, join_room
 import uuid
 import time
 import os
@@ -9,170 +9,188 @@ import tempfile
 import zipfile
 import subprocess
 from collections import defaultdict
-from typing import List
-import shutil
+import urllib.request
+import urllib.parse
 
-# Get the correct base path for PyInstaller
 def get_base_path():
-    """Get the base path for resources, works with PyInstaller"""
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         return sys._MEIPASS
-    else:
-        # Running as normal Python script
-        return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.abspath(__file__))
 
 BASE_PATH = get_base_path()
 
-app = Flask("Beamer+", 
-            static_folder=os.path.join(BASE_PATH, 'static'), 
-            template_folder=BASE_PATH)
+app = Flask(
+    "Beamer+",
+    static_folder=os.path.join(BASE_PATH, 'static'),
+    template_folder=os.path.join(BASE_PATH, 'templates'),
+)
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
-# Store active surveys and responses
 surveys = {}
 survey_responses = defaultdict(list)
 
-# Store current presentation
-UPLOAD_FOLDER = 'uploads'
+# Tracks live presenter state so late-joining viewers can catch up
+presenter_state = {
+    'zip_loaded': False,
+    'slide_index': 0,
+    'right_slide_index': 0,
+    'split_view': False,
+    'split_ratio': 50,
+    'viewer_muted': True,
+    'annotations': None,
+    'widget_states': {},
+    'spotlight': {'visible': False, 'pane': 'left', 'x': 0.5, 'y': 0.5},
+}
+
+UPLOAD_FOLDER = os.path.join(BASE_PATH, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 current_presentation = {
     'file': None,
-    'config': None,
-    'models': {},  # Store loaded model functions
-    'available_models': []  # List of available model names
+    'models': {},
+    'available_models': [],
 }
 
-# Track the survey server subprocess
 survey_server_process = None
 
+
 def extract_and_load_models(zip_path):
-    """
-    Extract AI models from the uploaded ZIP file and load them.
-    Models should be in the 'ai/' directory within the ZIP.
-    """
     models = {}
     available_models = []
-    
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # Find all .py files in the ai/ directory
             ai_files = [f for f in zip_ref.namelist() if f.startswith('ai/') and f.endswith('.py')]
-            
             if not ai_files:
-                print("No AI models found in ZIP file")
                 return models, available_models
-            
-            # Create a temporary directory to extract models
             temp_dir = tempfile.mkdtemp()
-            
             for ai_file in ai_files:
                 try:
-                    # Extract the file
                     zip_ref.extract(ai_file, temp_dir)
-                    
-                    # Get model name from filename
                     model_name = os.path.splitext(os.path.basename(ai_file))[0]
-                    
-                    # Skip __init__.py and other special files
                     if model_name.startswith('_'):
                         continue
-                    
-                    # Full path to the extracted file
                     model_path = os.path.join(temp_dir, ai_file)
-                    
-                    # Load the model function
                     spec = importlib.util.spec_from_file_location(model_name, model_path)
                     module = importlib.util.module_from_spec(spec)
-                    
-                    # Add to sys.modules with unique name
                     unique_name = f"ai_model_{model_name}_{int(time.time())}"
                     sys.modules[unique_name] = module
                     spec.loader.exec_module(module)
-                    
-                    # Check if the summarize function exists
                     if hasattr(module, 'summarize'):
                         models[model_name] = getattr(module, 'summarize')
                         available_models.append(model_name)
-                        print(f"Loaded model: {model_name}")
-                    else:
-                        print(f"Warning: {ai_file} does not define a 'summarize' function")
-                
                 except Exception as e:
-                    print(f"Error loading model {ai_file}: {str(e)}")
-            
-            # Don't delete temp_dir immediately - keep it for the session
-            # We could implement cleanup on server shutdown if needed
-    
+                    print(f"Error loading model {ai_file}: {e}")
     except Exception as e:
-        print(f"Error extracting models from ZIP: {str(e)}")
-    
+        print(f"Error extracting models: {e}")
     return models, available_models
+
+
+# ── Pages ──────────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route("/viewer")
+@app.route('/viewer')
 def viewer():
-    return render_template("viewer.html")
+    return render_template('viewer.html')
 
-@app.route("/survey/<survey_id>")
+@app.route('/survey/<survey_id>')
 def survey_page(survey_id):
     if survey_id not in surveys:
-        return render_template("survey_not_found.html"), 404
-    return render_template("survey_response.html", survey_id=survey_id)
+        return render_template('survey_not_found.html'), 404
+    return render_template('survey_response.html', survey_id=survey_id)
 
-@app.route("/wordcloud/<survey_id>")
+@app.route('/wordcloud/<survey_id>')
 def wordcloud_page(survey_id):
     if survey_id not in surveys:
-        return render_template("survey_not_found.html"), 404
-    return render_template("survey_response.html", survey_id=survey_id)
+        return render_template('survey_not_found.html'), 404
+    return render_template('survey_response.html', survey_id=survey_id)
 
-# PWA routes
+@app.route('/mcq/<survey_id>')
+def mcq_page(survey_id):
+    if survey_id not in surveys:
+        return render_template('survey_not_found.html'), 404
+    return render_template('mcq_response.html', survey_id=survey_id)
+
+
+# ── PWA ────────────────────────────────────────────────────────────────────────
+
 @app.route('/manifest.json')
 def manifest():
-    response = send_file('manifest.json', mimetype='application/manifest+json')
-    response.headers['Cache-Control'] = 'no-cache'
-    return response
+    resp = send_file(os.path.join(BASE_PATH, 'manifest.json'), mimetype='application/manifest+json')
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 @app.route('/service-worker.js')
 def service_worker():
-    response = send_file('service-worker.js', mimetype='application/javascript')
-    response.headers['Cache-Control'] = 'no-cache'
-    response.headers['Service-Worker-Allowed'] = '/'
-    return response
+    resp = send_file(os.path.join(BASE_PATH, 'service-worker.js'), mimetype='application/javascript')
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['Service-Worker-Allowed'] = '/'
+    return resp
 
 @app.route('/offline.html')
 def offline():
-    return send_file('offline.html')
+    return send_file(os.path.join(BASE_PATH, 'offline.html'))
 
-# Presentation endpoints
-@app.route('/api/presentation/upload', methods=['POST'])
-def upload_presentation():
-    global current_presentation
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file'}), 400
-    
-    file = request.files['file']
+
+# ── Embeddability check ────────────────────────────────────────────────────────
+
+@app.route('/api/check-embeddable')
+def check_embeddable():
+    """HEAD-request a URL and report whether X-Frame-Options / CSP would block it."""
+    url = request.args.get('url', '').strip()
+    if not url or not url.startswith(('http://', 'https://')):
+        return jsonify({'embeddable': False, 'reason': 'invalid_url'}), 400
+
+    try:
+        req = urllib.request.Request(
+            url,
+            method='HEAD',
+            headers={
+                'User-Agent': 'Mozilla/5.0 (compatible; BeamerPlusEmbedChecker/1.0)',
+            },
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            xfo = resp.headers.get('X-Frame-Options', '')
+            csp = resp.headers.get('Content-Security-Policy', '')
+
+        blocked_by_xfo = xfo.strip().upper() in ('DENY', 'SAMEORIGIN')
+        blocked_by_csp = 'frame-ancestors' in csp.lower()
+
+        if blocked_by_xfo or blocked_by_csp:
+            reason = 'x-frame-options' if blocked_by_xfo else 'csp-frame-ancestors'
+            return jsonify({'embeddable': False, 'reason': reason})
+        return jsonify({'embeddable': True})
+    except Exception as e:
+        # If the request fails we cannot be sure — let the iframe try.
+        return jsonify({'embeddable': True, 'note': str(e)})
+
+
+# ── Upload ─────────────────────────────────────────────────────────────────────
+
+def _save_and_load(file):
     filepath = os.path.join(UPLOAD_FOLDER, 'current.zip')
     file.save(filepath)
-    
-    # Extract and load AI models from the ZIP
     models, available_models = extract_and_load_models(filepath)
-    
     current_presentation['file'] = filepath
     current_presentation['models'] = models
     current_presentation['available_models'] = available_models
-    
-    print(f"Presentation uploaded with {len(available_models)} AI models")
-    
-    return jsonify({
-        'success': True,
-        'models_found': len(available_models),
-        'models': available_models
-    })
+    return filepath, available_models
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+    _, available_models = _save_and_load(request.files['file'])
+    return jsonify({'success': True, 'models': available_models})
+
+@app.route('/api/presentation/upload', methods=['POST'])
+def upload_presentation():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+    _, available_models = _save_and_load(request.files['file'])
+    return jsonify({'success': True, 'models_found': len(available_models), 'models': available_models})
 
 @app.route('/api/presentation/current')
 def get_current_presentation():
@@ -180,245 +198,145 @@ def get_current_presentation():
         return send_file(current_presentation['file'], as_attachment=True, download_name='presentation.zip')
     return jsonify({'error': 'No presentation loaded'}), 404
 
-# Model endpoints
+
+# ── Models ─────────────────────────────────────────────────────────────────────
+
 @app.route('/api/models')
 def get_models():
-    """Get list of available AI models from the current presentation"""
-    return jsonify({
-        'models': current_presentation.get('available_models', [])
-    })
+    return jsonify({'models': current_presentation.get('available_models', [])})
 
-# API endpoints for surveys
+
+# ── Surveys ────────────────────────────────────────────────────────────────────
+
 @app.route('/api/survey/create', methods=['POST'])
 def create_survey():
     data = request.json
     survey_id = str(uuid.uuid4())[:8]
-    
-    model_name = data.get('model', None)
-    
-    # Validate that the model exists
+    model_name = data.get('model')
     if model_name and model_name not in current_presentation.get('models', {}):
-        return jsonify({
-            'error': f'Model "{model_name}" not found in current presentation'
-        }), 400
-    
+        return jsonify({'error': f'Model "{model_name}" not found'}), 400
     surveys[survey_id] = {
         'question': data.get('question', 'What do you think?'),
         'created_at': time.time(),
         'active': True,
         'model': model_name,
-        'num_summaries': data.get('num_summaries', 3)
+        'num_summaries': data.get('num_summaries', 3),
+        'options': data.get('options'),  # list of strings for MCQ
     }
     is_wordcloud = data.get('is_wordcloud', False)
-
+    is_mcq = bool(data.get('options'))
+    url = f'/mcq/{survey_id}' if is_mcq else (f'/wordcloud/{survey_id}' if is_wordcloud else f'/survey/{survey_id}')
     return jsonify({
         'survey_id': survey_id,
-        'url': f'/wordcloud/{survey_id}' if is_wordcloud else f'/survey/{survey_id}'
+        'url': url,
     })
 
 @app.route('/api/survey/<survey_id>')
 def get_survey(survey_id):
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
-    return jsonify(surveys[survey_id])
+    s = surveys[survey_id].copy()
+    s['survey_id'] = survey_id
+    return jsonify(s)
 
 @app.route('/api/survey/<survey_id>/respond', methods=['POST'])
 def respond_survey(survey_id):
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
-    
     if not surveys[survey_id]['active']:
         return jsonify({'error': 'Survey is closed'}), 403
-    
     data = request.json
-    response = {
-        'text': data.get('response', ''),
-        'timestamp': time.time()
-    }
+    response = {'text': data.get('response', ''), 'timestamp': time.time()}
     survey_responses[survey_id].append(response)
-    
-    # Notify presenter and survey watchers of new response
-    response_data = {
-        'survey_id': survey_id,
-        'response': response,
-        'total': len(survey_responses[survey_id])
-    }
-    socketio.emit('survey_response', response_data, room='presenter')
-    socketio.emit('survey_response', response_data, room=f'survey_{survey_id}')
-    
+    payload = {'survey_id': survey_id, 'response': response, 'total': len(survey_responses[survey_id])}
+    socketio.emit('survey_response', payload, room='presenter')
+    socketio.emit('survey_response', payload, room=f'survey_{survey_id}')
     return jsonify({'success': True})
 
 @app.route('/api/survey/<survey_id>/responses')
 def get_responses(survey_id):
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
-    after = request.args.get("after", default="0")
     try:
-        after = int(after)
+        after = int(request.args.get('after', 0))
     except ValueError:
         after = 0
-
     all_responses = survey_responses[survey_id]
-    total = len(all_responses)
-
-    # return only responses after index `after`
-    missed = all_responses[after:] if after < total else []
-
-    return jsonify({
-        'responses': missed,
-        'total': total
-    })
+    return jsonify({'responses': all_responses[after:], 'total': len(all_responses)})
 
 @app.route('/api/survey/<survey_id>/analyze', methods=['POST'])
 def analyze_survey(survey_id):
-    """
-    Analyze survey responses using the specified model from the presentation ZIP.
-    """
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
-    
     survey = surveys[survey_id]
     responses = survey_responses[survey_id]
-    
-    if len(responses) == 0:
+    if not responses:
         return jsonify({'error': 'No responses to analyze'}), 400
-    
     model_name = survey.get('model')
-    num_summaries = survey.get('num_summaries', 3)
-    
     if not model_name:
-        return jsonify({'error': 'No model specified for this survey'}), 400
-    
-    # Get the model function from loaded models
+        return jsonify({'error': 'No model specified'}), 400
     model_func = current_presentation.get('models', {}).get(model_name)
-    
     if not model_func:
         return jsonify({'error': f'Model "{model_name}" not loaded'}), 404
-    
     try:
-        # Extract response texts
-        response_texts = [r['text'] for r in responses]
-        
-        # Call the summarize function
-        summaries = model_func(response_texts, num_summaries)
-        
-        # Validate the output
-        if not isinstance(summaries, list):
-            return jsonify({'error': 'Model must return a list of summaries'}), 500
-        
-        if len(summaries) != num_summaries:
-            return jsonify({
-                'error': f'Model returned {len(summaries)} summaries, expected {num_summaries}'
-            }), 500
-        
-        # Validate tuple format: (summary, num_respondents)
+        num_summaries = survey.get('num_summaries', 3)
+        summaries = model_func([r['text'] for r in responses], num_summaries)
+        if not isinstance(summaries, list) or len(summaries) != num_summaries:
+            return jsonify({'error': f'Model must return a list of {num_summaries} summaries'}), 500
         for i, item in enumerate(summaries):
-            if not isinstance(item, tuple) or len(item) != 2:
-                return jsonify({
-                    'error': f'Summary {i} must be a tuple of (summary, num_respondents)'
-                }), 500
-            if not isinstance(item[0], str) or not isinstance(item[1], int):
-                return jsonify({
-                    'error': f'Summary {i} has invalid types: expected (str, int)'
-                }), 500
-        
-        # Convert tuples to dicts for JSON
-        summaries_json = [
-            {
-                'summary': s[0],
-                'num_respondents': s[1]
-            }
-            for s in summaries
-        ]
-        
+            if not isinstance(item, tuple) or len(item) != 2 or not isinstance(item[0], str) or not isinstance(item[1], int):
+                return jsonify({'error': f'Summary {i} must be a (str, int) tuple'}), 500
         return jsonify({
-            'summaries': summaries_json,
+            'summaries': [{'summary': s[0], 'num_respondents': s[1]} for s in summaries],
             'model': model_name,
-            'num_responses': len(responses)
+            'num_responses': len(responses),
         })
-    
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Error analyzing responses: {str(e)}'}), 500
+        import traceback; traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/survey/<survey_id>/close', methods=['POST'])
 def close_survey(survey_id):
     if survey_id in surveys:
         surveys[survey_id]['active'] = False
-        # Notify all users on the survey page that it's closed
         socketio.emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
     return jsonify({'success': True})
 
+
+# ── Survey server subprocess ───────────────────────────────────────────────────
+
 @app.route('/api/survey-server/start', methods=['POST'])
 def start_survey_server():
-    """Start the survey_server.py as a subprocess with the current presentation's ZIP file."""
     global survey_server_process
-    
-    try:
-        # Check if server is already running
-        if survey_server_process is not None and survey_server_process.poll() is None:
-            return jsonify({
-                'success': True,
-                'url': 'http://localhost:5001',
-                'message': 'Survey server already running'
-            })
-        
-        # Get the path to survey_server.py
-        survey_server_path = os.path.join(BASE_PATH, 'survey_server.py')
-        
-        if not os.path.exists(survey_server_path):
-            return jsonify({'success': False, 'error': 'survey_server.py not found'}), 404
-        
-        # Build command with current presentation ZIP if available
-        cmd = [sys.executable, survey_server_path, '--port', '5001']
-        
-        if current_presentation['file'] and os.path.exists(current_presentation['file']):
-            cmd.extend(['--zip', current_presentation['file']])
-        
-        # Start the server as a subprocess
-        survey_server_process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-        )
-        
-        # Give it a moment to start
-        time.sleep(1)
-        
-        # Check if it started successfully
-        if survey_server_process.poll() is not None:
-            stderr = survey_server_process.stderr.read().decode('utf-8', errors='ignore')
-            return jsonify({
-                'success': False,
-                'error': f'Server failed to start: {stderr}'
-            }), 500
-        
-        return jsonify({
-            'success': True,
-            'url': 'http://localhost:5001',
-            'message': 'Survey server started'
-        })
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    if survey_server_process is not None and survey_server_process.poll() is None:
+        return jsonify({'success': True, 'url': 'http://localhost:5001', 'message': 'Already running'})
+    survey_server_path = os.path.join(BASE_PATH, 'survey_server.py')
+    if not os.path.exists(survey_server_path):
+        return jsonify({'success': False, 'error': 'survey_server.py not found'}), 404
+    cmd = [sys.executable, survey_server_path, '--port', '5001']
+    if current_presentation['file'] and os.path.exists(current_presentation['file']):
+        cmd.extend(['--zip', current_presentation['file']])
+    survey_server_process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
+    )
+    time.sleep(1)
+    if survey_server_process.poll() is not None:
+        stderr = survey_server_process.stderr.read().decode('utf-8', errors='ignore')
+        return jsonify({'success': False, 'error': f'Server failed to start: {stderr}'}), 500
+    return jsonify({'success': True, 'url': 'http://localhost:5001', 'message': 'Started'})
 
 @app.route('/api/survey-server/stop', methods=['POST'])
 def stop_survey_server():
-    """Stop the survey server subprocess."""
     global survey_server_process
-    
     if survey_server_process is not None:
         survey_server_process.terminate()
         survey_server_process = None
-        return jsonify({'success': True, 'message': 'Survey server stopped'})
-    
-    return jsonify({'success': True, 'message': 'Survey server was not running'})
+    return jsonify({'success': True})
 
-# Socket.IO events
+
+# ── Socket.IO ──────────────────────────────────────────────────────────────────
+
 @socketio.on('join_presenter')
 def join_presenter():
     join_room('presenter')
@@ -428,6 +346,7 @@ def join_presenter():
 def join_viewer():
     join_room('viewer')
     emit('joined', {'room': 'viewer'})
+    emit('viewer_catchup', presenter_state)
 
 @socketio.on('join_survey')
 def join_survey(data):
@@ -436,67 +355,100 @@ def join_survey(data):
         join_room(f'survey_{survey_id}')
         emit('joined', {'room': f'survey_{survey_id}'})
 
-@socketio.on("presentation_loaded")
+@socketio.on('presentation_loaded')
 def handle_presentation_loaded(data):
-    # Broadcast to all viewers that they should load the presentation
-    emit("presentation_loaded", data, room='viewer')
+    presenter_state['zip_loaded'] = True
+    presenter_state['slide_index'] = 0
+    presenter_state['right_slide_index'] = data.get('rightSlideIndex', 0)
+    presenter_state['split_view'] = data.get('splitView', False)
+    presenter_state['split_ratio'] = data.get('splitRatio', 50)
+    presenter_state['annotations'] = None
+    presenter_state['widget_states'] = {}
+    presenter_state['spotlight'] = {'visible': False, 'pane': 'left', 'x': 0.5, 'y': 0.5}
+    presenter_state['slide_structure'] = None
+    emit('presentation_loaded', data, room='viewer')
 
-@socketio.on("slide_change")
+@socketio.on('slide_change')
 def handle_slide_change(data):
-    # Broadcast to all viewers
-    emit("slide_change", data, room='viewer')
+    presenter_state['slide_index'] = data.get('slideIndex', 0)
+    presenter_state['right_slide_index'] = data.get('rightSlideIndex', 0)
+    presenter_state['split_view'] = data.get('splitView', False)
+    presenter_state['split_ratio'] = data.get('splitRatio', 50)
+    presenter_state['annotations'] = data.get('annotations')
+    if data.get('slideStructure'):
+        presenter_state['slide_structure'] = data.get('slideStructure')
+    emit('slide_change', data, room='viewer')
 
-@socketio.on("annotation_update")
+@socketio.on('annotation_update')
 def handle_annotation_update(data):
-    # Broadcast to all viewers
-    emit("annotation_update", data, room='viewer')
+    if data.get('slideIndex') == presenter_state['slide_index']:
+        presenter_state['annotations'] = data.get('annotations')
+    emit('annotation_update', data, room='viewer')
 
-@socketio.on("clear_annotations")
+@socketio.on('clear_annotations')
 def handle_clear_annotations():
-    emit("clear_annotations", room='viewer')
+    presenter_state['annotations'] = None
+    emit('clear_annotations', room='viewer')
 
-@socketio.on("video_action")
+@socketio.on('video_action')
 def handle_video_action(data):
-    # Broadcast video play/pause to all viewers
-    emit("video_action", data, room='viewer')
+    emit('video_action', data, room='viewer')
 
-@socketio.on("model_interaction")
+@socketio.on('model_interaction')
 def handle_model_interaction(data):
-    # Broadcast 3D model interactions to all viewers
-    emit("model_interaction", data, room='viewer')
+    emit('model_interaction', data, room='viewer')
 
-@socketio.on("survey_show")
+@socketio.on('spotlight_update')
+def handle_spotlight_update(data):
+    presenter_state['spotlight'] = {
+        'visible': bool(data.get('visible')),
+        'pane': data.get('pane', 'left'),
+        'x': data.get('x', 0.5),
+        'y': data.get('y', 0.5),
+    }
+    emit('spotlight_update', presenter_state['spotlight'], room='viewer')
+
+@socketio.on('survey_show')
 def handle_survey_show(data):
-    # Broadcast to all viewers
-    emit("survey_show", data, room='viewer')
+    emit('survey_show', data, room='viewer')
 
-@socketio.on("survey_close")
+@socketio.on('survey_close')
 def handle_survey_close(data=None):
-    # Broadcast to all viewers
-    emit("survey_close", room='viewer')
-    
-    # Also close the survey and notify respondents
+    emit('survey_close', room='viewer')
     if data and 'survey_id' in data:
         survey_id = data['survey_id']
         if survey_id in surveys:
             surveys[survey_id]['active'] = False
-            # Notify all users on the survey response page
             emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
 
-@socketio.on("screen_share_start")
+@socketio.on('screen_share_start')
 def handle_screen_share_start():
-    # Notify all viewers that screen sharing has started
-    emit("screen_share_start", room='viewer')
+    presenter_state['viewer_muted'] = False
+    emit('screen_share_start', room='viewer')
 
-@socketio.on("screen_share_stop")
+@socketio.on('screen_share_stop')
 def handle_screen_share_stop():
-    # Notify all viewers that screen sharing has stopped
-    emit("screen_share_stop", room='viewer')
+    presenter_state['viewer_muted'] = True
+    emit('screen_share_stop', room='viewer')
 
-@socketio.on("screen_frame")
+@socketio.on('screen_frame')
 def handle_screen_frame(data):
-    # Broadcast screen frame to all viewers
-    emit("screen_frame", data, room='viewer')
+    emit('screen_frame', data, room='viewer')
+
+@socketio.on('widget_state')
+def handle_widget_state(data):
+    # Generic relay for iframe widgets.
+    # Widgets open their own Socket.IO connection and are not required
+    # to join presenter/viewer rooms, so broadcast to all sockets except
+    # the sender to keep sync widget-agnostic.
+    widget_id = data.get('widgetId') if isinstance(data, dict) else None
+    state = data.get('state') if isinstance(data, dict) else None
+    if not widget_id or state is None:
+        return
+
+    presenter_state['widget_states'][widget_id] = state
+    emit('widget_state', {'widgetId': widget_id, 'state': state}, broadcast=True, include_self=False)
+
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5001, debug=False)

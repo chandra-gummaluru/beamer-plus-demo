@@ -1,0 +1,238 @@
+/* ============================================================
+   Annotation toolbar — floating right rail
+   Glass surface, accent-blue selected pen, generous touch targets.
+   ============================================================ */
+
+#floating-annotation-toolbar {
+    position: fixed;
+    top: 50%;
+    right: var(--sp-3);
+    left: auto;
+    bottom: auto;
+    transform: translateY(-50%);
+    width: auto;
+    background: oklch(99% 0.003 80 / 0.86);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border: var(--line-hairline);
+    border-radius: var(--r-lg);
+    padding: var(--sp-2);
+    z-index: 230;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-2);
+    box-shadow: var(--shadow-3);
+    pointer-events: auto;
+    overflow: visible;
+}
+
+#tool-container,
+#annotation-undo-redo,
+#annotation-clear {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-1);
+    padding: 0;
+}
+
+#pen-slots {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-1);
+}
+
+/* Section divider between tool group and undo/redo (normal/vertical view) */
+#annotation-undo-redo {
+    border-top: var(--line-hairline);
+    padding-top: var(--sp-2);
+    margin-top: var(--sp-1);
+}
+
+/* ============================================================
+   Split-view: toolbar switches to a horizontal top bar
+   ============================================================ */
+body.split-view-active #floating-annotation-toolbar {
+    top: var(--sp-3);
+    bottom: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    max-width: calc(100vw - 200px);
+}
+
+body.split-view-active #tool-container,
+body.split-view-active #annotation-undo-redo,
+body.split-view-active #annotation-clear {
+    flex-direction: row;
+    align-items: center;
+}
+
+body.split-view-active #pen-slots {
+    flex-direction: row;
+    align-items: center;
+}
+
+body.split-view-active #annotation-undo-redo {
+    border-top: none;
+    border-left: var(--line-hairline);
+    padding-top: 0;
+    padding-left: var(--sp-2);
+    margin-top: 0;
+    margin-left: var(--sp-1);
+}
+
+#tool-container .pen-slot-btn,
+#floating-annotation-toolbar .btn {
+    width: var(--hit-min);
+    min-width: var(--hit-min);
+    height: var(--hit-min);
+    min-height: var(--hit-min);
+    padding: 0;
+    font-size: var(--fs-base);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: var(--r-md);
+    /* tighter borders inside the rail (the rail itself has the outer border) */
+    border-color: transparent;
+    background: transparent;
+}
+
+#floating-annotation-toolbar .btn:hover {
+    background: var(--surface-cream-2);
+    border-color: oklch(82% 0.005 260);
+}
+
+#floating-annotation-toolbar .btn.btn_selected {
+    background: var(--accent);
+    color: var(--ink-on-accent);
+    border-color: var(--accent-strong);
+}
+
+#tool-container .pen-slot-btn {
+    /* color is the pen color in unselected state — set by JS */
+}
+
+#tool-container .pen-slot-btn.btn_selected {
+    /* Keep the pen's inline color — only add a selection ring */
+    color: inherit !important;
+    box-shadow: inset 0 0 0 2px currentColor;
+    background: oklch(0% 0 0 / 0.06);
+}
+
+/* ============================================================
+   Shape sidebar (line/rect/circle/triangle)
+   Slides out next to the main toolbar when shape mode active.
+   ============================================================ */
+#shape-sidebar {
+    display: none;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: oklch(99% 0.003 80 / 0.86);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border: var(--line-hairline);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-3);
+    position: fixed;
+    top: 50%;
+    right: calc(var(--sp-3) + var(--toolbar-w) + var(--sp-3));
+    transform: translateY(-50%);
+    z-index: 229;
+    align-items: stretch;
+}
+
+#shape-sidebar .btn {
+    width: var(--hit-min);
+    height: var(--hit-min);
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    border-radius: var(--r-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#shape-sidebar .btn:hover {
+    background: var(--surface-cream-2);
+    border-color: oklch(82% 0.005 260);
+}
+
+#shape-sidebar .btn.btn_selected {
+    background: var(--accent);
+    color: var(--ink-on-accent);
+    border-color: var(--accent-strong);
+}
+
+#shape-sidebar svg { color: currentColor; }
+
+/* ============================================================
+   Spotlight overlay
+   ============================================================ */
+.spotlight-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 40;
+    transition: opacity 120ms ease;
+    background:
+        radial-gradient(
+            circle 110px at var(--spotlight-x, 50%) var(--spotlight-y, 50%),
+            oklch(100% 0 0 / 0) 0 68px,
+            oklch(100% 0 0 / 0.1) 88px,
+            oklch(18% 0.01 260 / 0.34) 132px,
+            oklch(18% 0.01 260 / 0.58) 999px
+        );
+}
+
+.spotlight-overlay.visible {
+    opacity: 1;
+}
+
+/* ============================================================
+   Mobile / tablet — bottom toolbar bar
+   ============================================================ */
+@media (max-width: 1024px) {
+    #floating-annotation-toolbar {
+        top: auto;
+        bottom: calc(100px + var(--sp-3));
+        right: 50%;
+        transform: translateX(50%);
+        flex-direction: row;
+        align-items: center;
+    }
+    #floating-annotation-toolbar #tool-container,
+    #floating-annotation-toolbar #annotation-undo-redo {
+        flex-direction: row;
+    }
+    #floating-annotation-toolbar #annotation-undo-redo {
+        border-top: none;
+        border-left: var(--line-hairline);
+        padding-top: 0;
+        margin-top: 0;
+        padding-left: var(--sp-2);
+        margin-left: var(--sp-1);
+    }
+    #shape-sidebar {
+        top: auto;
+        bottom: calc(100px + var(--sp-3) + var(--hit-min) + var(--sp-3) + 8px);
+        right: 50%;
+        transform: translateX(50%);
+        flex-direction: row;
+    }
+}
+
+/* Ensure annotation panel toggle (legacy) stays hidden — we use the unified rail now */
+#annotation-panel-toggle,
+#floating-annotation-panel { display: none !important; }

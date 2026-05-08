@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<!--
+  Beamer+ Camera Widget
+  =====================
+  IMPORTANT: The iframe hosting this widget must have:
+    allow="camera; autoplay; fullscreen"
+  The default iframe-widget-renderer.js sets "autoplay; fullscreen" only.
+  You must also add "camera" to the allow attribute for getUserMedia to work.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="permissions-policy" content="camera=*" />
+  <title>Camera — Beamer+</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg:        oklch(99% 0.003 80);
+      --bg-2:      oklch(97% 0.005 80);
+      --bg-3:      oklch(94% 0.007 80);
+      --bg-4:      oklch(90% 0.008 80);
+      --ink-1:     oklch(22% 0.012 260);
+      --ink-2:     oklch(38% 0.010 260);
+      --ink-3:     oklch(55% 0.008 260);
+      --ink-4:     oklch(72% 0.006 260);
+      --accent:    oklch(45% 0.005 260);
+      --accent-hi: oklch(32% 0.006 260);
+      --accent-lo: oklch(92% 0.004 260);
+      --ok:        oklch(52% 0.14 160);
+      --err:       oklch(58% 0.18 25);
+      --line:      1px solid oklch(85% 0.005 260);
+      --r:         6px;
+      --font:      "EB Garamond", Georgia, serif;
+      --mono:      ui-monospace, "SF Mono", Menlo, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: var(--font);
+      color: var(--ink-1);
+    }
+
+    /* ── Root container ── */
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* ── Live video ── */
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.25s ease;
+    }
+    #video.mirrored { transform: scaleX(-1); }
+
+    /* ── Snapshot flash overlay ── */
+    #flash {
+      position: absolute;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s ease;
+    }
+    #flash.active { opacity: 0.85; }
+
+    /* ── LIVE badge ── */
+    #live-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      padding: 4px 8px;
+      border-radius: var(--r);
+      backdrop-filter: blur(4px);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    #live-badge.visible { opacity: 1; }
+    #live-badge .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--err);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ── Bottom overlay bar ── */
+    #bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #root:hover #bar { opacity: 1; }
+
+    #device-select {
+      flex: 1;
+      min-width: 0;
+      background: rgba(0,0,0,0.55);
+      border: var(--line);
+      border-color: rgba(255,255,255,0.2);
+      color: #fff;
+      font-family: var(--font);
+      font-size: 13px;
+      padding: 5px 8px;
+      border-radius: var(--r);
+      cursor: pointer;
+      appearance: none;
+      backdrop-filter: blur(4px);
+      outline: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #device-select:focus { border-color: rgba(255,255,255,0.5); }
+    #device-select option { background: #222; color: #fff; }
+
+    .bar-btn {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: var(--r);
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      backdrop-filter: blur(4px);
+      padding: 0;
+    }
+    .bar-btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.4); }
+    .bar-btn.active { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.5); }
+    .bar-btn svg { display: block; }
+
+    /* ── Error state ── */
+    #error-screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: var(--bg);
+      color: var(--ink-2);
+      text-align: center;
+      padding: 24px;
+    }
+    #error-screen.visible { display: flex; }
+    #error-screen svg { opacity: 0.35; }
+    #error-msg {
+      font-size: 15px;
+      color: var(--ink-2);
+      max-width: 260px;
+      line-height: 1.5;
+    }
+    #retry-btn {
+      padding: 7px 20px;
+      background: var(--accent-lo);
+      border: var(--line);
+      border-radius: var(--r);
+      font-family: var(--font);
+      font-size: 14px;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #retry-btn:hover { background: var(--bg-3); }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <!-- Video element -->
+    <video id="video" autoplay playsinline muted></video>
+
+    <!-- Snapshot flash -->
+    <div id="flash"></div>
+
+    <!-- LIVE badge -->
+    <div id="live-badge">
+      <span class="dot"></span>
+      LIVE
+    </div>
+
+    <!-- Bottom control bar -->
+    <div id="bar">
+      <select id="device-select" title="Camera device"></select>
+
+      <!-- Snapshot button -->
+      <button class="bar-btn" id="snapshot-btn" title="Snapshot">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="16" height="12" rx="2"/>
+          <circle cx="9" cy="10" r="3"/>
+          <path d="M6 4l1.5-2h3L12 4"/>
+        </svg>
+      </button>
+
+      <!-- Mirror toggle button -->
+      <button class="bar-btn" id="mirror-btn" title="Mirror">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 2v14"/>
+          <path d="M3 5l4 4-4 4"/>
+          <path d="M15 5l-4 4 4 4"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Error screen -->
+    <div id="error-screen">
+      <svg width="52" height="52" viewBox="0 0 52 52" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="12" width="36" height="28" rx="4"/>
+        <path d="M38 20l12-7v26l-12-7"/>
+        <line x1="10" y1="10" x2="42" y2="42" stroke-width="2"/>
+      </svg>
+      <div id="error-msg">Camera unavailable</div>
+      <button id="retry-btn">Retry</button>
+    </div>
+  </div>
+
+  <script>
+    const video       = document.getElementById('video');
+    const flash       = document.getElementById('flash');
+    const liveBadge   = document.getElementById('live-badge');
+    const bar         = document.getElementById('bar');
+    const deviceSel   = document.getElementById('device-select');
+    const snapshotBtn = document.getElementById('snapshot-btn');
+    const mirrorBtn   = document.getElementById('mirror-btn');
+    const errorScreen = document.getElementById('error-screen');
+    const errorMsg    = document.getElementById('error-msg');
+    const retryBtn    = document.getElementById('retry-btn');
+
+    let currentStream  = null;
+    let mirrored       = false;
+    let devicesListed  = false;
+    let cfg            = {};
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function showError(msg) {
+      errorMsg.textContent = msg || 'Camera unavailable';
+      errorScreen.classList.add('visible');
+      liveBadge.classList.remove('visible');
+    }
+
+    function hideError() {
+      errorScreen.classList.remove('visible');
+    }
+
+    function stopStream() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+    }
+
+    async function listDevices() {
+      if (devicesListed) return;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter(d => d.kind === 'videoinput');
+        deviceSel.innerHTML = '';
+        videoInputs.forEach((d, i) => {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `Camera ${i + 1}`;
+          deviceSel.appendChild(opt);
+        });
+        devicesListed = true;
+      } catch (_) { /* ignore */ }
+    }
+
+    async function startCamera(deviceId) {
+      stopStream();
+      hideError();
+
+      const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false
+      };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        video.srcObject = stream;
+        await video.play();
+        liveBadge.classList.add('visible');
+        await listDevices();
+
+        // Select the active device in the dropdown
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const settings = track.getSettings();
+          if (settings.deviceId) {
+            deviceSel.value = settings.deviceId;
+          }
+        }
+      } catch (err) {
+        let msg = 'Camera unavailable';
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          msg = 'Camera access denied.\nPlease allow camera permission and retry.';
+        } else if (err.name === 'NotFoundError') {
+          msg = 'No camera found on this device.';
+        } else if (err.name === 'NotReadableError') {
+          msg = 'Camera is in use by another application.';
+        }
+        showError(msg);
+      }
+    }
+
+    function setMirror(val) {
+      mirrored = !!val;
+      video.classList.toggle('mirrored', mirrored);
+      mirrorBtn.classList.toggle('active', mirrored);
+    }
+
+    function doSnapshot() {
+      if (!currentStream) return;
+
+      // Flash effect
+      flash.classList.add('active');
+      setTimeout(() => flash.classList.remove('active'), 200);
+
+      // Draw to canvas and download
+      const canvas = document.createElement('canvas');
+      canvas.width  = video.videoWidth  || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (mirrored) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `snapshot-${Date.now()}.jpg`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }, 'image/jpeg', 0.92);
+    }
+
+    // ── Config ───────────────────────────────────────────────────────────────
+
+    function updateConfig(newCfg) {
+      cfg = { ...cfg, ...newCfg };
+
+      // Mirror
+      if (typeof cfg.mirror === 'boolean') {
+        setMirror(cfg.mirror);
+      }
+
+      // Device change
+      if (cfg.deviceId && currentStream) {
+        const track = currentStream.getVideoTracks()[0];
+        const active = track?.getSettings()?.deviceId;
+        if (active !== cfg.deviceId) {
+          startCamera(cfg.deviceId);
+        }
+      }
+
+      // Auto-start (only on first config)
+      if (cfg.autoStart !== false && !currentStream) {
+        startCamera(cfg.deviceId || null);
+      }
+    }
+
+    // ── Events ───────────────────────────────────────────────────────────────
+
+    deviceSel.addEventListener('change', () => {
+      startCamera(deviceSel.value);
+    });
+
+    snapshotBtn.addEventListener('click', doSnapshot);
+
+    mirrorBtn.addEventListener('click', () => setMirror(!mirrored));
+
+    retryBtn.addEventListener('click', () => {
+      startCamera(deviceSel.value || cfg.deviceId || null);
+    });
+
+    // ── postMessage API ───────────────────────────────────────────────────────
+
+    let destroy = null;
+
+    window.addEventListener('message', e => {
+      if (e.data?.type === 'widget-config') updateConfig(e.data.config);
+      if (e.data?.type === 'widget-cleanup') destroy?.();
+    });
+
+    destroy = () => {
+      stopStream();
+      liveBadge.classList.remove('visible');
+    };
+
+    // ── Auto-start on load ────────────────────────────────────────────────────
+
+    if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
+      showError('getUserMedia is not supported in this browser or context.');
+    } else {
+      // Start with default cfg (autoStart defaults to true)
+      updateConfig({ autoStart: true, mirror: false });
+    }
+  </script>
+</body>
+</html>

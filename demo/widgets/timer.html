@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         oklch(99% 0.003 80);
+    --bg-2:       oklch(97% 0.005 80);
+    --bg-3:       oklch(94% 0.007 80);
+    --bg-4:       oklch(90% 0.008 80);
+    --ink-1:      oklch(22% 0.012 260);
+    --ink-2:      oklch(38% 0.010 260);
+    --ink-3:      oklch(55% 0.008 260);
+    --ink-4:      oklch(72% 0.006 260);
+    --accent:     oklch(45% 0.005 260);
+    --accent-hi:  oklch(32% 0.006 260);
+    --accent-lo:  oklch(92% 0.004 260);
+    --ok:         oklch(52% 0.14 160);
+    --err:        oklch(58% 0.18 25);
+    --err-tint:   oklch(96% 0.04 25);
+    --line:       1px solid oklch(85% 0.005 260);
+    --r:          6px;
+    --font:       "EB Garamond", Georgia, serif;
+    --mono:       ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: var(--font);
+    color: var(--ink-1);
+    transition: background 0.2s;
+  }
+
+  body.flash {
+    background: var(--err-tint);
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 0;
+    padding: 16px;
+  }
+
+  /* Time display */
+  #time-display {
+    font-family: var(--mono);
+    font-size: clamp(2.4rem, 8vw, 4.2rem);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: var(--ink-1);
+    line-height: 1;
+    margin-bottom: 10px;
+    transition: color 0.2s;
+    text-align: center;
+  }
+
+  #time-display.expired {
+    color: var(--err);
+  }
+
+  /* Mode label */
+  #mode-label {
+    display: none;
+  }
+
+  /* Duration stepper (countdown only, when stopped) */
+  #duration-controls {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+
+  #duration-controls.visible {
+    display: flex;
+  }
+
+  #duration-controls button {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--ink-2);
+    background: var(--bg);
+    border: var(--line);
+    border-radius: var(--r);
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background 0.1s;
+    white-space: nowrap;
+  }
+
+  #duration-controls button:hover { background: var(--bg-3); }
+  #duration-controls button:active { background: var(--bg-4); }
+  #duration-controls button:disabled { opacity: 0.45; cursor: default; background: var(--bg); }
+
+  #duration-display {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    min-width: 52px;
+    text-align: center;
+    padding: 4px 8px;
+    border: var(--line);
+    border-radius: var(--r);
+    background: var(--bg-2);
+    cursor: default;
+    user-select: none;
+  }
+
+  /* Remove old inline controls */
+  #controls { display: none; }
+
+  /* Shell */
+  #shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Footer panel */
+  #footer-panel {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-top: 1px solid oklch(85% 0.005 260);
+    background: var(--bg);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 22px;
+    font-family: var(--font);
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--ink-2);
+    border: var(--line);
+    border-radius: var(--r);
+    cursor: pointer;
+    transition: background 100ms;
+    white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) { background: var(--bg-4); }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.primary {
+    background: var(--accent);
+    color: oklch(97% 0.003 80);
+    border-color: var(--accent-hi);
+  }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
+
+  /* Viewer badge */
+  #viewer-badge {
+    display: none;
+    position: absolute;
+    bottom: 10px;
+    right: 12px;
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    color: var(--ink-4);
+  }
+</style>
+</head>
+<body>
+<div id="shell">
+<div id="app">
+  <div id="time-display">00:00</div>
+  <div id="mode-label">stopwatch</div>
+
+  <div id="duration-controls">
+    <button id="btn-minus-1m">-1m</button>
+    <button id="btn-minus-10s">-10s</button>
+    <div id="duration-display">5:00</div>
+    <button id="btn-plus-10s">+10s</button>
+    <button id="btn-plus-1m">+1m</button>
+  </div>
+
+  <div id="controls">
+    <button class="primary"   id="btn-start-pause">Start</button>
+    <button class="secondary" id="btn-reset">Reset</button>
+  </div>
+</div>
+
+<div id="footer-panel">
+  <button class="btn primary" id="footer-btn-start-pause">Start</button>
+  <button class="btn" id="footer-btn-reset">Reset</button>
+</div>
+</div>
+<div id="viewer-badge">view only</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── State ────────────────────────────────────────────────────────────────────
+
+  const state = {
+    mode:     'stopwatch', // 'stopwatch' | 'countdown'
+    running:  false,
+    elapsed:  0,           // ms for stopwatch; ms consumed for countdown
+    duration: 300000,      // ms; countdown only
+    expired:  false,
+  };
+
+  let rafId       = null;
+  let lastTick    = null;
+  let socket      = null;
+  let isViewer    = false;
+  let widgetId    = 'timer-default';
+  let syncTimer   = null;   // interval for periodic socket emit
+  let flashTimer  = null;
+
+  // ── DOM refs ─────────────────────────────────────────────────────────────────
+
+  const timeEl        = document.getElementById('time-display');
+  const modeLabel     = document.getElementById('mode-label');
+  const durControls   = document.getElementById('duration-controls');
+  const durDisplay    = document.getElementById('duration-display');
+  const btnStartPause = document.getElementById('btn-start-pause');
+  const btnReset      = document.getElementById('btn-reset');
+  const badge         = document.getElementById('viewer-badge');
+
+  const footerBtnStartPause = document.getElementById('footer-btn-start-pause');
+  const footerBtnReset      = document.getElementById('footer-btn-reset');
+
+  // ── Formatting ───────────────────────────────────────────────────────────────
+
+  function fmtStopwatch(ms) {
+    const totalS  = ms / 1000;
+    const h  = Math.floor(totalS / 3600);
+    const m  = Math.floor((totalS % 3600) / 60);
+    const s  = Math.floor(totalS % 60);
+    const ds = Math.floor((ms % 1000) / 100); // 1 decimal
+    const pad = n => String(n).padStart(2, '0');
+    if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}.${ds}`;
+    return `${pad(m)}:${pad(s)}.${ds}`;
+  }
+
+  function fmtCountdown(ms) {
+    const totalS = Math.ceil(Math.max(ms, 0) / 1000);
+    const h  = Math.floor(totalS / 3600);
+    const m  = Math.floor((totalS % 3600) / 60);
+    const s  = totalS % 60;
+    const pad = n => String(n).padStart(2, '0');
+    if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    return `${pad(m)}:${pad(s)}`;
+  }
+
+  function fmtDuration(ms) {
+    const totalS = Math.round(ms / 1000);
+    const m = Math.floor(totalS / 60);
+    const s = totalS % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return `${m}:${pad(s)}`;
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  function render() {
+    if (state.mode === 'stopwatch') {
+      timeEl.textContent = fmtStopwatch(state.elapsed);
+      modeLabel.textContent = 'stopwatch';
+    } else {
+      const remaining = Math.max(state.duration - state.elapsed, 0);
+      timeEl.textContent = fmtCountdown(remaining);
+      modeLabel.textContent = 'countdown';
+    }
+
+    timeEl.classList.toggle('expired', state.expired);
+    btnStartPause.textContent        = state.running ? 'Pause' : 'Start';
+    footerBtnStartPause.textContent  = state.running ? 'Pause' : 'Start';
+
+    // Duration stepper: show when countdown and stopped and not expired
+    const showStepper = state.mode === 'countdown' && !state.running && !state.expired;
+    durControls.classList.toggle('visible', showStepper);
+    if (showStepper) durDisplay.textContent = fmtDuration(state.duration);
+
+    // Viewer: disable controls
+    btnStartPause.disabled = isViewer;
+    btnReset.disabled      = isViewer;
+    footerBtnStartPause.disabled = isViewer;
+    footerBtnReset.disabled      = isViewer;
+    document.getElementById('footer-panel').style.display = isViewer ? 'none' : 'flex';
+    document.querySelectorAll('#duration-controls button').forEach(b => {
+      b.disabled = isViewer;
+    });
+  }
+
+  // ── Tick loop ─────────────────────────────────────────────────────────────────
+
+  function tick(now) {
+    if (!state.running) return;
+    const delta = now - lastTick;
+    lastTick = now;
+    state.elapsed += delta;
+
+    if (state.mode === 'countdown') {
+      if (state.elapsed >= state.duration) {
+        state.elapsed = state.duration;
+        stopTimer();
+        state.expired = true;
+        doFlash();
+        render();
+        emitState();
+        return;
+      }
+    }
+
+    render();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function startTimer() {
+    if (state.running) return;
+    if (state.expired) return;
+    state.running = true;
+    lastTick = performance.now();
+    rafId = requestAnimationFrame(tick);
+    startSyncInterval();
+    render();
+    emitState();
+  }
+
+  function stopTimer() {
+    state.running = false;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    stopSyncInterval();
+  }
+
+  function pauseTimer() {
+    if (!state.running) return;
+    stopTimer();
+    render();
+    emitState();
+  }
+
+  function resetTimer() {
+    stopTimer();
+    state.elapsed = 0;
+    state.expired = false;
+    document.body.classList.remove('flash');
+    if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+    render();
+    emitState();
+  }
+
+  // ── Flash ─────────────────────────────────────────────────────────────────────
+
+  function doFlash() {
+    let count = 0;
+    const maxFlashes = 6;
+    function step() {
+      if (count >= maxFlashes) {
+        document.body.classList.remove('flash');
+        return;
+      }
+      document.body.classList.toggle('flash');
+      count++;
+      flashTimer = setTimeout(step, 350);
+    }
+    step();
+  }
+
+  // ── Button handlers ───────────────────────────────────────────────────────────
+
+  btnStartPause.addEventListener('click', () => {
+    if (isViewer) return;
+    if (state.running) pauseTimer();
+    else startTimer();
+  });
+
+  btnReset.addEventListener('click', () => {
+    if (isViewer) return;
+    resetTimer();
+  });
+
+  footerBtnStartPause.addEventListener('click', () => {
+    if (isViewer) return;
+    if (state.running) pauseTimer();
+    else startTimer();
+  });
+
+  footerBtnReset.addEventListener('click', () => {
+    if (isViewer) return;
+    resetTimer();
+  });
+
+  document.getElementById('btn-plus-1m').addEventListener('click', () => {
+    if (isViewer || state.running) return;
+    state.duration = Math.min(state.duration + 60000, 6 * 3600 * 1000);
+    render();
+  });
+
+  document.getElementById('btn-minus-1m').addEventListener('click', () => {
+    if (isViewer || state.running) return;
+    state.duration = Math.max(state.duration - 60000, 10000);
+    render();
+  });
+
+  document.getElementById('btn-plus-10s').addEventListener('click', () => {
+    if (isViewer || state.running) return;
+    state.duration = Math.min(state.duration + 10000, 6 * 3600 * 1000);
+    render();
+  });
+
+  document.getElementById('btn-minus-10s').addEventListener('click', () => {
+    if (isViewer || state.running) return;
+    state.duration = Math.max(state.duration - 10000, 10000);
+    render();
+  });
+
+  // ── Sync ──────────────────────────────────────────────────────────────────────
+
+  function buildStatePayload() {
+    return {
+      mode:     state.mode,
+      running:  state.running,
+      elapsed:  state.elapsed,
+      duration: state.duration,
+    };
+  }
+
+  function emitState() {
+    if (socket && !isViewer) {
+      socket.emit('widget_state', {
+        widgetId,
+        state: buildStatePayload(),
+      });
+    }
+  }
+
+  function startSyncInterval() {
+    if (syncTimer) return;
+    syncTimer = setInterval(emitState, 1000);
+  }
+
+  function stopSyncInterval() {
+    if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+  }
+
+  function applyRemoteState(data) {
+    if (!isViewer) return;
+    const wasRunning = state.running;
+    const wasExpired = state.expired;
+
+    state.mode     = data.mode     || 'stopwatch';
+    state.duration = data.duration || 300000;
+    state.elapsed  = data.elapsed  || 0;
+    state.expired  = false;
+
+    if (data.running && !wasRunning) {
+      // Presenter started — mirror running
+      stopTimer(); // cancel any local raf
+      state.running = true;
+      lastTick = performance.now();
+      rafId = requestAnimationFrame(tick);
+    } else if (!data.running && wasRunning) {
+      // Presenter paused/stopped
+      stopTimer();
+    }
+
+    // Check expiry
+    if (state.mode === 'countdown' && state.elapsed >= state.duration) {
+      state.expired = true;
+      if (!wasExpired) doFlash();
+    }
+
+    render();
+  }
+
+  function connectSocket(url) {
+    if (socket) { socket.disconnect(); socket = null; }
+    socket = io(url, { transports: ['websocket', 'polling'] });
+
+    socket.on('widget_state', data => {
+      if (!isViewer) return;
+      if (data?.widgetId !== widgetId) return;
+      applyRemoteState(data?.state || {});
+    });
+  }
+
+  // ── Config ────────────────────────────────────────────────────────────────────
+
+  function updateConfig(cfg) {
+    cfg = cfg || {};
+    widgetId = cfg.id || cfg.widgetId || widgetId;
+
+    isViewer = cfg.role === 'viewer';
+    badge.style.display = isViewer ? 'block' : 'none';
+
+    if (cfg.mode === 'countdown' || cfg.mode === 'stopwatch') {
+      state.mode = cfg.mode;
+    }
+
+    if (typeof cfg.duration === 'number' && cfg.duration > 0) {
+      state.duration = cfg.duration * 1000;
+    }
+
+    resetTimer(); // apply new config from clean state
+    render();
+
+    if (cfg.autoStart && !isViewer) {
+      startTimer();
+    }
+
+    if (cfg.socketUrl) {
+      connectSocket(cfg.socketUrl);
+    }
+  }
+
+  let destroy = function () {
+    stopTimer();
+    if (socket) { socket.disconnect(); socket = null; }
+    if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+  };
+
+  // ── Message listener ──────────────────────────────────────────────────────────
+
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
+    if (e.data?.type === 'widget-cleanup') destroy?.();
+  });
+
+  // Initial render
+  render();
+})();
+</script>
+</body>
+</html>

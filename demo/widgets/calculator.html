@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         oklch(99% 0.003 80);
+    --bg-2:       oklch(97% 0.005 80);
+    --bg-3:       oklch(94% 0.007 80);
+    --bg-4:       oklch(90% 0.008 80);
+    --ink-1:      oklch(22% 0.012 260);
+    --ink-2:      oklch(38% 0.010 260);
+    --ink-3:      oklch(55% 0.008 260);
+    --ink-4:      oklch(72% 0.006 260);
+    --accent:     oklch(45% 0.005 260);
+    --accent-hi:  oklch(32% 0.006 260);
+    --accent-lo:  oklch(92% 0.004 260);
+    --ok:         oklch(52% 0.14 160);
+    --err:        oklch(58% 0.18 25);
+    --line:       1px solid oklch(85% 0.005 260);
+    --r:          6px;
+    --font:       "EB Garamond", Georgia, serif;
+    --mono:       ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: var(--font);
+    color: var(--ink-1);
+    touch-action: manipulation;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  /* Display area */
+  #display {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg-2);
+    border: var(--line);
+    border-radius: var(--r);
+    padding: 10px 12px;
+    flex-shrink: 0;
+  }
+
+  #expression-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #expression {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    color: var(--ink-2);
+    background: transparent;
+    border: none;
+    outline: none;
+    min-width: 0;
+    caret-color: var(--accent);
+  }
+
+  #expression::placeholder {
+    color: var(--ink-4);
+  }
+
+  #expression:read-only {
+    cursor: default;
+  }
+
+  #result {
+    font-family: var(--mono);
+    font-size: 1.55rem;
+    font-weight: 500;
+    color: var(--ink-3);
+    min-height: 2rem;
+    letter-spacing: -0.01em;
+    transition: color 0.15s;
+  }
+
+  #result.ok  { color: var(--ok); }
+  #result.err { color: var(--err); font-size: 0.9rem; padding-top: 0.2rem; }
+
+  /* Button grid */
+  #buttons {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .btn-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+  }
+
+  .btn-row.wide {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  button {
+    font-family: var(--font);
+    font-size: 1rem;
+    color: var(--ink-1);
+    background: var(--bg);
+    border: var(--line);
+    border-radius: var(--r);
+    padding: 10px 6px;
+    min-height: 48px;
+    cursor: pointer;
+    transition: background 0.1s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  button:hover { background: var(--bg-3); }
+  button:active { background: var(--bg-4); }
+
+  button.primary {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-weight: 500;
+  }
+
+  button.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); }
+
+  button.fn {
+    font-size: 0.88rem;
+    color: var(--ink-2);
+    background: var(--bg-2);
+  }
+  button.fn:hover { background: var(--bg-3); }
+
+  /* Viewer overlay */
+  #viewer-badge {
+    display: none;
+    font-size: 0.72rem;
+    color: var(--ink-4);
+    font-family: var(--mono);
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  @media (pointer: coarse) {
+    #app {
+      padding: 14px;
+      gap: 12px;
+    }
+
+    .btn-row {
+      gap: 8px;
+    }
+
+    button {
+      font-size: 1.08rem;
+      min-height: 56px;
+      border-radius: 10px;
+    }
+
+    button.fn {
+      font-size: 0.96rem;
+    }
+
+    #expression {
+      font-size: 1.2rem;
+    }
+
+    #result {
+      font-size: 1.8rem;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="display">
+    <div id="expression-row">
+      <input id="expression" type="text" spellcheck="false" placeholder="Enter expression…" autocomplete="off">
+    </div>
+    <div id="result"></div>
+  </div>
+
+  <div id="buttons">
+    <!-- Row 1: functions -->
+    <div class="btn-row">
+      <button class="fn" data-insert="sin(">sin</button>
+      <button class="fn" data-insert="cos(">cos</button>
+      <button class="fn" data-insert="tan(">tan</button>
+      <button class="fn" data-insert="π">&#960;</button>
+      <button class="fn" data-insert="e">e</button>
+    </div>
+    <!-- Row 2 -->
+    <div class="btn-row">
+      <button data-insert="7">7</button>
+      <button data-insert="8">8</button>
+      <button data-insert="9">9</button>
+      <button class="fn" data-insert="(">(</button>
+      <button class="fn" data-insert=")">)</button>
+    </div>
+    <!-- Row 3 -->
+    <div class="btn-row">
+      <button data-insert="4">4</button>
+      <button data-insert="5">5</button>
+      <button data-insert="6">6</button>
+      <button class="fn" data-insert="*">*</button>
+      <button class="fn" data-insert="/">/</button>
+    </div>
+    <!-- Row 4 -->
+    <div class="btn-row">
+      <button data-insert="1">1</button>
+      <button data-insert="2">2</button>
+      <button data-insert="3">3</button>
+      <button class="fn" data-insert="+">+</button>
+      <button class="fn" data-insert="-">-</button>
+    </div>
+    <!-- Row 5 -->
+    <div class="btn-row">
+      <button data-insert="0">0</button>
+      <button data-insert=".">.</button>
+      <button class="fn" data-insert="^">^</button>
+      <button class="fn" data-insert="√(">&#8730;</button>
+      <button class="fn" id="btn-backspace">&#9003;</button>
+    </div>
+    <!-- Row 6: wide -->
+    <div class="btn-row wide">
+      <button class="fn" data-insert="ln(">ln</button>
+      <button class="fn" data-insert="log(">log</button>
+      <button class="fn" data-insert="exp(">exp</button>
+      <button class="primary" id="btn-equals">=</button>
+    </div>
+  </div>
+
+  <div id="viewer-badge">view only</div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const exprEl   = document.getElementById('expression');
+  const resultEl = document.getElementById('result');
+  const badge    = document.getElementById('viewer-badge');
+
+  let socket   = null;
+  let isViewer = false;
+  let widgetId = 'calculator-default';
+  let destroy  = null;
+
+  // ── Evaluation ──────────────────────────────────────────────────────────────
+
+  function sanitize(raw) {
+    return raw
+      .replace(/sin\(/g,  'Math.sin(')
+      .replace(/cos\(/g,  'Math.cos(')
+      .replace(/tan\(/g,  'Math.tan(')
+      .replace(/log\(/g,  'Math.log10(')
+      .replace(/ln\(/g,   'Math.log(')
+      .replace(/exp\(/g,  'Math.exp(')
+      .replace(/√\(/g,    'Math.sqrt(')
+      .replace(/√/g,      'Math.sqrt(')
+      .replace(/π/g,      'Math.PI')
+      .replace(/\be\b/g,  'Math.E')
+      .replace(/\^/g,     '**');
+  }
+
+  function evaluate(expr) {
+    if (!expr.trim()) return { value: '', error: false };
+    try {
+      const sanitized = sanitize(expr);
+      // Guard against anything non-mathematical
+      if (/[a-df-wyzA-DF-WYZ_$]/.test(sanitized.replace(/Math\./g, ''))) {
+        return { value: 'invalid expression', error: true };
+      }
+      // eslint-disable-next-line no-new-func
+      const value = Function('"use strict"; return (' + sanitized + ')')();
+      if (typeof value !== 'number' || isNaN(value)) {
+        return { value: 'not a number', error: true };
+      }
+      if (!isFinite(value)) {
+        return { value: value > 0 ? 'Infinity' : '-Infinity', error: false };
+      }
+      // Format nicely
+      const str = Number.isInteger(value)
+        ? value.toString()
+        : parseFloat(value.toPrecision(12)).toString();
+      return { value: str, error: false };
+    } catch (e) {
+      return { value: 'syntax error', error: true };
+    }
+  }
+
+  function showResult(value, error) {
+    resultEl.textContent = value;
+    resultEl.className   = error ? 'err' : (value ? 'ok' : '');
+  }
+
+  // ── UI actions ───────────────────────────────────────────────────────────────
+
+  function insertText(text) {
+    if (isViewer) return;
+    const start = exprEl.selectionStart;
+    const end   = exprEl.selectionEnd;
+    const cur   = exprEl.value;
+    exprEl.value = cur.slice(0, start) + text + cur.slice(end);
+    const pos = start + text.length;
+    exprEl.setSelectionRange(pos, pos);
+    exprEl.focus();
+    onExpressionChange();
+  }
+
+  function doBackspace() {
+    if (isViewer) return;
+    const start = exprEl.selectionStart;
+    const end   = exprEl.selectionEnd;
+    const cur   = exprEl.value;
+    if (start !== end) {
+      exprEl.value = cur.slice(0, start) + cur.slice(end);
+      exprEl.setSelectionRange(start, start);
+    } else if (start > 0) {
+      exprEl.value = cur.slice(0, start - 1) + cur.slice(start);
+      exprEl.setSelectionRange(start - 1, start - 1);
+    }
+    exprEl.focus();
+    onExpressionChange();
+  }
+
+  function doEvaluate() {
+    if (isViewer) return;
+    const expr = exprEl.value;
+    const res  = evaluate(expr);
+    showResult(res.value, res.error);
+    if (!res.error && res.value) {
+      emitState(expr, res.value);
+    }
+  }
+
+  function onExpressionChange() {
+    // Live preview as you type (only show result if non-empty)
+    const expr = exprEl.value;
+    if (!expr.trim()) { showResult('', false); emitState('', ''); return; }
+    const res = evaluate(expr);
+    // Only show live preview for valid results
+    if (!res.error) {
+      showResult(res.value, false);
+      emitState(expr, res.value);
+    } else {
+      resultEl.textContent = '';
+      resultEl.className   = '';
+      emitState(expr, '');
+    }
+  }
+
+  // ── Button wiring ────────────────────────────────────────────────────────────
+
+  document.querySelectorAll('button[data-insert]').forEach(btn => {
+    btn.addEventListener('click', () => insertText(btn.dataset.insert));
+  });
+
+  document.getElementById('btn-backspace').addEventListener('click', doBackspace);
+  document.getElementById('btn-equals').addEventListener('click', doEvaluate);
+
+  // ── Keyboard ─────────────────────────────────────────────────────────────────
+
+  document.addEventListener('keydown', e => {
+    if (isViewer) return;
+    if (e.key === 'Enter')     { e.preventDefault(); doEvaluate(); }
+    // Let the input handle everything else natively
+  });
+
+  exprEl.addEventListener('input', onExpressionChange);
+
+  // ── Socket sync ──────────────────────────────────────────────────────────────
+
+  function emitState(expression, result) {
+    if (socket && !isViewer) {
+      socket.emit('widget_state', {
+        widgetId,
+        state: { expression, result },
+      });
+    }
+  }
+
+  function connectSocket(url) {
+    if (socket) { socket.disconnect(); socket = null; }
+    socket = io(url, { transports: ['websocket', 'polling'] });
+
+    socket.on('widget_state', data => {
+      if (!isViewer) return;
+      if (data?.widgetId !== widgetId) return;
+      const state = data?.state || {};
+      exprEl.value = state.expression || '';
+      showResult(state.result || '', false);
+    });
+
+    socket.on('disconnect', () => {});
+  }
+
+  // ── Config ───────────────────────────────────────────────────────────────────
+
+  function updateConfig(cfg) {
+    cfg = cfg || {};
+    widgetId = cfg.id || cfg.widgetId || widgetId;
+
+    isViewer = cfg.role === 'viewer';
+    exprEl.readOnly = isViewer;
+    badge.style.display = isViewer ? 'block' : 'none';
+
+    // Disable buttons for viewer
+    document.querySelectorAll('button').forEach(b => {
+      b.disabled = isViewer;
+      b.style.opacity = isViewer ? '0.6' : '';
+      b.style.cursor  = isViewer ? 'default' : '';
+    });
+
+    if (cfg.defaultExpression && !isViewer) {
+      exprEl.value = cfg.defaultExpression;
+      onExpressionChange();
+    }
+
+    if (cfg.socketUrl) {
+      connectSocket(cfg.socketUrl);
+    }
+  }
+
+  destroy = function () {
+    if (socket) { socket.disconnect(); socket = null; }
+  };
+
+  // ── Message listener ─────────────────────────────────────────────────────────
+
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
+    if (e.data?.type === 'widget-cleanup') destroy?.();
+  });
+})();
+</script>
+</body>
+</html>

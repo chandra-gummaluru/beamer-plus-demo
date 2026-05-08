@@ -1,0 +1,234 @@
+/* ============================================================
+   Modal — refined paper card with backdrop blur
+   ============================================================ */
+
+.custom-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: oklch(20% 0.01 260 / 0.32);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    font-family: var(--font-sans);
+    animation: modal-overlay-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes modal-overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.custom-modal-content {
+    background: var(--surface-paper);
+    border: var(--line-soft);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+    padding: var(--sp-6);
+    max-width: 480px;
+    width: 90%;
+    position: relative;
+    animation: modal-content-in var(--dur-slow) var(--ease-out);
+}
+
+@keyframes modal-content-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.custom-modal-icon {
+    font-size: 1.75rem;
+    text-align: center;
+    color: var(--ink-2);
+    margin-bottom: var(--sp-3);
+}
+
+.custom-modal-overlay.modal-error .custom-modal-icon { color: var(--danger); }
+.custom-modal-overlay.modal-success .custom-modal-icon { color: oklch(52% 0.13 150); }
+.custom-modal-overlay.modal-warning .custom-modal-icon { color: oklch(60% 0.14 60); }
+
+.custom-modal-title {
+    font-family: var(--font-serif);
+    margin: 0 0 var(--sp-3) 0;
+    text-align: center;
+    font-size: var(--fs-xl);
+    font-weight: 500;
+    color: var(--ink-1);
+    letter-spacing: -0.01em;
+}
+
+.custom-modal-message {
+    text-align: center;
+    color: var(--ink-2);
+    line-height: 1.5;
+    margin: 0 0 var(--sp-5) 0;
+    user-select: text;
+    font-size: var(--fs-md);
+}
+
+.custom-modal-buttons {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-2);
+}
+
+.custom-modal-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    min-height: var(--hit-min);
+    padding: 0 1em;
+    font-family: var(--font-sans);
+    font-size: var(--fs-md);
+    color: var(--ink-1);
+    background: var(--surface-paper);
+    border: 1px solid oklch(82% 0.005 260);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background-color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.custom-modal-btn:hover { background: var(--surface-cream-2); border-color: var(--ink-4); }
+
+.custom-modal-btn-ok {
+    background: var(--accent);
+    color: var(--ink-on-accent);
+    border-color: var(--accent-strong);
+    font-weight: 500;
+}
+.custom-modal-btn-ok:hover { background: var(--accent-strong); }
+
+.custom-modal-btn-cancel { color: var(--ink-2); }
+
+/* ---------- Pen settings inside modal ---------- */
+.custom-modal-pen-settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-4);
+    align-items: center;
+}
+
+.custom-modal-setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    align-items: center;
+    width: 100%;
+}
+
+.custom-modal-setting-label {
+    color: var(--ink-2);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.custom-modal-button-group,
+.custom-modal-swatch-row,
+.custom-modal-size-row {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.custom-modal-tool-btn {
+    min-width: 56px;
+    padding: 0.5em 0.9em;
+}
+.custom-modal-tool-btn.is-selected {
+    color: var(--ink-on-accent);
+    background: var(--accent);
+    border-color: var(--accent-strong);
+}
+
+.custom-modal-pen-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid oklch(82% 0.005 260);
+    cursor: pointer;
+    padding: 0;
+    transition: transform var(--dur-fast), box-shadow var(--dur-fast);
+}
+.custom-modal-pen-swatch:hover { transform: scale(1.08); }
+.custom-modal-pen-swatch.is-selected {
+    box-shadow: 0 0 0 2px var(--surface-paper), 0 0 0 4px var(--accent);
+    border-color: transparent;
+}
+
+.custom-modal-size-option {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-paper);
+    border: 1px solid oklch(82% 0.005 260);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    padding: 0;
+    transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.custom-modal-size-option:hover { background: var(--surface-cream-2); }
+.custom-modal-size-option.is-selected {
+    background: var(--accent);
+    border-color: var(--accent-strong);
+}
+
+.custom-modal-size-dot {
+    display: block;
+    border-radius: 50%;
+    background: var(--ink-1);
+}
+.custom-modal-size-option.is-selected .custom-modal-size-dot { background: var(--ink-on-accent); }
+.custom-modal-size-dot.size-1 { width: 5px; height: 5px; }
+.custom-modal-size-dot.size-2 { width: 9px; height: 9px; }
+.custom-modal-size-dot.size-3 { width: 13px; height: 13px; }
+.custom-modal-size-dot.size-4 { width: 17px; height: 17px; }
+.custom-modal-size-dot.size-5 { width: 21px; height: 21px; }
+
+/* Squiggle loader (kept) */
+.custom-modal-squiggle {
+    width: 120px; height: 40px; display: block; margin: 0 auto var(--sp-3);
+}
+.custom-modal-squiggle path {
+    fill: none; stroke: var(--ink-2); stroke-width: 2.5;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 150; stroke-dashoffset: 150;
+    animation: draw-squiggle 1.6s ease-in-out infinite;
+}
+@keyframes draw-squiggle {
+    0% { stroke-dashoffset: 150; opacity: 0.6; }
+    40% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: -150; opacity: 0.6; }
+}
+
+.modal-loading { pointer-events: auto; }
+.modal-loading .custom-modal-content { pointer-events: auto; }
+
+/* Upload modal options */
+.upload-option-btn {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-5);
+    width: 100%;
+    text-align: left;
+    font-size: var(--fs-md);
+    border-radius: var(--r-md);
+}
+.upload-option-btn i { font-size: 20px; color: var(--accent); width: 24px; }
+
+@media (max-width: 768px) {
+    .custom-modal-content { max-width: 92%; padding: var(--sp-5); }
+    .custom-modal-buttons { flex-direction: column-reverse; }
+    .custom-modal-btn { width: 100%; }
+}
