@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notebook — Beamer+</title>
+
+<!-- Pyodide (presenter only — viewer skips this) -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+<!-- Markdown renderer -->
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<!-- Socket.IO served by Beamer+ Flask server -->
+<script>
+  (function () {
+    var s = document.createElement('script');
+    s.src = '/socket.io/socket.io.js';
+    s.onerror = function () { window.__noSocketIO = true; };
+    document.head.appendChild(s);
+  })();
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
+
+/* ── Design tokens ────────────────────────────────────────────── */
+:root {
+  --bg:           #ffffff;
+  --bg-subtle:    #f9f9f8;
+  --bg-output:    #fafaf9;
+  --border:       #e9e9e6;
+  --border-med:   #d4d4cf;
+  --text:         #1a1a18;
+  --text-2:       #6b6b65;
+  --text-3:       #aeaea5;
+  --accent:       #999999;
+  --accent-bg:    #eff4ff;
+  --green:        #15803d;
+  --amber:        #b45309;
+  --red:          #dc2626;
+  --red-bg:       #fef2f2;
+  --radius:       6px;
+  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-ui:      'DM Sans', system-ui, sans-serif;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────── */
+#toolbar {
+  flex-shrink: 0;
+  height: 42px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 5px;
+}
+
+#notebook-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-right: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
+
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.tb-btn:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  border-color: var(--border-med);
+}
+.tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.tb-btn.primary {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+}
+.tb-btn.primary:hover:not(:disabled) { background: #2d2d2a; border-color: #2d2d2a; }
+
+/* kernel status pill */
+.kernel-pill {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.k-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+.k-dot.ready  { background: var(--green); }
+.k-dot.busy   { background: var(--red); animation: blink 0.9s ease-in-out infinite; }
+.k-dot.viewer { background: var(--text-3); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+@keyframes spin   { to { transform: rotate(360deg); } }
+
+/* ── Notebook scroll area ──────────────────────────────────────── */
+#notebook-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 0 80px;
+  scroll-behavior: smooth;
+}
+
+#notebook {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── Boot / loading state ──────────────────────────────────────── */
+#boot-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 64px 20px;
+  color: var(--text-2);
+}
+.boot-spinner {
+  width: 26px; height: 26px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+}
+#boot-msg   { font-size: 13px; }
+#boot-sub   { font-size: 11.5px; color: var(--text-3); }
+
+/* ── Cell block ────────────────────────────────────────────────── */
+.cell-block { margin-bottom: 3px; position: relative; }
+
+.cell-row { display: flex; align-items: stretch; }
+
+/* left gutter: exec number */
+.cell-gutter {
+  width: 46px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 9px 8px 0 0;
+  user-select: none;
+}
+
+.exec-num {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  line-height: 1;
+  transition: color 0.2s;
+}
+.exec-num.ran   { color: var(--text-2); }
+
+/* cell card */
+.cell-card {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cell-card.focused {
+  border-color: var(--border-med);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.07);
+}
+.cell-card.running { border-color: #f59e0b88; }
+
+/* left accent bar */
+.cell-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: transparent;
+  border-radius: var(--radius) 0 0 var(--radius);
+  transition: background 0.15s;
+}
+.cell-card.focused::before { background: var(--accent); }
+.cell-card.running::before { background: var(--amber); animation: blink 0.9s ease-in-out infinite; }
+
+/* ── Code input ────────────────────────────────────────────────── */
+.code-area {
+  display: flex;
+  background: var(--bg);
+}
+
+.code-ta {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  padding: 9px 12px 9px 13px;
+  background: transparent;
+  color: var(--text);
+  tab-size: 4;
+  min-height: 40px;
+  overflow: hidden;
+  caret-color: var(--accent);
+}
+.code-ta::placeholder { color: var(--text-3); }
+.code-ta:disabled { opacity: 0.55; cursor: default; background: var(--bg-subtle); }
+
+/* ── Markdown cell ─────────────────────────────────────────────── */
+.md-view {
+  padding: 10px 13px;
+  line-height: 1.7;
+  font-size: 13.5px;
+  cursor: text;
+  background: var(--bg);
+  color: var(--text);
+}
+.md-view.placeholder-md { color: var(--text-3); font-style: italic; }
+.md-view h1 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.md-view h2 { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+.md-view h3 { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.md-view p  { margin-bottom: 5px; }
+.md-view code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--bg-subtle);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.md-view pre { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin: 6px 0; }
+.md-view pre code { border: none; background: none; padding: 0; }
+.md-view ul, .md-view ol { padding-left: 20px; margin-bottom: 5px; }
+.md-gutter-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  margin-top: 9px;
+}
+
+/* ── Cell output ───────────────────────────────────────────────── */
+.cell-output {
+  border-top: 1px solid var(--border);
+  background: var(--bg-output);
+  display: none;
+}
+.cell-output.has-output { display: block; }
+
+.out-row { display: flex; }
+
+.out-gutter {
+  width: 46px;
+  flex-shrink: 0;
+  padding: 8px 8px 8px 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  user-select: none;
+}
+.out-num {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--amber);
+}
+
+.out-content {
+  flex: 1;
+  padding: 8px 12px 8px 0;
+}
+
+.out-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+.out-text.is-error  { color: var(--red); }
+.out-text.is-stderr { color: var(--amber); }
+
+.out-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+/* ── Cell hover controls ───────────────────────────────────────── */
+.cell-controls {
+  position: absolute;
+  top: 5px; right: 6px;
+  display: none;
+  gap: 3px;
+  z-index: 5;
+}
+.cell-block:hover .cell-controls,
+.cell-card.focused .cell-controls { display: flex; }
+
+.cc-btn {
+  width: 23px; height: 23px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.1s;
+  flex-shrink: 0;
+}
+.cc-btn:hover { background: var(--bg-subtle); color: var(--text); border-color: var(--border-med); }
+.cc-btn.danger:hover { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+
+/* ── Add cell row ──────────────────────────────────────────────── */
+.add-row {
+  display: flex;
+  justify-content: center;
+  padding: 5px 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.add-row:hover { opacity: 1 !important; }
+#notebook:hover .add-row { opacity: 0.35; }
+
+.add-btn {
+  border: 1px dashed var(--border);
+  background: none;
+  border-radius: var(--radius);
+  padding: 3px 28px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: all 0.1s;
+}
+.add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+
+/* ── Viewer badge ──────────────────────────────────────────────── */
+#viewer-toast {
+  position: fixed;
+  bottom: 14px;
+  right: 14px;
+  background: var(--text);
+  color: #fff;
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  padding: 5px 12px;
+  border-radius: 5px;
+  opacity: 0.8;
+  pointer-events: none;
+  display: none;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+#notebook-area::-webkit-scrollbar { width: 5px; }
+#notebook-area::-webkit-scrollbar-track { background: transparent; }
+#notebook-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+#notebook-area::-webkit-scrollbar-thumb:hover { background: var(--border-med); }
+</style>
+</head>
+<body>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <span id="notebook-title">Untitled.ipynb</span>
+  <div class="sep"></div>
+
+  <button class="tb-btn primary" id="btn-run-all" disabled onclick="runAll()">
+    ▶&nbsp;Run All
+  </button>
+  <button class="tb-btn" id="btn-run" disabled onclick="runSelected()">
+    ▶&nbsp;Run Cell
+  </button>
+
+  <div class="sep"></div>
+
+  <button class="tb-btn" id="btn-add-code" disabled onclick="addCodeCell()">
+    + Code
+  </button>
+  <button class="tb-btn" id="btn-add-md" disabled onclick="addMarkdownCell()">
+    + Markdown
+  </button>
+  <button class="tb-btn" id="btn-clear" disabled onclick="clearAllOutputs(true)">
+    Clear
+  </button>
+
+  <div class="kernel-pill">
+    <div class="k-dot" id="k-dot"></div>
+    <span id="k-label">Loading…</span>
+  </div>
+</div>
+
+<!-- ── Notebook ───────────────────────────────────────────────────────── -->
+<div id="notebook-area">
+  <div id="notebook">
+    <div id="boot-state">
+      <div class="boot-spinner"></div>
+      <span id="boot-msg">Initialising Pyodide…</span>
+      <span id="boot-sub">First load may take a few seconds</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Viewer overlay ─────────────────────────────────────────────────── -->
+<div id="viewer-toast">View-only · synced with presenter</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG
+// Beamer+ injects window.WIDGET_CONFIG before loading this widget.
+// Falls back to URL params for standalone testing:
+//   ?viewer=1          → viewer mode
+//   ?notebook=path     → load notebook file
+// ─────────────────────────────────────────────────────────────────────────────
+const _qs      = new URLSearchParams(location.search);
+const CFG      = window.WIDGET_CONFIG || {};
+const WIDGET_ID      = CFG.id       || 'jupyter-notebook';
+const NOTEBOOK_PATH  = CFG.notebook || _qs.get('notebook') || null;
+const IS_VIEWER      = !!(CFG.viewer || _qs.get('viewer') === '1');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let pyodide     = null;
+let isBusy      = false;
+let execCounter = 0;
+let selectedId  = null;
+const cellMeta  = new Map(); // id → { type: 'code'|'markdown' }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCKET.IO  —  graceful fallback if not running inside Beamer+
+// ─────────────────────────────────────────────────────────────────────────────
+let socket = null;
+
+function initSocket() {
+  if (window.__noSocketIO || typeof io === 'undefined') {
+    socket = { emit: () => {}, on: () => {} };
+    return;
+  }
+  try {
+    socket = io();
+    // Incoming sync events (viewer receives output from presenter)
+    socket.on('widget_event', (data) => {
+      if (data.id !== WIDGET_ID) return;
+      if (data.type === 'cell_output')   handleSyncedOutput(data.payload);
+      if (data.type === 'clear_outputs') clearAllOutputs(false);
+    });
+  } catch (e) {
+    socket = { emit: () => {}, on: () => {} };
+  }
+}
+
+// Presenter → viewers
+function emitCellOutput(payload) {
+  socket.emit('widget_event', { id: WIDGET_ID, type: 'cell_output', payload });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PYODIDE INIT  (presenter only)
+// ─────────────────────────────────────────────────────────────────────────────
+async function initPyodide() {
+  setBoot('Loading Pyodide runtime…');
+  pyodide = await loadPyodide();
+
+  setBoot('Loading numpy + matplotlib…');
+  await pyodide.loadPackage(['numpy', 'matplotlib']);
+
+  // Set Agg backend; patch plt.show(); expose figure-capture helper
+  await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io as _io
+import base64 as _b64
+
+# Suppress plt.show() — we capture figures after execution instead
+plt.show = lambda *a, **kw: None
+
+def _bp_capture_figures():
+    """Render all open matplotlib figures to base64 PNG and return a list."""
+    imgs = []
+    for n in plt.get_fignums():
+        buf = _io.BytesIO()
+        plt.figure(n).savefig(buf, format='png', bbox_inches='tight', dpi=150)
+        buf.seek(0)
+        imgs.append(_b64.b64encode(buf.read()).decode())
+    plt.close('all')
+    return imgs
+`);
+
+  removeBoot();
+  setKernel('ready', 'Python 3 · Pyodide');
+  enablePresenterToolbar();
+
+  if (NOTEBOOK_PATH) {
+    await loadNotebookFile(NOTEBOOK_PATH);
+  } else {
+    addCodeCell('');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// .ipynb LOADING
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadNotebookFile(path) {
+  try {
+    setBoot(`Loading ${path.split('/').pop()}…`);
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const nb = await resp.json();
+
+    // Update title
+    document.getElementById('notebook-title').textContent = path.split('/').pop();
+
+    for (const cell of nb.cells || []) {
+      const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
+
+      if (cell.cell_type === 'markdown') {
+        addMarkdownCell(src);
+
+      } else if (cell.cell_type === 'code') {
+        const id = addCodeCell(src);
+        // Restore saved outputs from the file (don't re-execute)
+        if (cell.outputs?.length) {
+          const outputs = parseIpynbOutputs(cell.outputs);
+          renderOutputs(id, outputs, cell.execution_count);
+          if (cell.execution_count != null) {
+            const en = document.getElementById(`enum-${id}`);
+            if (en) { en.textContent = `[${cell.execution_count}]`; en.classList.add('ran'); }
+          }
+        }
+      }
+    }
+    removeBoot();
+  } catch (e) {
+    console.warn('Notebook load failed:', e);
+    removeBoot();
+    addCodeCell('# Could not load notebook: ' + e.message);
+  }
+}
+
+// Convert .ipynb output objects → our internal format
+function parseIpynbOutputs(raw) {
+  const out = [];
+  for (const o of raw) {
+    const joinText = (v) => Array.isArray(v) ? v.join('') : (v || '');
+
+    if (o.output_type === 'stream') {
+      out.push({ type: o.name === 'stderr' ? 'stderr' : 'stream', text: joinText(o.text) });
+
+    } else if (o.output_type === 'error') {
+      const tb = (o.traceback || []).join('\n').replace(/\x1b\[[0-9;]*m/g, '');
+      out.push({ type: 'error', text: `${o.ename}: ${o.evalue}\n${tb}` });
+
+    } else if (o.output_type === 'display_data' || o.output_type === 'execute_result') {
+      if (o.data?.['image/png']) {
+        out.push({ type: 'image', data: o.data['image/png'] });
+      } else if (o.data?.['text/plain']) {
+        out.push({ type: 'result', text: joinText(o.data['text/plain']) });
+      }
+    }
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CELL CREATION
+// ─────────────────────────────────────────────────────────────────────────────
+function uid() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+function addCodeCell(code = '', insertAfterId = null) {
+  const id = uid();
+
+  const block = document.createElement('div');
+  block.className = 'cell-block';
+  block.dataset.id = id;
+  block.dataset.cellType = 'code';
+
+  const ctrlsHtml = IS_VIEWER ? '' : `
+    <div class="cell-controls">
+      <button class="cc-btn"        title="Run (Shift+Enter)"  onclick="runCell('${id}')">▶</button>
+      <button class="cc-btn"        title="Move up"            onclick="moveCellUp('${id}')">↑</button>
+      <button class="cc-btn"        title="Move down"          onclick="moveCellDown('${id}')">↓</button>
+      <button class="cc-btn danger" title="Delete cell"        onclick="deleteCell('${id}')">✕</button>
+    </div>`;
+
+  block.innerHTML = `
+    <div class="cell-row">
+      <div class="cell-gutter">
+        <span class="exec-num" id="enum-${id}">[ ]</span>
+      </div>
+      <div class="cell-card" id="card-${id}">
+        ${ctrlsHtml}
+        <div class="code-area">
+          <textarea
+            class="code-ta"
+            id="ta-${id}"
+            spellcheck="false"
+            autocomplete="off"
+            autocorrect="off"
+            placeholder="Python…"
+            ${IS_VIEWER ? 'disabled' : ''}
+          >${escHtml(code)}</textarea>
+        </div>
+        <div class="cell-output" id="out-${id}">
+          <div id="out-items-${id}"></div>
+        </div>
+      </div>
+    </div>`;
+
+  placeCell(block, insertAfterId);
+  cellMeta.set(id, { type: 'code' });
+
+  const ta = document.getElementById(`ta-${id}`);
+  autoResize(ta);
+
+  if (!IS_VIEWER) {
+    ta.addEventListener('input',   () => autoResize(ta));
+    ta.addEventListener('focus',   () => selectCell(id));
+    ta.addEventListener('keydown', (e) => onCellKey(e, id));
+  }
+
+  refreshAddRows();
+  if (!IS_VIEWER) { ta.focus(); selectCell(id); }
+  return id;
+}
+
+function addMarkdownCell(src = '', insertAfterId = null) {
+  const id = uid();
+  const isEmpty = !src.trim();
+
+  const block = document.createElement('div');
+  block.className = 'cell-block';
+  block.dataset.id = id;
+  block.dataset.cellType = 'markdown';
+
+  const ctrlsHtml = IS_VIEWER ? '' : `
+    <div class="cell-controls">
+      <button class="cc-btn"        title="Move up"   onclick="moveCellUp('${id}')">↑</button>
+      <button class="cc-btn"        title="Move down" onclick="moveCellDown('${id}')">↓</button>
+      <button class="cc-btn danger" title="Delete"    onclick="deleteCell('${id}')">✕</button>
+    </div>`;
+
+  block.innerHTML = `
+    <div class="cell-row">
+      <div class="cell-gutter">
+        <span class="md-gutter-label">M</span>
+      </div>
+      <div class="cell-card" id="card-${id}">
+        ${ctrlsHtml}
+        <!-- edit mode (hidden by default) -->
+        <div id="md-edit-${id}" style="display:none">
+          <textarea
+            class="code-ta"
+            id="ta-${id}"
+            spellcheck="false"
+            placeholder="Markdown…"
+          >${escHtml(src)}</textarea>
+        </div>
+        <!-- render mode -->
+        <div class="md-view${isEmpty ? ' placeholder-md' : ''}" id="md-view-${id}">
+          ${isEmpty ? 'Double-click to edit…' : marked.parse(src)}
+        </div>
+      </div>
+    </div>`;
+
+  placeCell(block, insertAfterId);
+  cellMeta.set(id, { type: 'markdown' });
+  refreshAddRows();
+
+  if (!IS_VIEWER) {
+    const view = document.getElementById(`md-view-${id}`);
+    view.addEventListener('dblclick', () => enterMarkdownEdit(id));
+
+    const ta = document.getElementById(`ta-${id}`);
+    autoResize(ta);
+    ta.addEventListener('input', () => autoResize(ta));
+    ta.addEventListener('focus', () => selectCell(id));
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || (e.key === 'Enter' && e.shiftKey)) {
+        e.preventDefault();
+        commitMarkdown(id);
+      }
+    });
+    ta.addEventListener('blur', () => commitMarkdown(id));
+  }
+  return id;
+}
+
+function enterMarkdownEdit(id) {
+  document.getElementById(`md-edit-${id}`).style.display = '';
+  document.getElementById(`md-view-${id}`).style.display = 'none';
+  const ta = document.getElementById(`ta-${id}`);
+  autoResize(ta);
+  ta.focus();
+  selectCell(id);
+}
+
+function commitMarkdown(id) {
+  const ta   = document.getElementById(`ta-${id}`);
+  const edit = document.getElementById(`md-edit-${id}`);
+  const view = document.getElementById(`md-view-${id}`);
+  if (!ta || !edit || !view) return;
+  const val = ta.value.trim();
+  view.innerHTML = val ? marked.parse(val) : 'Double-click to edit…';
+  view.className = 'md-view' + (val ? '' : ' placeholder-md');
+  edit.style.display = 'none';
+  view.style.display = '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CELL EXECUTION
+// ─────────────────────────────────────────────────────────────────────────────
+async function runCell(id) {
+  if (!pyodide || isBusy || IS_VIEWER) return;
+  if (cellMeta.get(id)?.type !== 'code') return;
+
+  const ta   = document.getElementById(`ta-${id}`);
+  const code = ta?.value?.trim();
+  if (!code) return;
+
+  isBusy = true;
+  execCounter++;
+  const n = execCounter;
+
+  setKernel('busy', 'Busy');
+  document.getElementById(`enum-${id}`).textContent = '[*]';
+  document.getElementById(`card-${id}`).classList.add('running');
+  clearOutputArea(id);
+
+  let stdoutBuf = '';
+  let stderrBuf = '';
+  pyodide.setStdout({ batched: (s) => { stdoutBuf += s + '\n'; } });
+  pyodide.setStderr({ batched: (s) => { stderrBuf += s + '\n'; } });
+
+  const outputs = [];
+
+  try {
+    const result = await pyodide.runPythonAsync(code);
+
+    // Capture matplotlib figures
+    const figsProxy = await pyodide.runPythonAsync('_bp_capture_figures()');
+    let figList = [];
+    try {
+      figList = figsProxy?.toJs ? figsProxy.toJs({ depth: 1 }) : [];
+      figsProxy?.destroy?.();
+    } catch (_) { figList = []; }
+
+    if (stdoutBuf.trim()) outputs.push({ type: 'stream', text: stdoutBuf.trimEnd() });
+    if (stderrBuf.trim()) outputs.push({ type: 'stderr', text: stderrBuf.trimEnd() });
+    for (const img of figList) outputs.push({ type: 'image', data: img });
+
+    // repr of last expression (non-None)
+    if (result !== undefined && result !== null) {
+      const repr = result?.toString ? result.toString() : String(result);
+      if (repr && repr !== 'None') outputs.push({ type: 'result', text: repr });
+    }
+
+  } catch (e) {
+    const msg = (e.message || String(e)).replace(/\x1b\[[0-9;]*m/g, '');
+    if (stdoutBuf.trim()) outputs.push({ type: 'stream', text: stdoutBuf.trimEnd() });
+    outputs.push({ type: 'error', text: msg });
+  }
+
+  renderOutputs(id, outputs, n);
+
+  // ← Sync outputs to all viewers via Socket.IO
+  emitCellOutput({ cellId: id, outputs, execCount: n });
+
+  const en = document.getElementById(`enum-${id}`);
+  if (en) { en.textContent = `[${n}]`; en.classList.add('ran'); }
+  document.getElementById(`card-${id}`).classList.remove('running');
+  setKernel('ready', 'Python 3 · Pyodide');
+  isBusy = false;
+}
+
+async function runAll() {
+  const blocks = [...document.querySelectorAll('.cell-block[data-cell-type="code"]')];
+  for (const b of blocks) await runCell(b.dataset.id);
+}
+
+function runSelected() {
+  if (selectedId) runCell(selectedId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OUTPUT RENDERING
+// ─────────────────────────────────────────────────────────────────────────────
+function renderOutputs(cellId, outputs, execCount) {
+  if (!outputs.length) return;
+  const outEl   = document.getElementById(`out-${cellId}`);
+  const itemsEl = document.getElementById(`out-items-${cellId}`);
+  if (!outEl || !itemsEl) return;
+
+  itemsEl.innerHTML = '';
+  let resultLabelled = false;
+
+  for (const o of outputs) {
+    const row = document.createElement('div');
+    row.className = 'out-row';
+
+    // Gutter — only labelled for 'result' output type
+    const gutter = document.createElement('div');
+    gutter.className = 'out-gutter';
+    if (o.type === 'result' && !resultLabelled) {
+      gutter.innerHTML = `<span class="out-num">[${execCount}]</span>`;
+      resultLabelled = true;
+    }
+    row.appendChild(gutter);
+
+    const content = document.createElement('div');
+    content.className = 'out-content';
+
+    if (o.type === 'image') {
+      content.className += ' out-image';
+      const img = document.createElement('img');
+      img.src = `data:image/png;base64,${o.data}`;
+      img.alt = 'matplotlib figure';
+      content.appendChild(img);
+    } else {
+      const pre = document.createElement('div');
+      pre.className = 'out-text';
+      if (o.type === 'error')  pre.classList.add('is-error');
+      if (o.type === 'stderr') pre.classList.add('is-stderr');
+      pre.textContent = o.text || '';
+      content.appendChild(pre);
+    }
+
+    row.appendChild(content);
+    itemsEl.appendChild(row);
+  }
+
+  outEl.classList.add('has-output');
+}
+
+function clearOutputArea(id) {
+  const outEl   = document.getElementById(`out-${id}`);
+  const itemsEl = document.getElementById(`out-items-${id}`);
+  if (outEl)   outEl.classList.remove('has-output');
+  if (itemsEl) itemsEl.innerHTML = '';
+}
+
+function clearAllOutputs(emit = true) {
+  document.querySelectorAll('.cell-block[data-cell-type="code"]').forEach(b => {
+    const id = b.dataset.id;
+    clearOutputArea(id);
+    const en = document.getElementById(`enum-${id}`);
+    if (en) { en.textContent = '[ ]'; en.classList.remove('ran'); }
+  });
+  execCounter = 0;
+  if (emit) socket.emit('widget_event', { id: WIDGET_ID, type: 'clear_outputs', payload: {} });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIEWER SYNC  —  handle outputs pushed from presenter
+// ─────────────────────────────────────────────────────────────────────────────
+function handleSyncedOutput({ cellId, outputs, execCount }) {
+  if (!cellId || !outputs) return;
+  clearOutputArea(cellId);
+  renderOutputs(cellId, outputs, execCount);
+  const en = document.getElementById(`enum-${cellId}`);
+  if (en) { en.textContent = `[${execCount}]`; en.classList.add('ran'); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function placeCell(block, afterId) {
+  const nb = document.getElementById('notebook');
+  if (afterId) {
+    const ref = nb.querySelector(`.cell-block[data-id="${afterId}"]`);
+    if (ref) { ref.after(block); return; }
+  }
+  nb.appendChild(block);
+}
+
+function deleteCell(id) {
+  document.querySelector(`.cell-block[data-id="${id}"]`)?.remove();
+  cellMeta.delete(id);
+  if (selectedId === id) selectedId = null;
+  refreshAddRows();
+}
+
+function moveCellUp(id) {
+  const b = document.querySelector(`.cell-block[data-id="${id}"]`);
+  const prev = b?.previousElementSibling;
+  if (b && prev?.classList.contains('cell-block')) prev.before(b);
+  refreshAddRows();
+}
+
+function moveCellDown(id) {
+  const b = document.querySelector(`.cell-block[data-id="${id}"]`);
+  const next = b?.nextElementSibling;
+  if (b && next?.classList.contains('cell-block')) next.after(b);
+  refreshAddRows();
+}
+
+function selectCell(id) {
+  if (selectedId) document.getElementById(`card-${selectedId}`)?.classList.remove('focused');
+  selectedId = id;
+  document.getElementById(`card-${id}`)?.classList.add('focused');
+}
+
+function onCellKey(e, id) {
+  if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); runCell(id); }
+  if (e.key === 'Enter' && e.ctrlKey)  { e.preventDefault(); addCodeCell('', id); }
+}
+
+function autoResize(ta) {
+  if (!ta) return;
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(40, ta.scrollHeight) + 'px';
+}
+
+function refreshAddRows() {
+  document.querySelectorAll('.add-row').forEach(r => r.remove());
+  if (IS_VIEWER) return;
+  document.querySelectorAll('#notebook .cell-block').forEach(b => {
+    const row = document.createElement('div');
+    row.className = 'add-row';
+    const btn = document.createElement('button');
+    btn.className = 'add-btn';
+    btn.textContent = '+ Add cell';
+    btn.onclick = () => addCodeCell('', b.dataset.id);
+    row.appendChild(btn);
+    b.after(row);
+  });
+}
+
+function setKernel(state, label) {
+  document.getElementById('k-dot').className = `k-dot ${state}`;
+  document.getElementById('k-label').textContent = label;
+}
+
+function setBoot(msg) {
+  const el = document.getElementById('boot-msg');
+  if (el) el.textContent = msg;
+}
+
+function removeBoot() {
+  document.getElementById('boot-state')?.remove();
+}
+
+function enablePresenterToolbar() {
+  ['btn-run-all', 'btn-run', 'btn-add-code', 'btn-add-md', 'btn-clear'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIEWER MODE UI ADJUSTMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+if (IS_VIEWER) {
+  document.addEventListener('DOMContentLoaded', () => {
+    ['btn-run-all', 'btn-run', 'btn-add-code', 'btn-add-md', 'btn-clear'].forEach(id => {
+      document.getElementById(id)?.remove();
+    });
+    document.getElementById('viewer-toast').style.display = 'block';
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────────────────────────────────────────
+initSocket();
+
+if (IS_VIEWER) {
+  // Viewer: load notebook skeleton for context (no Pyodide), wait for sync
+  removeBoot();
+  setKernel('viewer', 'View only');
+  if (NOTEBOOK_PATH) {
+    document.getElementById('notebook-title').textContent = NOTEBOOK_PATH.split('/').pop();
+    // Load structure only (outputs will arrive via Socket.IO)
+    fetch(NOTEBOOK_PATH)
+      .then(r => r.json())
+      .then(nb => {
+        for (const cell of nb.cells || []) {
+          const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
+          if (cell.cell_type === 'markdown') addMarkdownCell(src);
+          else if (cell.cell_type === 'code') addCodeCell(src);
+        }
+      })
+      .catch(() => addCodeCell(''));
+  } else {
+    addCodeCell('');
+  }
+} else {
+  // Presenter: full Pyodide kernel
+  initPyodide().catch(e => {
+    removeBoot();
+    setKernel('busy', 'Kernel error');
+    addCodeCell('# Pyodide failed to load: ' + e.message);
+    console.error(e);
+  });
+}
+</script>
+</body>
+</html>

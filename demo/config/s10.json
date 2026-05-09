@@ -1,8 +1,8 @@
 {
   "widgets": [
     {
-      "id": "function_plotter_demo",
-      "type": "function-plotter",
+      "id": "calculator_demo",
+      "type": "calculator",
       "x": 0,
       "y": 0,
       "width": 1,

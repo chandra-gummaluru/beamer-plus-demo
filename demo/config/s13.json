@@ -1,19 +1,4 @@
 {
-  "widgets": [
-    {
-      "id": "survey_demo",
-      "type": "survey",
-      "x": 0,
-      "y": 0,
-      "width": 1,
-      "height": 1,
-      "zIndex": 10,
-      "question": "What feature should we improve next in Beamer+?",
-      "numSummaries": 3,
-      "model": "example_model",
-      "autoStart": true,
-      "autoAnalyze": true,
-      "interactive": true
-    }
-  ]
+  "onEnter": { "split": 14 },
+  "onLeave": { "closeSplit": true, "goToSlide": 15 }
 }

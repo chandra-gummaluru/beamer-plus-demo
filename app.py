@@ -199,6 +199,24 @@ def get_current_presentation():
     return jsonify({'error': 'No presentation loaded'}), 404
 
 
+# ── Static demo-folder file serving ───────────────────────────────────────────
+# Serves files from the demo/ directory (e.g. PDFs for the textbook widget).
+# URL: /api/demo/<relative-path-within-demo>
+
+@app.route('/api/demo/<path:filename>')
+def serve_demo_file(filename):
+    demo_dir = os.path.realpath(os.path.join(BASE_PATH, 'demo'))
+    requested = os.path.realpath(os.path.join(demo_dir, filename))
+    # Guard against path traversal
+    if not requested.startswith(demo_dir + os.sep):
+        return jsonify({'error': 'Forbidden'}), 403
+    if not os.path.isfile(requested):
+        return jsonify({'error': 'Not found'}), 404
+    resp = send_file(requested)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+
 # ── Models ─────────────────────────────────────────────────────────────────────
 
 @app.route('/api/models')
@@ -451,4 +469,20 @@ def handle_widget_state(data):
 
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5001, debug=False)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=5001)
+    parser.add_argument('--http', action='store_true', help='Force plain HTTP (disables camera widget on LAN)')
+    args = parser.parse_args()
+
+    if args.http:
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
+    else:
+        try:
+            ssl_context = 'adhoc'  # requires: pip install pyopenssl
+            socketio.run(app, host='0.0.0.0', port=args.port, debug=False,
+                         ssl_context=ssl_context, allow_unsafe_werkzeug=True)
+        except Exception as e:
+            print(f"[WARN] Could not start HTTPS ({e}). Falling back to HTTP.")
+            print("[WARN] Camera widget requires HTTPS on LAN addresses.")
+            socketio.run(app, host='0.0.0.0', port=args.port, debug=False)

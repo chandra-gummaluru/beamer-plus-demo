@@ -226,6 +226,9 @@ body.split-view-active #ann-canvas-2 {
     object-fit: contain;
     pointer-events: none;
     z-index: 20;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: left 0.45s ease, top 0.45s ease, width 0.45s ease, height 0.45s ease;
 }
 
 .slide-video::-webkit-media-controls-pip-button,

@@ -1,11 +1,11 @@
 {
   "models": [
     {
-      "path": "models/3dmodel.glb",
-      "x": 0.3,
-      "y": 0.25,
+      "path": "models/heart.glb",
+      "x": 0.55,
+      "y": 0.27,
       "width": 0.4,
-      "height": 0.5,
+      "height": 0.48,
       "zIndex": 20
     }
   ]

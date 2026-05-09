@@ -3,458 +3,723 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Calculator</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+<title>Calculator — Beamer+</title>
 <style>
-  :root {
-    --bg:         oklch(99% 0.003 80);
-    --bg-2:       oklch(97% 0.005 80);
-    --bg-3:       oklch(94% 0.007 80);
-    --bg-4:       oklch(90% 0.008 80);
-    --ink-1:      oklch(22% 0.012 260);
-    --ink-2:      oklch(38% 0.010 260);
-    --ink-3:      oklch(55% 0.008 260);
-    --ink-4:      oklch(72% 0.006 260);
-    --accent:     oklch(45% 0.005 260);
-    --accent-hi:  oklch(32% 0.006 260);
-    --accent-lo:  oklch(92% 0.004 260);
-    --ok:         oklch(52% 0.14 160);
-    --err:        oklch(58% 0.18 25);
-    --line:       1px solid oklch(85% 0.005 260);
-    --r:          6px;
-    --font:       "EB Garamond", Georgia, serif;
-    --mono:       ui-monospace, "SF Mono", Menlo, monospace;
-  }
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── Tokens ──────────────────────────────────────────── */
+:root {
+  --bg:           #ffffff;
+  --bg-subtle:    #f9f9f8;
+  --bg-output:    #fafaf9;
+  --border:       #e9e9e6;
+  --border-med:   #d4d4cf;
+  --text:         #1a1a18;
+  --text-2:       #6b6b65;
+  --text-3:       #aeaea5;
+  --accent:       #52524e;
+  --accent-bg:    #f0f0ee;
+  --green:        #15803d;
+  --amber:        #b45309;
+  --red:          #dc2626;
+  --red-bg:       #fef2f2;
+  --radius:       6px;
+  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-ui:      'DM Sans', system-ui, sans-serif;
+}
 
-  html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: var(--bg);
-    font-family: var(--font);
-    color: var(--ink-1);
-    touch-action: manipulation;
-  }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; touch-action: manipulation; }
 
-  #app {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 12px;
-    gap: 10px;
-  }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
 
-  /* Display area */
-  #display {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    background: var(--bg-2);
-    border: var(--line);
-    border-radius: var(--r);
-    padding: 10px 12px;
-    flex-shrink: 0;
-  }
+/* ── Toolbar ─────────────────────────────────────────── */
+#toolbar {
+  flex-shrink: 0;
+  height: 42px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 5px;
+}
 
-  #expression-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
+.toolbar-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
 
-  #expression {
-    flex: 1;
-    font-family: var(--mono);
-    font-size: 1.05rem;
-    color: var(--ink-2);
-    background: transparent;
-    border: none;
-    outline: none;
-    min-width: 0;
-    caret-color: var(--accent);
-  }
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
 
-  #expression::placeholder {
-    color: var(--ink-4);
-  }
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+.tb-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
+.tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-  #expression:read-only {
-    cursor: default;
-  }
+.viewer-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  display: none;
+}
 
-  #result {
-    font-family: var(--mono);
-    font-size: 1.55rem;
-    font-weight: 500;
-    color: var(--ink-3);
-    min-height: 2rem;
-    letter-spacing: -0.01em;
-    transition: color 0.15s;
-  }
+/* ── Main layout ─────────────────────────────────────── */
+#main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
 
-  #result.ok  { color: var(--ok); }
-  #result.err { color: var(--err); font-size: 0.9rem; padding-top: 0.2rem; }
+/* ── Calculator panel ────────────────────────────────── */
+#calc-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 10px;
+  overflow: hidden;
+  min-width: 0;
+}
 
-  /* Button grid */
-  #buttons {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
+/* ── Display ─────────────────────────────────────────── */
+#display {
+  flex-shrink: 0;
+  background: var(--bg-output);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 13px 11px;
+}
 
-  .btn-row {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
-  }
+#expr-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--text);
+  caret-color: var(--accent);
+  line-height: 1.5;
+}
+#expr-input::placeholder { color: var(--text-3); }
+#expr-input:read-only { cursor: default; }
 
-  .btn-row.wide {
-    grid-template-columns: repeat(4, 1fr);
-  }
+#display-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0 7px;
+}
 
-  button {
-    font-family: var(--font);
-    font-size: 1rem;
-    color: var(--ink-1);
-    background: var(--bg);
-    border: var(--line);
-    border-radius: var(--r);
-    padding: 10px 6px;
-    min-height: 48px;
-    cursor: pointer;
-    transition: background 0.1s;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+#result {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text-3);
+  min-height: 28px;
+  line-height: 1.2;
+  transition: color 0.12s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#result.ok  { color: var(--text-2); }
+#result.err { color: var(--red); font-size: 13px; padding-top: 4px; font-weight: 400; letter-spacing: 0; }
 
-  button:hover { background: var(--bg-3); }
-  button:active { background: var(--bg-4); }
+/* ── Button sections ─────────────────────────────────── */
+#buttons {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#buttons::-webkit-scrollbar { width: 4px; }
+#buttons::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
 
-  button.primary {
-    background: var(--accent);
-    color: var(--bg);
-    border-color: var(--accent);
-    font-weight: 500;
-  }
+.section-label {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 1px;
+  user-select: none;
+}
 
-  button.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); }
+.btn-grid {
+  display: grid;
+  gap: 5px;
+}
+.btn-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+.btn-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
 
-  button.fn {
-    font-size: 0.88rem;
-    color: var(--ink-2);
-    background: var(--bg-2);
-  }
-  button.fn:hover { background: var(--bg-3); }
+/* ── Calc button base ────────────────────────────────── */
+.cbtn {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.08s, border-color 0.08s, color 0.08s;
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.cbtn:hover:not(:disabled)  { background: var(--bg-subtle); border-color: var(--border-med); }
+.cbtn:active:not(:disabled) { background: var(--accent-bg); border-color: var(--border-med); }
+.cbtn:disabled { opacity: 0.4; cursor: default; }
 
-  /* Viewer overlay */
-  #viewer-badge {
-    display: none;
-    font-size: 0.72rem;
-    color: var(--ink-4);
-    font-family: var(--mono);
-    text-align: right;
-    flex-shrink: 0;
-  }
+/* Function button — slightly muted */
+.cbtn.fn {
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+}
+.cbtn.fn:hover:not(:disabled) { background: #f0f0ee; }
 
-  @media (pointer: coarse) {
-    #app {
-      padding: 14px;
-      gap: 12px;
-    }
+/* Operator buttons */
+.cbtn.op {
+  color: var(--text-2);
+  font-size: 16px;
+}
 
-    .btn-row {
-      gap: 8px;
-    }
+/* Primary: = */
+.cbtn.primary {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+  font-size: 18px;
+}
+.cbtn.primary:hover:not(:disabled) { background: #2d2d2a; border-color: #2d2d2a; }
+.cbtn.primary:active:not(:disabled) { background: #111110; }
 
-    button {
-      font-size: 1.08rem;
-      min-height: 56px;
-      border-radius: 10px;
-    }
+/* Clear */
+.cbtn.danger {
+  color: var(--red);
+  background: var(--bg);
+}
+.cbtn.danger:hover:not(:disabled) { background: var(--red-bg); border-color: #fca5a5; }
 
-    button.fn {
-      font-size: 0.96rem;
-    }
+/* Backspace */
+.cbtn.back {
+  color: var(--text-2);
+  font-size: 16px;
+}
 
-    #expression {
-      font-size: 1.2rem;
-    }
+/* ── History panel ───────────────────────────────────── */
+#history-panel {
+  width: 200px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
 
-    #result {
-      font-size: 1.8rem;
-    }
-  }
+#history-header {
+  flex-shrink: 0;
+  height: 38px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 6px;
+}
+
+#history-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  flex: 1;
+}
+
+#history-clear {
+  background: none;
+  border: none;
+  padding: 2px 5px;
+  font-size: 11px;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: 3px;
+  font-family: var(--font-ui);
+  transition: color 0.1s, background 0.1s;
+}
+#history-clear:hover { color: var(--red); background: var(--red-bg); }
+
+#history-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#history-list::-webkit-scrollbar { width: 4px; }
+#history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+.hist-empty {
+  padding: 24px 12px;
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.hist-item {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.hist-item:hover { background: var(--bg-subtle); }
+.hist-item:last-child { border-bottom: none; }
+
+.hist-expr {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hist-result {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Viewer toast ────────────────────────────────────── */
+#viewer-toast {
+  position: fixed;
+  bottom: 14px; right: 14px;
+  background: var(--text);
+  color: #fff;
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  padding: 5px 12px;
+  border-radius: 5px;
+  opacity: 0.8;
+  pointer-events: none;
+  display: none;
+  z-index: 100;
+}
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="display">
-    <div id="expression-row">
-      <input id="expression" type="text" spellcheck="false" placeholder="Enter expression…" autocomplete="off">
-    </div>
-    <div id="result"></div>
-  </div>
 
-  <div id="buttons">
-    <!-- Row 1: functions -->
-    <div class="btn-row">
-      <button class="fn" data-insert="sin(">sin</button>
-      <button class="fn" data-insert="cos(">cos</button>
-      <button class="fn" data-insert="tan(">tan</button>
-      <button class="fn" data-insert="π">&#960;</button>
-      <button class="fn" data-insert="e">e</button>
-    </div>
-    <!-- Row 2 -->
-    <div class="btn-row">
-      <button data-insert="7">7</button>
-      <button data-insert="8">8</button>
-      <button data-insert="9">9</button>
-      <button class="fn" data-insert="(">(</button>
-      <button class="fn" data-insert=")">)</button>
-    </div>
-    <!-- Row 3 -->
-    <div class="btn-row">
-      <button data-insert="4">4</button>
-      <button data-insert="5">5</button>
-      <button data-insert="6">6</button>
-      <button class="fn" data-insert="*">*</button>
-      <button class="fn" data-insert="/">/</button>
-    </div>
-    <!-- Row 4 -->
-    <div class="btn-row">
-      <button data-insert="1">1</button>
-      <button data-insert="2">2</button>
-      <button data-insert="3">3</button>
-      <button class="fn" data-insert="+">+</button>
-      <button class="fn" data-insert="-">-</button>
-    </div>
-    <!-- Row 5 -->
-    <div class="btn-row">
-      <button data-insert="0">0</button>
-      <button data-insert=".">.</button>
-      <button class="fn" data-insert="^">^</button>
-      <button class="fn" data-insert="√(">&#8730;</button>
-      <button class="fn" id="btn-backspace">&#9003;</button>
-    </div>
-    <!-- Row 6: wide -->
-    <div class="btn-row wide">
-      <button class="fn" data-insert="ln(">ln</button>
-      <button class="fn" data-insert="log(">log</button>
-      <button class="fn" data-insert="exp(">exp</button>
-      <button class="primary" id="btn-equals">=</button>
-    </div>
-  </div>
-
-  <div id="viewer-badge">view only</div>
+<!-- ── Toolbar ──────────────────────────────────────── -->
+<div id="toolbar">
+  <span class="toolbar-title">Calculator</span>
+  <div class="sep"></div>
+  <button class="tb-btn" id="btn-clear-hist">Clear History</button>
+  <span class="viewer-badge" id="viewer-badge">view only</span>
 </div>
 
+<!-- ── Main ─────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Left: calculator -->
+  <div id="calc-panel">
+
+    <!-- Display -->
+    <div id="display">
+      <input id="expr-input" type="text" spellcheck="false"
+             autocomplete="off" autocorrect="off"
+             placeholder="Enter expression…" />
+      <div id="display-sep"></div>
+      <div id="result"></div>
+    </div>
+
+    <!-- Buttons -->
+    <div id="buttons">
+
+      <!-- Functions section -->
+      <div class="section-label">Functions</div>
+      <div class="btn-grid cols-5">
+        <button class="cbtn fn" data-insert="sin(">sin</button>
+        <button class="cbtn fn" data-insert="cos(">cos</button>
+        <button class="cbtn fn" data-insert="tan(">tan</button>
+        <button class="cbtn fn" data-insert="ln(">ln</button>
+        <button class="cbtn fn" data-insert="log(">log</button>
+
+        <button class="cbtn fn" data-insert="exp(">exp</button>
+        <button class="cbtn fn" data-insert="√(">√</button>
+        <button class="cbtn fn" id="btn-ans">ans</button>
+        <button class="cbtn fn" id="btn-frac">a/b</button>
+        <button class="cbtn fn" data-insert="(">( )</button>
+      </div>
+
+      <!-- Numpad + operators -->
+      <div class="section-label" style="margin-top:2px">Numpad</div>
+      <div class="btn-grid cols-5">
+
+        <!-- Row 1: modifiers -->
+        <button class="cbtn fn" data-insert=")">)</button>
+        <button class="cbtn fn" data-insert="^">x<sup>y</sup></button>
+        <button class="cbtn fn" data-insert="π">π</button>
+        <button class="cbtn fn" data-insert="e">e</button>
+
+        <!-- Row 2 -->
+        <button class="cbtn" data-insert="7">7</button>
+        <button class="cbtn" data-insert="8">8</button>
+        <button class="cbtn" data-insert="9">9</button>
+        <button class="cbtn op" data-insert="×">×</button>
+        <button class="cbtn op" data-insert="÷">÷</button>
+
+        <!-- Row 3 -->
+        <button class="cbtn" data-insert="4">4</button>
+        <button class="cbtn" data-insert="5">5</button>
+        <button class="cbtn" data-insert="6">6</button>
+        <button class="cbtn op" data-insert="+">+</button>
+        <button class="cbtn op" data-insert="−">−</button>
+
+        <!-- Row 4 -->
+        <button class="cbtn" data-insert="1">1</button>
+        <button class="cbtn" data-insert="2">2</button>
+        <button class="cbtn" data-insert="3">3</button>
+        <button class="cbtn op" data-insert="%">%</button>
+        <button class="cbtn back" id="btn-back">⌫</button>
+
+        <!-- Row 5 -->
+        <button class="cbtn" data-insert="0">0</button>
+        <button class="cbtn" data-insert=".">.</button>
+        <button class="cbtn danger" id="btn-clear">C</button>
+        <button class="cbtn primary" id="btn-eq" style="grid-column: span 2">=</button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: history -->
+  <div id="history-panel">
+    <div id="history-header">
+      <span id="history-title">History</span>
+      <button id="history-clear">Clear</button>
+    </div>
+    <div id="history-list">
+      <div class="hist-empty">No calculations yet.<br>Press = to save.</div>
+    </div>
+  </div>
+</div>
+
+<div id="viewer-toast">View-only · synced with presenter</div>
+
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
 <script>
 (function () {
   'use strict';
 
-  const exprEl   = document.getElementById('expression');
+  // ── Config ──────────────────────────────────────────────────────────────────
+  const _qs       = new URLSearchParams(location.search);
+  const CFG       = window.WIDGET_CONFIG || {};
+  const WIDGET_ID = CFG.id     || 'calculator';
+  const IS_VIEWER = !!(CFG.viewer || _qs.get('viewer') === '1');
+
+  // ── State ───────────────────────────────────────────────────────────────────
+  const exprEl   = document.getElementById('expr-input');
   const resultEl = document.getElementById('result');
-  const badge    = document.getElementById('viewer-badge');
+  let history    = [];   // [{ id, expr, result }]  newest first
+  let histCtr    = 0;
+  let lastAnswer = '0';
 
-  let socket   = null;
-  let isViewer = false;
-  let widgetId = 'calculator-default';
-  let destroy  = null;
+  // ── Socket.IO ────────────────────────────────────────────────────────────────
+  let socket = null;
 
-  // ── Evaluation ──────────────────────────────────────────────────────────────
-
-  function sanitize(raw) {
-    return raw
-      .replace(/sin\(/g,  'Math.sin(')
-      .replace(/cos\(/g,  'Math.cos(')
-      .replace(/tan\(/g,  'Math.tan(')
-      .replace(/log\(/g,  'Math.log10(')
-      .replace(/ln\(/g,   'Math.log(')
-      .replace(/exp\(/g,  'Math.exp(')
-      .replace(/√\(/g,    'Math.sqrt(')
-      .replace(/√/g,      'Math.sqrt(')
-      .replace(/π/g,      'Math.PI')
-      .replace(/\be\b/g,  'Math.E')
-      .replace(/\^/g,     '**');
-  }
-
-  function evaluate(expr) {
-    if (!expr.trim()) return { value: '', error: false };
+  function initSocket(url) {
+    if (typeof io === 'undefined') {
+      socket = { emit: () => {}, on: () => {} };
+      return;
+    }
     try {
-      const sanitized = sanitize(expr);
-      // Guard against anything non-mathematical
-      if (/[a-df-wyzA-DF-WYZ_$]/.test(sanitized.replace(/Math\./g, ''))) {
-        return { value: 'invalid expression', error: true };
-      }
-      // eslint-disable-next-line no-new-func
-      const value = Function('"use strict"; return (' + sanitized + ')')();
-      if (typeof value !== 'number' || isNaN(value)) {
-        return { value: 'not a number', error: true };
-      }
-      if (!isFinite(value)) {
-        return { value: value > 0 ? 'Infinity' : '-Infinity', error: false };
-      }
-      // Format nicely
-      const str = Number.isInteger(value)
-        ? value.toString()
-        : parseFloat(value.toPrecision(12)).toString();
-      return { value: str, error: false };
-    } catch (e) {
-      return { value: 'syntax error', error: true };
+      const prev = socket;
+      socket = url ? io(url) : io();
+      if (prev && prev.disconnect) prev.disconnect();
+      socket.on('widget_event', ({ id, type, payload }) => {
+        if (id !== WIDGET_ID) return;
+        if (type === 'state') applyState(payload);
+      });
+    } catch (_) {
+      socket = { emit: () => {}, on: () => {} };
     }
   }
 
-  function showResult(value, error) {
+  let syncTimer = null;
+  function emitState() {
+    if (IS_VIEWER) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      socket.emit('widget_event', {
+        id: WIDGET_ID,
+        type: 'state',
+        payload: {
+          expression: exprEl.value,
+          result:     resultEl.textContent,
+          resultOk:   resultEl.classList.contains('ok'),
+          history,
+        }
+      });
+    }, 80);
+  }
+
+  function applyState({ expression, result, resultOk, history: h }) {
+    if (expression != null) exprEl.value = expression;
+    if (result     != null) showResult(result, !resultOk && !!result);
+    if (h          != null) { history = h; histCtr = h.length ? h[0].id : 0; renderHistory(); }
+  }
+
+  // ── Evaluation ──────────────────────────────────────────────────────────────
+  function sanitize(raw) {
+    return raw
+      .replace(/×/g,       '*')
+      .replace(/÷/g,       '/')
+      .replace(/−/g,       '-')
+      .replace(/\bsin\(/g,  'Math.sin(')
+      .replace(/\bcos\(/g,  'Math.cos(')
+      .replace(/\btan\(/g,  'Math.tan(')
+      .replace(/\basin\(/g, 'Math.asin(')
+      .replace(/\bacos\(/g, 'Math.acos(')
+      .replace(/\batan\(/g, 'Math.atan(')
+      .replace(/\bln\(/g,   'Math.log(')
+      .replace(/\blog\(/g,  'Math.log10(')
+      .replace(/\bexp\(/g,  'Math.exp(')
+      .replace(/√\(/g,      'Math.sqrt(')
+      .replace(/\bπ\b/g,    'Math.PI')
+      .replace(/\be\b/g,    'Math.E')
+      .replace(/\^/g,       '**')
+      .replace(/%/g,        '/100');
+  }
+
+  function evaluate(raw) {
+    if (!raw.trim()) return { value: '', ok: true };
+    try {
+      const san = sanitize(raw);
+      // Only allow safe math characters after sanitization
+      const safe = san.replace(/Math\.[a-z0-9]+/g, '').replace(/[\d\s\+\-\*\/\.\(\)\*\*]/g, '');
+      if (safe.length) return { value: 'invalid expression', ok: false };
+      // eslint-disable-next-line no-new-func
+      const val = Function('"use strict"; return (' + san + ')')();
+      if (typeof val !== 'number' || isNaN(val)) return { value: 'not a number', ok: false };
+      if (!isFinite(val)) return { value: val > 0 ? 'Infinity' : '-Infinity', ok: true };
+      const str = Number.isInteger(val)
+        ? val.toString()
+        : parseFloat(val.toPrecision(12)).toString();
+      return { value: str, ok: true };
+    } catch (_) {
+      return { value: 'syntax error', ok: false };
+    }
+  }
+
+  function showResult(value, isErr) {
     resultEl.textContent = value;
-    resultEl.className   = error ? 'err' : (value ? 'ok' : '');
+    resultEl.className   = !value ? '' : isErr ? 'err' : 'ok';
   }
 
   // ── UI actions ───────────────────────────────────────────────────────────────
-
-  function insertText(text) {
-    if (isViewer) return;
-    const start = exprEl.selectionStart;
-    const end   = exprEl.selectionEnd;
-    const cur   = exprEl.value;
-    exprEl.value = cur.slice(0, start) + text + cur.slice(end);
-    const pos = start + text.length;
+  function insert(text) {
+    if (IS_VIEWER) return;
+    const s = exprEl.selectionStart, e = exprEl.selectionEnd, v = exprEl.value;
+    exprEl.value = v.slice(0, s) + text + v.slice(e);
+    const pos = s + text.length;
     exprEl.setSelectionRange(pos, pos);
     exprEl.focus();
-    onExpressionChange();
+    onInput();
   }
 
-  function doBackspace() {
-    if (isViewer) return;
-    const start = exprEl.selectionStart;
-    const end   = exprEl.selectionEnd;
-    const cur   = exprEl.value;
-    if (start !== end) {
-      exprEl.value = cur.slice(0, start) + cur.slice(end);
-      exprEl.setSelectionRange(start, start);
-    } else if (start > 0) {
-      exprEl.value = cur.slice(0, start - 1) + cur.slice(start);
-      exprEl.setSelectionRange(start - 1, start - 1);
+  function backspace() {
+    if (IS_VIEWER) return;
+    const s = exprEl.selectionStart, e = exprEl.selectionEnd, v = exprEl.value;
+    if (s !== e) {
+      exprEl.value = v.slice(0, s) + v.slice(e);
+      exprEl.setSelectionRange(s, s);
+    } else if (s > 0) {
+      exprEl.value = v.slice(0, s - 1) + v.slice(s);
+      exprEl.setSelectionRange(s - 1, s - 1);
     }
     exprEl.focus();
-    onExpressionChange();
+    onInput();
   }
 
-  function doEvaluate() {
-    if (isViewer) return;
-    const expr = exprEl.value;
-    const res  = evaluate(expr);
-    showResult(res.value, res.error);
-    if (!res.error && res.value) {
-      emitState(expr, res.value);
+  function clear() {
+    if (IS_VIEWER) return;
+    exprEl.value = '';
+    showResult('', false);
+    exprEl.focus();
+    emitState();
+  }
+
+  function calculate() {
+    if (IS_VIEWER) return;
+    const expr = exprEl.value.trim();
+    if (!expr) return;
+    const { value, ok } = evaluate(expr);
+    showResult(value, !ok);
+    if (ok && value) {
+      lastAnswer = value;
+      addToHistory(expr, value);
+      emitState();
     }
   }
 
-  function onExpressionChange() {
-    // Live preview as you type (only show result if non-empty)
+  function onInput() {
     const expr = exprEl.value;
-    if (!expr.trim()) { showResult('', false); emitState('', ''); return; }
-    const res = evaluate(expr);
-    // Only show live preview for valid results
-    if (!res.error) {
-      showResult(res.value, false);
-      emitState(expr, res.value);
-    } else {
-      resultEl.textContent = '';
-      resultEl.className   = '';
-      emitState(expr, '');
-    }
+    if (!expr.trim()) { showResult('', false); emitState(); return; }
+    const { value, ok } = evaluate(expr);
+    if (ok && value) { showResult(value, false); } else { showResult('', false); }
+    emitState();
   }
 
-  // ── Button wiring ────────────────────────────────────────────────────────────
+  // ── History ──────────────────────────────────────────────────────────────────
+  function addToHistory(expr, result) {
+    history.unshift({ id: ++histCtr, expr, result });
+    if (history.length > 60) history.pop();
+    renderHistory();
+  }
 
-  document.querySelectorAll('button[data-insert]').forEach(btn => {
-    btn.addEventListener('click', () => insertText(btn.dataset.insert));
-  });
+  function renderHistory() {
+    const list = document.getElementById('history-list');
+    if (!history.length) {
+      list.innerHTML = '<div class="hist-empty">No calculations yet.<br>Press = to save.</div>';
+      return;
+    }
+    list.innerHTML = history.map(h => `
+      <div class="hist-item" data-id="${h.id}">
+        <div class="hist-expr">${escHtml(h.expr)}</div>
+        <div class="hist-result">= ${escHtml(h.result)}</div>
+      </div>
+    `).join('');
 
-  document.getElementById('btn-backspace').addEventListener('click', doBackspace);
-  document.getElementById('btn-equals').addEventListener('click', doEvaluate);
-
-  // ── Keyboard ─────────────────────────────────────────────────────────────────
-
-  document.addEventListener('keydown', e => {
-    if (isViewer) return;
-    if (e.key === 'Enter')     { e.preventDefault(); doEvaluate(); }
-    // Let the input handle everything else natively
-  });
-
-  exprEl.addEventListener('input', onExpressionChange);
-
-  // ── Socket sync ──────────────────────────────────────────────────────────────
-
-  function emitState(expression, result) {
-    if (socket && !isViewer) {
-      socket.emit('widget_state', {
-        widgetId,
-        state: { expression, result },
+    list.querySelectorAll('.hist-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (IS_VIEWER) return;
+        const entry = history.find(h => h.id === +el.dataset.id);
+        if (!entry) return;
+        exprEl.value = entry.expr;
+        showResult(entry.result, false);
+        exprEl.focus();
+        exprEl.setSelectionRange(exprEl.value.length, exprEl.value.length);
+        emitState();
       });
-    }
+    });
   }
 
-  function connectSocket(url) {
-    if (socket) { socket.disconnect(); socket = null; }
-    socket = io(url, { transports: ['websocket', 'polling'] });
-
-    socket.on('widget_state', data => {
-      if (!isViewer) return;
-      if (data?.widgetId !== widgetId) return;
-      const state = data?.state || {};
-      exprEl.value = state.expression || '';
-      showResult(state.result || '', false);
-    });
-
-    socket.on('disconnect', () => {});
+  function clearHistory() {
+    history = [];
+    renderHistory();
+    emitState();
   }
 
-  // ── Config ───────────────────────────────────────────────────────────────────
+  // ── Event wiring ─────────────────────────────────────────────────────────────
+  document.querySelectorAll('.cbtn[data-insert]').forEach(btn => {
+    btn.addEventListener('click', () => insert(btn.dataset.insert));
+  });
 
-  function updateConfig(cfg) {
-    cfg = cfg || {};
-    widgetId = cfg.id || cfg.widgetId || widgetId;
+  document.getElementById('btn-back').addEventListener('click', backspace);
+  document.getElementById('btn-clear').addEventListener('click', clear);
+  document.getElementById('btn-eq').addEventListener('click', calculate);
+  document.getElementById('btn-ans').addEventListener('click', () => insert(lastAnswer));
+  document.getElementById('btn-frac').addEventListener('click', () => {
+    if (IS_VIEWER) return;
+    const expr = exprEl.value.trim();
+    const result = expr ? evaluate(expr) : null;
+    const numerator = (result?.ok && result.value) ? result.value : (expr || '0');
+    exprEl.value = '(' + numerator + ')÷(';
+    exprEl.focus();
+    exprEl.setSelectionRange(exprEl.value.length, exprEl.value.length);
+    onInput();
+  });
+  document.getElementById('btn-clear-hist').addEventListener('click', clearHistory);
+  document.getElementById('history-clear').addEventListener('click', clearHistory);
 
-    isViewer = cfg.role === 'viewer';
-    exprEl.readOnly = isViewer;
-    badge.style.display = isViewer ? 'block' : 'none';
+  exprEl.addEventListener('input', onInput);
+  exprEl.addEventListener('keydown', e => {
+    if (IS_VIEWER) return;
+    if (e.key === 'Enter') { e.preventDefault(); calculate(); }
+  });
 
-    // Disable buttons for viewer
-    document.querySelectorAll('button').forEach(b => {
-      b.disabled = isViewer;
-      b.style.opacity = isViewer ? '0.6' : '';
-      b.style.cursor  = isViewer ? 'default' : '';
-    });
+  // ── Viewer mode ───────────────────────────────────────────────────────────────
+  function setViewerMode() {
+    exprEl.readOnly = true;
+    document.getElementById('viewer-badge').style.display = 'block';
+    document.getElementById('viewer-toast').style.display = 'block';
+    document.getElementById('btn-clear-hist').style.display = 'none';
+    document.querySelectorAll('.cbtn').forEach(b => b.disabled = true);
+  }
 
-    if (cfg.defaultExpression && !isViewer) {
+  // ── Config / postMessage ──────────────────────────────────────────────────────
+  function applyConfig(cfg) {
+    if (!cfg) return;
+    if (cfg.viewer || IS_VIEWER) setViewerMode();
+    if (cfg.socketUrl) initSocket(cfg.socketUrl);
+    if (cfg.defaultExpression && !IS_VIEWER) {
       exprEl.value = cfg.defaultExpression;
-      onExpressionChange();
-    }
-
-    if (cfg.socketUrl) {
-      connectSocket(cfg.socketUrl);
+      onInput();
     }
   }
-
-  destroy = function () {
-    if (socket) { socket.disconnect(); socket = null; }
-  };
-
-  // ── Message listener ─────────────────────────────────────────────────────────
 
   window.addEventListener('message', e => {
-    if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
-    if (e.data?.type === 'widget-cleanup') destroy?.();
+    if (e.data?.type === 'widget-config')  applyConfig(e.data.config);
+    if (e.data?.type === 'widget-cleanup') { if (socket) socket.disconnect?.(); }
   });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────────
+  // Wait a tick so socket.io.js script has a chance to load
+  setTimeout(() => {
+    initSocket();
+    if (IS_VIEWER) setViewerMode();
+    applyConfig(CFG);
+    renderHistory();
+  }, 50);
+
 })();
 </script>
 </body>

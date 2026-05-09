@@ -2,6 +2,43 @@
 // Renders widgets from HTML files in the zip file
 // Widgets are loaded as blob URLs from the presentation zip
 
+// Registry for expand/collapse: widgetId -> { iframe, container, savedStyle }
+const _widgetRegistry = new Map();
+let _expandListenerAttached = false;
+
+function _ensureExpandListener() {
+    if (_expandListenerAttached) return;
+    _expandListenerAttached = true;
+    window.addEventListener('message', e => {
+        const { type, widgetId } = e.data || {};
+        if (type === 'widget-expand') {
+            const entry = _widgetRegistry.get(widgetId);
+            if (!entry) return;
+            const { iframe, container } = entry;
+            const rect = container.getBoundingClientRect();
+            entry.savedStyle = {
+                left:       iframe.style.left,
+                top:        iframe.style.top,
+                width:      iframe.style.width,
+                height:     iframe.style.height,
+                zIndex:     iframe.style.zIndex,
+                transition: iframe.style.transition,
+            };
+            iframe.style.transition = 'left 0.45s ease, top 0.45s ease, width 0.45s ease, height 0.45s ease';
+            iframe.style.left   = '0px';
+            iframe.style.top    = '0px';
+            iframe.style.width  = rect.width  + 'px';
+            iframe.style.height = rect.height + 'px';
+            iframe.style.zIndex = '500';
+        } else if (type === 'widget-collapse') {
+            const entry = _widgetRegistry.get(widgetId);
+            if (!entry?.savedStyle) return;
+            Object.assign(entry.iframe.style, entry.savedStyle);
+            entry.savedStyle = null;
+        }
+    });
+}
+
 export function renderWidgets(slideConfig, container, zipFile, viewerMode = false) {
     if (!slideConfig.widgets || slideConfig.widgets.length === 0) {
         return;
@@ -37,7 +74,9 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
         iframe.allow = "autoplay; fullscreen; camera; microphone";
         
         container.appendChild(iframe);
-        
+        _widgetRegistry.set(w.id, { iframe, container, savedStyle: null });
+        _ensureExpandListener();
+
         // Load widget HTML from zip
         try {
             // Accept common config fields for widget file path.
@@ -149,6 +188,8 @@ export function updateWidgetPositions(container) {
 export function cleanupWidgets(container) {
     const existingWidgets = container.querySelectorAll('.widget-iframe');
     existingWidgets.forEach(iframe => {
+        const wid = iframe.dataset.widgetId;
+        if (wid) _widgetRegistry.delete(wid);
         // Send cleanup message to iframe
         if (iframe.contentWindow) {
             try {

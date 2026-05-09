@@ -1,521 +1,536 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Word Cloud</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
-  <style>
-    :root {
-      --bg:         oklch(99% 0.003 80);
-      --bg-2:       oklch(97% 0.005 80);
-      --bg-3:       oklch(94% 0.007 80);
-      --bg-4:       oklch(90% 0.008 80);
-      --ink-1:      oklch(22% 0.012 260);
-      --ink-2:      oklch(38% 0.010 260);
-      --ink-3:      oklch(55% 0.008 260);
-      --ink-4:      oklch(72% 0.006 260);
-      --accent:     oklch(45% 0.005 260);
-      --accent-hi:  oklch(32% 0.006 260);
-      --ok:         oklch(48% 0.13 155);
-      --line:       1px solid oklch(85% 0.005 260);
-      --r:          8px;
-      --font:       "EB Garamond", Georgia, serif;
-      --mono:       ui-monospace, "SF Mono", Menlo, monospace;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink-1); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Cloud — Beamer+</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+<script>
+  (function () {
+    var s = document.createElement('script');
+    s.src = '/socket.io/socket.io.js';
+    s.onerror = function () { window.__noSocketIO = true; };
+    document.head.appendChild(s);
+  })();
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
 
-    #shell { display: flex; flex-direction: column; height: 100%; }
+:root {
+  --bg:         #ffffff;
+  --bg-subtle:  #f9f9f8;
+  --border:     #e9e9e6;
+  --border-med: #d4d4cf;
+  --text:       #1a1a18;
+  --text-2:     #6b6b65;
+  --text-3:     #aeaea5;
+  --accent:     #52524e;
+  --accent-bg:  #f0f0ee;
+  --radius:     6px;
+  --font-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-ui:    'DM Sans', system-ui, sans-serif;
+}
 
-    /* Prompt header */
-    #question-header {
-      flex-shrink: 0;
-      padding: 28px 32px 22px;
-      border-bottom: var(--line);
-      background: var(--bg);
-      display: none;
-    }
-    #question-text {
-      font-size: clamp(1.4rem, 4vw, 2.1rem);
-      font-weight: 500;
-      line-height: 1.25;
-      color: var(--ink-1);
-      text-align: center;
-    }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
 
-    /* Body */
-    #body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Toolbar */
+#toolbar {
+  flex-shrink: 0;
+  height: 42px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 5px;
+}
+.toolbar-title { font-size: 13px; font-weight: 500; flex-shrink: 0; }
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
+.tb-btn {
+  height: 28px; padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg); color: var(--text);
+  font-family: var(--font-ui); font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+.tb-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
+.tb-btn.primary { background: var(--text); color: #fff; border-color: var(--text); }
+.tb-btn.primary:hover:not(:disabled) { background: #2d2d2a; }
+#resp-pill { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
 
-    /* Setup */
-    #setup-view {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .setup-card {
-      width: 100%;
-      max-width: 380px;
-      background: var(--bg-2);
-      border: var(--line);
-      border-radius: var(--r);
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .setup-title { font-size: 1.3rem; font-weight: 500; }
-    .field label { display: block; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
-    .field input, .field select {
-      width: 100%; padding: 8px 10px; font-family: var(--font); font-size: 14px;
-      background: var(--bg); color: var(--ink-1); border: var(--line); border-radius: var(--r);
-      outline: none; transition: border-color 120ms;
-    }
-    .field input:focus, .field select:focus { border-color: var(--accent); }
+/* Main */
+#main { flex: 1; position: relative; overflow: hidden; }
 
-    /* QR collect view */
-    #collect-view {
-      flex: 1;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      padding: 24px;
-    }
-    .scan-hint {
-      font-size: 0.85rem;
-      color: var(--ink-4);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    #qrcode {
-      padding: 10px;
-      background: white;
-      border: var(--line);
-      border-radius: var(--r);
-    }
-    #join-url {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--ink-4);
-      text-align: center;
-      max-width: 400px;
-      word-break: break-all;
-      cursor: pointer;
-    }
-    #count-badge {
-      font-size: 14px;
-      color: var(--ink-3);
-      padding: 5px 16px;
-      border: var(--line);
-      border-radius: 999px;
-      background: var(--bg-2);
-    }
-    #count-badge strong { color: var(--ink-1); font-size: 15px; }
+/* Setup */
+#setup-view {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.setup-card { width: 100%; max-width: 360px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.setup-card-header { padding: 12px 16px; background: var(--bg-subtle); border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 500; }
+.setup-card-body { padding: 16px; display: flex; flex-direction: column; gap: 13px; }
+.field label { display: block; font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 5px; }
+.field input, .field select { width: 100%; padding: 7px 10px; font-family: var(--font-ui); font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius); outline: none; transition: border-color 0.1s; }
+.field input:focus, .field select:focus { border-color: var(--border-med); }
+.setup-card-footer { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
 
-    /* Cloud results view */
-    #cloud-view {
-      flex: 1;
-      display: none;
-      position: relative;
-      overflow: hidden;
-      background: var(--bg);
-      opacity: 0;
-      transition: opacity 0.5s ease;
-    }
-    #cloud-view.visible { opacity: 1; }
-    #cloud-canvas { display: block; width: 100%; height: 100%; }
-    #cloud-placeholder {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      color: var(--ink-4);
-      font-style: italic;
-      pointer-events: none;
-    }
+/* Collect */
+#collect-view {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 28px 24px;
+}
+#question-display { font-size: clamp(15px, 3.5vw, 26px); font-weight: 500; text-align: center; max-width: 560px; line-height: 1.3; }
+.scan-hint { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+#qrcode-wrap { padding: 12px; background: white; border: 1px solid var(--border); border-radius: var(--radius); line-height: 0; }
+#join-url { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); text-align: center; max-width: 400px; word-break: break-all; cursor: pointer; padding: 3px 8px; border-radius: 4px; transition: background 0.1s, color 0.1s; }
+#join-url:hover { background: var(--bg-subtle); color: var(--text-2); }
 
-    /* Footer */
-    #footer-panel {
-      flex-shrink: 0;
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 24px;
-      border-top: var(--line);
-      background: var(--bg);
-      gap: 12px;
-    }
-    #resp-count-row { font-size: 14px; color: var(--ink-3); }
-    #resp-count-row strong { color: var(--ink-1); font-size: 15px; }
-
-    /* Buttons */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 22px;
-      font-family: var(--font);
-      font-size: 1rem;
-      background: var(--bg);
-      color: var(--ink-2);
-      border: var(--line);
-      border-radius: var(--r);
-      cursor: pointer;
-      transition: background 100ms;
-      white-space: nowrap;
-    }
-    .btn:hover:not(:disabled) { background: var(--bg-4); }
-    .btn:disabled { opacity: 0.4; cursor: default; }
-    .btn.primary {
-      background: var(--accent);
-      color: oklch(97% 0.003 80);
-      border-color: var(--accent-hi);
-    }
-    .btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
-    #btn-row { display: flex; align-items: center; gap: 8px; }
-  </style>
+/* Cloud */
+#cloud-view { position: absolute; inset: 0; display: none; background: var(--bg); }
+#cloud-canvas { display: block; width: 100%; height: 100%; }
+#cloud-question-label { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--text-3); font-weight: 500; pointer-events: none; }
+#cloud-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--text-3); font-style: italic; pointer-events: none; }
+</style>
 </head>
 <body>
-<div id="shell">
-  <div id="question-header"><div id="question-text"></div></div>
 
-  <div id="body">
-    <!-- Setup -->
-    <div id="setup-view">
-      <div class="setup-card">
-        <div class="setup-title">Word Cloud</div>
+<div id="toolbar">
+  <span class="toolbar-title">Word Cloud</span>
+  <div id="tb-collect" style="display:none; align-items:center; gap:5px">
+    <div class="sep"></div>
+    <button class="tb-btn primary" onclick="doShowCloud()">Show Cloud →</button>
+  </div>
+  <div id="tb-cloud" style="display:none; align-items:center; gap:5px">
+    <div class="sep"></div>
+    <button class="tb-btn" onclick="doReset()">↺ New Round</button>
+  </div>
+  <span id="resp-pill" style="display:none"></span>
+</div>
+
+<div id="main">
+  <div id="setup-view">
+    <div class="setup-card">
+      <div class="setup-card-header">Configure word cloud</div>
+      <div class="setup-card-body">
         <div class="field">
-          <label>Question</label>
-          <input type="text" id="setup-question" placeholder="Enter your question…">
+          <label>Question prompt</label>
+          <input type="text" id="setup-question" placeholder="e.g. Describe this lecture in one word" autocomplete="off" />
         </div>
         <div class="field">
-          <label>Response mode</label>
+          <label>Response length</label>
           <select id="setup-mode">
-            <option value="1">Single word</option>
-            <option value="2">Two words</option>
+            <option value="1">One word per response</option>
+            <option value="2">Two words per response</option>
           </select>
         </div>
-        <button class="btn primary" onclick="launch()">Start</button>
       </div>
-    </div>
-
-    <!-- QR collect -->
-    <div id="collect-view">
-      <div id="qrcode"></div>
-      <div id="join-url" onclick="copyUrl(this)" title="Click to copy"></div>
-    </div>
-
-    <!-- Cloud results -->
-    <div id="cloud-view">
-      <canvas id="cloud-canvas"></canvas>
-      <div id="cloud-placeholder">Waiting for responses…</div>
+      <div class="setup-card-footer">
+        <button class="tb-btn primary" onclick="doLaunch()">Start →</button>
+      </div>
     </div>
   </div>
 
-  <!-- Footer -->
-  <div id="footer-panel">
-    <div id="resp-count-row"><strong id="footer-resp-count">0</strong> responses</div>
-    <div id="btn-row">
-      <button class="btn primary" id="close-btn" onclick="showCloud()">Close</button>
-      <button class="btn" id="reset-btn" onclick="resetCloud()" style="display:none">Reset</button>
-    </div>
+  <div id="collect-view">
+    <div id="question-display"></div>
+    <div class="scan-hint">Scan to respond</div>
+    <div id="qrcode-wrap"><div id="qrcode"></div></div>
+    <div id="join-url" onclick="copyUrl()" title="Click to copy"></div>
+  </div>
+
+  <div id="cloud-view">
+    <canvas id="cloud-canvas"></canvas>
+    <div id="cloud-question-label"></div>
+    <div id="cloud-placeholder">Waiting for responses…</div>
   </div>
 </div>
 
 <script>
-  if (performance.getEntriesByType('navigation')[0]?.type === 'reload') sessionStorage.clear();
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPORTANT: No IIFE. All functions are global so onclick="doLaunch()" etc.
+// work directly from HTML attributes.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const CLOUD_COLORS = [
-    'oklch(40% 0.008 260)',
-    'oklch(46% 0.010 260)',
-    'oklch(34% 0.006 260)',
-    'oklch(52% 0.012 240)',
-    'oklch(44% 0.009 280)',
-    'oklch(38% 0.007 250)',
-  ];
+if (performance.getEntriesByType('navigation')[0]?.type === 'reload') {
+  sessionStorage.clear();
+}
 
-  let cfg = {}, socket = null, role = 'presenter';
-  let widgetId = 'word-cloud-default', serverUrl = '', publicBaseUrl = '';
-  let surveyId     = sessionStorage.getItem('wc_id');
-  let wordFreq     = JSON.parse(sessionStorage.getItem('wc_freq') || '{}');
-  let wordColor    = JSON.parse(sessionStorage.getItem('wc_color') || '{}');
-  let question     = sessionStorage.getItem('wc_q') || '';
-  let cloudUrl     = sessionStorage.getItem('wc_url') || '';
-  let inputMode    = parseInt(sessionStorage.getItem('wc_mode') || '1');
-  let totalResp    = parseInt(sessionStorage.getItem('wc_total') || '0');
-  let lastSynced   = parseInt(sessionStorage.getItem('wc_synced') || '0');
-  let phase = 'setup';
+const PALETTE = ['#1a1a18','#2d2d2a','#3d3d3a','#52524e','#6b6b65','#4a4a46'];
 
-  function deriveServer() {
-    try { return window.parent.location.origin; } catch(e) { return window.location.origin; }
-  }
+const STOP = new Set([
+  'the','a','an','is','are','was','were','be','been','being','it','in','on',
+  'at','to','of','and','or','but','for','with','this','that','these','those',
+  'i','we','you','he','she','they','my','your','our','its','not','so','if',
+  'as','by','do','did','has','have','had','will','would','can','could',
+  'should','may','might','shall','very','just','also','up','out','about',
+  'than','then','there','here','what','which','who','how','when','where',
+]);
 
-  function getHeaderQuestion() {
-    return question || cfg.question || document.getElementById('setup-question').value.trim() || '';
-  }
+// ── Global state ──────────────────────────────────────────────────────────────
+let _cfg       = {};
+let _socket    = null;
+let _role      = 'presenter';
+let _widgetId  = 'word-cloud';
+let _server    = '';          // Beamer+ server origin
+let _pubBase   = '';          // public-facing base URL for QR codes
+let _phase     = 'setup';
+let _syncTimer = null;
+let _renderPending = false;
 
-  function refreshHeader() {
-    const title = getHeaderQuestion();
-    const header = document.getElementById('question-header');
-    document.getElementById('question-text').textContent = title;
-    header.style.display = title ? 'block' : 'none';
-  }
+let _surveyId   = sessionStorage.getItem('wc_id')    || null;
+let _freq       = JSON.parse(sessionStorage.getItem('wc_freq')  || '{}');
+let _color      = JSON.parse(sessionStorage.getItem('wc_color') || '{}');
+let _question   = sessionStorage.getItem('wc_q')     || '';
+let _cloudUrl   = sessionStorage.getItem('wc_url')   || '';
+let _mode       = parseInt(sessionStorage.getItem('wc_mode')  || '1');
+let _total      = parseInt(sessionStorage.getItem('wc_total') || '0');
+let _lastSync   = parseInt(sessionStorage.getItem('wc_sync')  || '0');
 
-  function save() {
-    sessionStorage.setItem('wc_freq',   JSON.stringify(wordFreq));
-    sessionStorage.setItem('wc_color',  JSON.stringify(wordColor));
-    sessionStorage.setItem('wc_total',  String(totalResp));
-    sessionStorage.setItem('wc_synced', String(lastSynced));
-  }
+// ── Persistence ───────────────────────────────────────────────────────────────
+function _save() {
+  sessionStorage.setItem('wc_freq',  JSON.stringify(_freq));
+  sessionStorage.setItem('wc_color', JSON.stringify(_color));
+  sessionStorage.setItem('wc_total', String(_total));
+  sessionStorage.setItem('wc_sync',  String(_lastSync));
+}
 
-  function setRespCount(n) {
-    totalResp = n;
-    document.getElementById('footer-resp-count').textContent = String(n);
-  }
-
-  function showPhase(p) {
-    phase = p;
-    document.getElementById('setup-view').style.display   = p === 'setup'   ? ''    : 'none';
-    document.getElementById('collect-view').style.display = p === 'collect' ? 'flex': 'none';
-    document.getElementById('cloud-view').style.display   = p === 'cloud'   ? ''    : 'none';
-    document.getElementById('footer-panel').style.display = p !== 'setup' ? 'flex' : 'none';
-
-    if (role !== 'presenter') {
-      document.getElementById('btn-row').style.display = 'none';
-    } else {
-      document.getElementById('close-btn').style.display  = p === 'collect' ? '' : 'none';
-      document.getElementById('reset-btn').style.display  = p === 'cloud'   ? '' : 'none';
-    }
-    refreshHeader();
-
-    if (p === 'cloud') {
-      requestAnimationFrame(() => {
-        document.getElementById('cloud-view').classList.add('visible');
-      });
-    } else {
-      document.getElementById('cloud-view').classList.remove('visible');
-    }
-  }
-
-  /* Socket */
-  function emitState() {
-    if (!socket || role !== 'presenter') return;
-    socket.emit('widget_state', {
-      widgetId,
-      state: { phase, question, cloudUrl, inputMode, totalResp, wordFreq, wordColor, surveyId },
+// ── Socket ────────────────────────────────────────────────────────────────────
+function _initSocket() {
+  if (window.__noSocketIO || typeof io === 'undefined') return;
+  if (_socket) return;
+  const url = _cfg.socketUrl || _cfg.serverUrl || _server;
+  if (!url) return;
+  try {
+    _socket = io(url);
+    _socket.on('connect', () => {
+      if (_role === 'presenter') _socket.emit('join_presenter');
     });
-  }
+    // Viewer receives full state snapshot from presenter
+    _socket.on('widget_event', ({ id, type, payload }) => {
+      if (id !== _widgetId) return;
+      if (type === 'state') _applyRemoteState(payload);
+    });
+    // Presenter receives individual submissions from survey server
+    _socket.on('survey_response', data => {
+      if (_role !== 'presenter') return;
+      if (data.survey_id !== _surveyId) return;
+      _ingestText(data.response?.text || data.text || '');
+      _setTotal(data.total);
+      _lastSync = _total;
+      _save();
+      _emitState();
+    });
+    _socket.on('presentation_loaded', () => {
+      if (_role === 'presenter' && _surveyId) _catchUp();
+    });
+  } catch (e) { console.warn('Socket init failed:', e); }
+}
 
-  function applyState(s) {
-    if (!s || s.phase === 'setup') return;
-    question  = s.question || question;
-    cloudUrl  = s.cloudUrl || cloudUrl;
-    inputMode = s.inputMode || inputMode;
-    wordFreq  = s.wordFreq || {};
-    wordColor = s.wordColor || {};
-    surveyId  = s.surveyId || surveyId;
-    setRespCount(s.totalResp || 0);
-    save();
-    if (s.phase === 'cloud') {
-      showPhase('cloud');
-      renderCloud();
-    } else {
-      const base = publicBaseUrl || serverUrl;
-      showQR(base + cloudUrl);
-      showPhase('collect');
+function _emitState() {
+  if (!_socket || _role !== 'presenter') return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    _socket.emit('widget_event', {
+      id:   _widgetId,
+      type: 'state',
+      payload: {
+        phase: _phase, question: _question, cloudUrl: _cloudUrl,
+        inputMode: _mode, totalResp: _total,
+        wordFreq: _freq, wordColor: _color, surveyId: _surveyId,
+      },
+    });
+  }, 100);
+}
+
+// Called on viewer when state arrives from presenter
+function _applyRemoteState(s) {
+  if (!s || s.phase === 'setup') return;
+  _question = s.question  || _question;
+  _cloudUrl = s.cloudUrl  || _cloudUrl;
+  _mode     = s.inputMode || _mode;
+  _freq     = s.wordFreq  || {};
+  _color    = s.wordColor || {};
+  _surveyId = s.surveyId  || _surveyId;
+  _setTotal(s.totalResp || 0);
+  _save();
+
+  if (s.phase === 'cloud') {
+    _showPhase('cloud');
+  } else {
+    // Show QR code on viewer so audience can see and scan it
+    _buildQR(_absUrl(_cloudUrl));
+    _showPhase('collect');
+  }
+}
+
+// ── Phase management ──────────────────────────────────────────────────────────
+function _showPhase(p) {
+  _phase = p;
+
+  document.getElementById('setup-view').style.display   = p === 'setup'   ? 'flex'  : 'none';
+  document.getElementById('collect-view').style.display = p === 'collect' ? 'flex'  : 'none';
+  // Use 'block' explicitly — 'cloud-view' has display:none in CSS so '' would revert to none
+  document.getElementById('cloud-view').style.display   = p === 'cloud'   ? 'block' : 'none';
+
+  // Toolbar actions only visible to presenter
+  const isP = (_role === 'presenter');
+  document.getElementById('tb-collect').style.display = p === 'collect' && isP ? 'flex' : 'none';
+  document.getElementById('tb-cloud').style.display   = p === 'cloud'   && isP ? 'flex' : 'none';
+  document.getElementById('resp-pill').style.display  = p !== 'setup' ? '' : 'none';
+
+  _updatePill();
+  document.getElementById('question-display').textContent     = _question;
+  document.getElementById('cloud-question-label').textContent = _question;
+
+  if (p === 'cloud') _scheduleRender();
+}
+
+// ── Count display ─────────────────────────────────────────────────────────────
+function _setTotal(n) {
+  _total = n;
+  _updatePill();
+}
+function _updatePill() {
+  document.getElementById('resp-pill').textContent =
+    `${_total} response${_total === 1 ? '' : 's'}`;
+}
+
+// ── URL helpers ───────────────────────────────────────────────────────────────
+function _absUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;             // already absolute
+  const base = _pubBase || _server;
+  return base + (path.startsWith('/') ? path : '/' + path);
+}
+
+// ── QR code ───────────────────────────────────────────────────────────────────
+function _buildQR(url) {
+  document.getElementById('join-url').textContent = url || '';
+  const el = document.getElementById('qrcode');
+  el.innerHTML = '';
+  if (url) {
+    new QRCode(el, { text: url, width: 180, height: 180, colorDark: '#1a1a18', colorLight: '#ffffff' });
+  }
+}
+
+// Global — called from onclick
+function copyUrl() {
+  const text = document.getElementById('join-url').textContent;
+  navigator.clipboard?.writeText(text).catch(() => {});
+}
+
+// ── Launch ────────────────────────────────────────────────────────────────────
+// Global — called from onclick
+async function doLaunch() {
+  const q = document.getElementById('setup-question').value.trim();
+  if (!q) { document.getElementById('setup-question').focus(); return; }
+  _question = q;
+  _mode     = parseInt(document.getElementById('setup-mode').value);
+  sessionStorage.setItem('wc_q',    _question);
+  sessionStorage.setItem('wc_mode', String(_mode));
+
+  try {
+    const res  = await fetch(`${_server}/api/survey/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: _question, model: null, num_summaries: 0, is_wordcloud: true }),
+    });
+    const data = await res.json();
+    _surveyId = data.survey_id;
+    _cloudUrl = data.url;
+    sessionStorage.setItem('wc_id',  _surveyId);
+    sessionStorage.setItem('wc_url', _cloudUrl);
+    _freq = {}; _color = {};
+    _setTotal(0); _save();
+    _buildQR(_absUrl(_cloudUrl));
+    _showPhase('collect');
+    _initSocket();
+    _emitState();
+  } catch (e) { console.error('Survey create failed:', e); }
+}
+
+// Global — called from onclick
+// Note: survey stays open intentionally so late arrivals can still submit.
+function doShowCloud() {
+  _showPhase('cloud');
+  _emitState();
+  window.addEventListener('resize', _scheduleRender);
+}
+
+// Global — called from onclick
+async function doReset() {
+  // Close old survey only now that we're truly done with it
+  if (_surveyId) {
+    fetch(`${_server}/api/survey/${_surveyId}/close`, { method: 'POST' }).catch(() => {});
+  }
+  window.removeEventListener('resize', _scheduleRender);
+
+  const canvas = document.getElementById('cloud-canvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('cloud-placeholder').style.display = 'flex';
+
+  _surveyId = null; _cloudUrl = ''; _freq = {}; _color = {}; _lastSync = 0;
+  sessionStorage.removeItem('wc_id');
+  sessionStorage.removeItem('wc_url');
+  _setTotal(0); _save();
+
+  try {
+    const res  = await fetch(`${_server}/api/survey/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: _question, model: null, num_summaries: 0, is_wordcloud: true }),
+    });
+    const data = await res.json();
+    _surveyId = data.survey_id;
+    _cloudUrl = data.url;
+    sessionStorage.setItem('wc_id',  _surveyId);
+    sessionStorage.setItem('wc_url', _cloudUrl);
+    _buildQR(_absUrl(_cloudUrl));
+    _showPhase('collect');
+    _emitState();
+  } catch (e) { console.error('Reset failed:', e); _showPhase('setup'); }
+}
+
+// ── Word processing ───────────────────────────────────────────────────────────
+function _ingestText(text) {
+  if (!text) return;
+  const tokens = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/)
+    .filter(t => t.length > 1 && !STOP.has(t));
+  const phrase = tokens.slice(0, _mode).join(' ');
+  if (!phrase) return;
+  _freq[phrase]  = (_freq[phrase]  || 0) + 1;
+  _color[phrase] = _color[phrase] || PALETTE[Math.floor(Math.random() * PALETTE.length)];
+  if (_phase === 'cloud') _scheduleRender();
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function _scheduleRender() {
+  if (_renderPending) return;
+  _renderPending = true;
+  requestAnimationFrame(() => {
+    _renderPending = false;
+    const container = document.getElementById('cloud-view');
+    // offsetWidth is 0 if the element has display:none or hasn't been laid out yet
+    if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+      _scheduleRender(); // retry next frame
+      return;
     }
-  }
-
-  function initSocket() {
-    const url = cfg.socketUrl || serverUrl;
-    if (!url || socket) return;
-    socket = io(url);
-    socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
-    socket.on('widget_state', data => {
-      if (role !== 'viewer' || data?.widgetId !== widgetId) return;
-      applyState(data.state);
-    });
-    socket.on('survey_response', data => {
-      if (role !== 'presenter' || data.survey_id !== surveyId) return;
-      processText(data.response.text);
-      setRespCount(data.total);
-      lastSynced = totalResp;
-      save(); emitState();
-    });
-    socket.on('presentation_loaded', () => { if (role === 'presenter') resetCloud(); });
-  }
-
-  /* QR */
-  function showQR(url) {
-    document.getElementById('join-url').textContent = url;
-    const qrEl = document.getElementById('qrcode');
-    qrEl.innerHTML = '';
-    new QRCode(qrEl, { text: url, width: 180, height: 180, colorDark: '#222', colorLight: '#ffffff' });
-  }
-
-  function copyUrl(el) { navigator.clipboard?.writeText(el.textContent).catch(()=>{}); }
-
-  /* Launch */
-  async function launch() {
-    question  = document.getElementById('setup-question').value.trim();
-    inputMode = parseInt(document.getElementById('setup-mode').value);
-    if (!question) { document.getElementById('setup-question').focus(); return; }
-    try {
-      const res = await fetch(`${serverUrl}/api/survey/create`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ question, model: null, num_summaries: 0, is_wordcloud: true }),
-      });
-      const data = await res.json();
-      surveyId = data.survey_id;
-      cloudUrl = data.url;
-      sessionStorage.setItem('wc_id',   surveyId);
-      sessionStorage.setItem('wc_q',    question);
-      sessionStorage.setItem('wc_url',  cloudUrl);
-      sessionStorage.setItem('wc_mode', String(inputMode));
-      setRespCount(0);
-      const base = publicBaseUrl || serverUrl;
-      showQR(base + cloudUrl);
-      showPhase('collect');
-      initSocket();
-      emitState();
-    } catch(e) { console.error(e); }
-  }
-
-  /* Cloud display */
-  function showCloud() {
-    if (surveyId) fetch(`${serverUrl}/api/survey/${surveyId}/close`, {method:'POST'}).catch(()=>{});
-    showPhase('cloud');
-    renderCloud();
-    emitState();
-    window.addEventListener('resize', renderCloud);
-  }
-
-  function processText(text) {
-    if (!text) return;
-    const STOP = new Set(['the','a','an','is','are','was','were','be','been','it','in','on','at','to','of','and','or','but','for','with','this','that','i','we','you','he','she','they']);
-    const tokens = text.toLowerCase().replace(/[^\w\s]/g,'').split(/\s+/).filter(t => t.length > 1 && !STOP.has(t));
-    const phrase = tokens.slice(0, inputMode).join(' ');
-    if (!phrase) return;
-    wordFreq[phrase] = (wordFreq[phrase] || 0) + 1;
-    if (!wordColor[phrase]) wordColor[phrase] = CLOUD_COLORS[Math.floor(Math.random() * CLOUD_COLORS.length)];
-    document.getElementById('cloud-placeholder').style.display = 'none';
-    if (phase === 'cloud') renderCloud();
-  }
-
-  function renderCloud() {
-    const entries = Object.entries(wordFreq);
-    if (!entries.length) return;
-    document.getElementById('cloud-placeholder').style.display = 'none';
-    const canvas = document.getElementById('cloud-canvas');
-    canvas.width  = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
-    const maxFreq = Math.max(...entries.map(([,c])=>c));
-    const list = entries
-      .sort((a,b)=>b[1]-a[1])
-      .map(([w,c]) => [w, Math.round(20 + (c / maxFreq) * (canvas.height * 0.18))]);
-    WordCloud(canvas, {
-      list,
-      fontFamily: 'EB Garamond, Georgia, serif',
-      color: w => wordColor[w] || CLOUD_COLORS[0],
-      rotateRatio: 0,
-      gridSize: Math.round(12 * canvas.width / 1024),
-      drawOutOfBound: false,
-      shrinkToFit: true,
-    });
-  }
-
-  async function resetCloud() {
-    const resetQuestion = question || cfg.question || document.getElementById('setup-question').value.trim();
-    const resetMode = inputMode || parseInt(cfg.mode || '1');
-    if (!resetQuestion) { showPhase('setup'); return; }
-    if (surveyId) fetch(`${serverUrl}/api/survey/${surveyId}/close`, {method:'POST'}).catch(()=>{});
-    surveyId = null; wordFreq = {}; wordColor = {}; cloudUrl = '';
-    lastSynced = 0; question = resetQuestion; inputMode = resetMode;
-    sessionStorage.removeItem('wc_id');
-    sessionStorage.removeItem('wc_url');
-    sessionStorage.setItem('wc_q', question);
-    sessionStorage.setItem('wc_mode', String(inputMode));
-    save();
-    document.getElementById('setup-question').value = question;
-    document.getElementById('setup-mode').value = String(inputMode);
-    setRespCount(0);
-    document.getElementById('qrcode').innerHTML = '';
-    const canvas = document.getElementById('cloud-canvas');
-    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-    document.getElementById('cloud-placeholder').style.display = '';
-    try {
-      const res = await fetch(`${serverUrl}/api/survey/create`, {
-        method: 'POST', headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ question, model: null, num_summaries: 0, is_wordcloud: true }),
-      });
-      const data = await res.json();
-      surveyId = data.survey_id; cloudUrl = data.url;
-      sessionStorage.setItem('wc_id', surveyId);
-      sessionStorage.setItem('wc_url', cloudUrl);
-      const base = publicBaseUrl || serverUrl;
-      showQR(base + cloudUrl);
-      showPhase('collect');
-      emitState();
-    } catch(e) { console.error(e); showPhase('setup'); }
-  }
-
-  async function syncMissed() {
-    if (!surveyId) return;
-    try {
-      const res = await fetch(`${serverUrl}/api/survey/${surveyId}/responses?after=${lastSynced}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setRespCount(data.total ?? totalResp);
-      (data.responses || []).forEach(r => processText(r.text));
-      lastSynced = totalResp; save();
-    } catch(e) { console.warn(e); }
-  }
-
-  async function updateConfig(c) {
-    cfg = c || {};
-    role = cfg.role || 'presenter';
-    widgetId = cfg.id || cfg.widgetId || widgetId;
-    serverUrl = cfg.socketUrl || cfg.serverUrl || deriveServer();
-    publicBaseUrl = cfg.publicBaseUrl || serverUrl;
-    if (cfg.question) { question = question || cfg.question; document.getElementById('setup-question').value = cfg.question; }
-    if (cfg.mode) document.getElementById('setup-mode').value = String(cfg.mode);
-    refreshHeader();
-    initSocket();
-    if (role === 'viewer') { document.getElementById('setup-view').style.display = 'none'; showPhase('collect'); return; }
-    if (surveyId) {
-      setRespCount(totalResp);
-      const base = publicBaseUrl || serverUrl;
-      showQR(base + cloudUrl);
-      showPhase('collect');
-      await syncMissed();
-      emitState();
-    } else if (cfg.question && cfg.autoStart !== false) {
-      await launch();
-    }
-  }
-
-  window.addEventListener('message', e => {
-    if (e.data?.type === 'widget-config') updateConfig(e.data.config);
-    if (e.data?.type === 'widget-cleanup') socket?.disconnect();
+    _renderCloud();
   });
+}
 
-  if (surveyId) {
-    serverUrl = deriveServer();
-    setRespCount(totalResp);
-    refreshHeader();
-    showPhase('collect');
-    initSocket();
-    syncMissed();
+function _renderCloud() {
+  const entries   = Object.entries(_freq);
+  const container = document.getElementById('cloud-view');
+  const canvas    = document.getElementById('cloud-canvas');
+  const holder    = document.getElementById('cloud-placeholder');
+
+  canvas.width  = container.clientWidth;
+  canvas.height = container.clientHeight;
+
+  if (!entries.length) { holder.style.display = 'flex'; return; }
+  holder.style.display = 'none';
+
+  const maxF = Math.max(...entries.map(([, c]) => c));
+  const list = entries
+    .sort((a, b) => b[1] - a[1])
+    .map(([w, c]) => [w, Math.round(22 + (c / maxF) * Math.min(canvas.height * 0.18, 90))]);
+
+  WordCloud(canvas, {
+    list,
+    fontFamily:      "'DM Sans', system-ui, sans-serif",
+    fontWeight:      '600',
+    color:           w => _color[w] || PALETTE[0],
+    rotateRatio:     0,
+    gridSize:        Math.max(4, Math.round(8 * canvas.width / 1024)),
+    drawOutOfBound:  false,
+    shrinkToFit:     true,
+    backgroundColor: '#ffffff',
+  });
+}
+
+// ── Catch-up sync ─────────────────────────────────────────────────────────────
+async function _catchUp() {
+  if (!_surveyId) return;
+  try {
+    const res  = await fetch(`${_server}/api/survey/${_surveyId}/responses?after=${_lastSync}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    _setTotal(data.total ?? _total);
+    (data.responses || []).forEach(r => _ingestText(r.text || ''));
+    _lastSync = _total;
+    _save();
+  } catch (e) { console.warn('catchUp:', e); }
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+function _deriveServer() {
+  try { return window.parent.location.origin; } catch (_) { return window.location.origin; }
+}
+
+async function _applyConfig(c) {
+  _cfg      = c || {};
+  _role     = _cfg.role        || 'presenter';
+  _widgetId = _cfg.id          || _cfg.widgetId || _widgetId;
+  _server   = _cfg.socketUrl   || _cfg.serverUrl  || _deriveServer();
+  _pubBase  = _cfg.publicBaseUrl || _server;
+
+  if (_role === 'viewer') {
+    // Viewer mirrors the presenter — no controls shown, no toast needed
+    _showPhase('collect');   // blank until first socket sync arrives
+    _initSocket();
+    return;
   }
+
+  // Presenter setup
+  if (_cfg.question) {
+    _question = _question || _cfg.question;
+    document.getElementById('setup-question').value = _cfg.question;
+  }
+  if (_cfg.mode) {
+    _mode = parseInt(_cfg.mode);
+    document.getElementById('setup-mode').value = String(_mode);
+  }
+  _initSocket();
+
+  if (_surveyId) {
+    _buildQR(_absUrl(_cloudUrl));
+    _showPhase('collect');
+    await _catchUp();
+    _emitState();
+  } else if (_cfg.question && _cfg.autoStart !== false) {
+    await doLaunch();
+  }
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'widget-config')  _applyConfig(e.data.config);
+  if (e.data?.type === 'widget-cleanup') { _socket?.disconnect(); _socket = null; }
+});
+
+// Honour WIDGET_CONFIG injected by Beamer+ before iframe loads
+if (window.WIDGET_CONFIG) {
+  _applyConfig(window.WIDGET_CONFIG);
+} else if (_surveyId) {
+  // Restore in-progress session after soft navigation (no reload)
+  _server = _deriveServer();
+  _buildQR(_absUrl(_cloudUrl));
+  _showPhase('collect');
+  setTimeout(() => { _initSocket(); _catchUp(); }, 60);
+}
 </script>
 </body>
 </html>

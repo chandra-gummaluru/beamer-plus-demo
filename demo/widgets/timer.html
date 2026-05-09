@@ -3,207 +3,250 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Timer</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+<title>Timer — Beamer+</title>
 <style>
-  :root {
-    --bg:         oklch(99% 0.003 80);
-    --bg-2:       oklch(97% 0.005 80);
-    --bg-3:       oklch(94% 0.007 80);
-    --bg-4:       oklch(90% 0.008 80);
-    --ink-1:      oklch(22% 0.012 260);
-    --ink-2:      oklch(38% 0.010 260);
-    --ink-3:      oklch(55% 0.008 260);
-    --ink-4:      oklch(72% 0.006 260);
-    --accent:     oklch(45% 0.005 260);
-    --accent-hi:  oklch(32% 0.006 260);
-    --accent-lo:  oklch(92% 0.004 260);
-    --ok:         oklch(52% 0.14 160);
-    --err:        oklch(58% 0.18 25);
-    --err-tint:   oklch(96% 0.04 25);
-    --line:       1px solid oklch(85% 0.005 260);
-    --r:          6px;
-    --font:       "EB Garamond", Georgia, serif;
-    --mono:       ui-monospace, "SF Mono", Menlo, monospace;
-  }
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
+/* ── Design tokens ───────────────────────────────────────── */
+:root {
+  --bg:           #ffffff;
+  --bg-subtle:    #f9f9f8;
+  --border:       #e9e9e6;
+  --border-med:   #d4d4cf;
+  --text:         #1a1a18;
+  --text-2:       #6b6b65;
+  --text-3:       #aeaea5;
+  --accent:       #52524e;
+  --accent-bg:    #f0f0ee;
+  --red:          #dc2626;
+  --red-bg:       #fef2f2;
+  --radius:       6px;
+  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-ui:      'DM Sans', system-ui, sans-serif;
+}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; touch-action: manipulation; }
 
-  html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: var(--bg);
-    font-family: var(--font);
-    color: var(--ink-1);
-    transition: background 0.2s;
-  }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.2s;
+}
 
-  body.flash {
-    background: var(--err-tint);
-  }
+body.flash { background: var(--red-bg); }
 
-  #app {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    gap: 0;
-    padding: 16px;
-  }
+/* ── Toolbar ─────────────────────────────────────────────── */
+#toolbar {
+  flex-shrink: 0;
+  height: 42px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 5px;
+}
 
-  /* Time display */
-  #time-display {
-    font-family: var(--mono);
-    font-size: clamp(2.4rem, 8vw, 4.2rem);
-    font-weight: 400;
-    letter-spacing: 0.04em;
-    color: var(--ink-1);
-    line-height: 1;
-    margin-bottom: 10px;
-    transition: color 0.2s;
-    text-align: center;
-  }
+.toolbar-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  flex-shrink: 0;
+}
 
-  #time-display.expired {
-    color: var(--err);
-  }
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
 
-  /* Mode label */
-  #mode-label {
-    display: none;
-  }
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+}
+.tb-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
+.tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.tb-btn.active { background: var(--accent-bg); color: var(--accent); border-color: #c8c8c4; }
 
-  /* Duration stepper (countdown only, when stopped) */
-  #duration-controls {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 20px;
-  }
+.viewer-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  display: none;
+}
 
-  #duration-controls.visible {
-    display: flex;
-  }
+/* ── Main area ───────────────────────────────────────────── */
+#app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow: hidden;
+}
 
-  #duration-controls button {
-    font-family: var(--mono);
-    font-size: 0.78rem;
-    color: var(--ink-2);
-    background: var(--bg);
-    border: var(--line);
-    border-radius: var(--r);
-    padding: 4px 8px;
-    cursor: pointer;
-    transition: background 0.1s;
-    white-space: nowrap;
-  }
+/* Mode label — hidden, kept for JS compat */
+#mode-label { display: none; }
 
-  #duration-controls button:hover { background: var(--bg-3); }
-  #duration-controls button:active { background: var(--bg-4); }
-  #duration-controls button:disabled { opacity: 0.45; cursor: default; background: var(--bg); }
+/* ── Time display ─────────────────────────────────────────── */
+#time-display {
+  font-family: var(--font-mono);
+  font-size: clamp(2.8rem, 10vw, 5.5rem);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1;
+  text-align: center;
+  transition: color 0.2s;
+  margin-bottom: 20px;
+  user-select: none;
+}
 
-  #duration-display {
-    font-family: var(--mono);
-    font-size: 0.85rem;
-    color: var(--ink-2);
-    min-width: 52px;
-    text-align: center;
-    padding: 4px 8px;
-    border: var(--line);
-    border-radius: var(--r);
-    background: var(--bg-2);
-    cursor: default;
-    user-select: none;
-  }
+#time-display.expired { color: var(--red); }
 
-  /* Remove old inline controls */
-  #controls { display: none; }
+/* ── Duration stepper ────────────────────────────────────── */
+#duration-controls {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 28px;
+}
 
-  /* Shell */
-  #shell {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
+#duration-controls.visible { display: flex; }
 
-  /* Footer panel */
-  #footer-panel {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 24px;
-    border-top: 1px solid oklch(85% 0.005 260);
-    background: var(--bg);
-  }
+.dur-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+.dur-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
+.dur-btn:active:not(:disabled) { background: var(--accent-bg); }
+.dur-btn:disabled { opacity: 0.4; cursor: default; }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 22px;
-    font-family: var(--font);
-    font-size: 1rem;
-    background: var(--bg);
-    color: var(--ink-2);
-    border: var(--line);
-    border-radius: var(--r);
-    cursor: pointer;
-    transition: background 100ms;
-    white-space: nowrap;
-  }
-  .btn:hover:not(:disabled) { background: var(--bg-4); }
-  .btn:disabled { opacity: 0.4; cursor: default; }
-  .btn.primary {
-    background: var(--accent);
-    color: oklch(97% 0.003 80);
-    border-color: var(--accent-hi);
-  }
-  .btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
+#duration-display {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-2);
+  min-width: 52px;
+  text-align: center;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  cursor: default;
+  user-select: none;
+}
 
-  /* Viewer badge */
-  #viewer-badge {
-    display: none;
-    position: absolute;
-    bottom: 10px;
-    right: 12px;
-    font-size: 0.68rem;
-    font-family: var(--mono);
-    color: var(--ink-4);
-  }
+/* Old inline controls (kept for JS compat, hidden) */
+#controls { display: none; }
+#shell { display: contents; }
+
+/* ── Footer panel ────────────────────────────────────────── */
+#footer-panel {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.08s, border-color 0.08s;
+  white-space: nowrap;
+  user-select: none;
+}
+.action-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
+.action-btn:active:not(:disabled) { background: var(--accent-bg); }
+.action-btn:disabled { opacity: 0.4; cursor: default; }
+
+.action-btn.primary {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+}
+.action-btn.primary:hover:not(:disabled) { background: #2d2d2a; border-color: #2d2d2a; }
+.action-btn.primary:active:not(:disabled) { background: #111110; }
 </style>
 </head>
 <body>
-<div id="shell">
+
+<!-- ── Toolbar ──────────────────────────────────────────── -->
+<div id="toolbar">
+  <span class="toolbar-title">Timer</span>
+  <div class="sep"></div>
+  <button class="tb-btn active" id="tb-stopwatch">Stopwatch</button>
+  <button class="tb-btn"        id="tb-countdown">Countdown</button>
+  <span class="viewer-badge" id="viewer-badge">view only</span>
+</div>
+
+<!-- ── Main ─────────────────────────────────────────────── -->
 <div id="app">
-  <div id="time-display">00:00</div>
+  <div id="time-display">00:00.0</div>
   <div id="mode-label">stopwatch</div>
 
   <div id="duration-controls">
-    <button id="btn-minus-1m">-1m</button>
-    <button id="btn-minus-10s">-10s</button>
+    <button class="dur-btn" id="btn-minus-1m">−1m</button>
+    <button class="dur-btn" id="btn-minus-10s">−10s</button>
     <div id="duration-display">5:00</div>
-    <button id="btn-plus-10s">+10s</button>
-    <button id="btn-plus-1m">+1m</button>
+    <button class="dur-btn" id="btn-plus-10s">+10s</button>
+    <button class="dur-btn" id="btn-plus-1m">+1m</button>
   </div>
 
+  <!-- Kept for JS compat, not shown -->
   <div id="controls">
-    <button class="primary"   id="btn-start-pause">Start</button>
-    <button class="secondary" id="btn-reset">Reset</button>
+    <button id="btn-start-pause">Start</button>
+    <button id="btn-reset">Reset</button>
   </div>
 </div>
 
+<!-- ── Footer ───────────────────────────────────────────── -->
 <div id="footer-panel">
-  <button class="btn primary" id="footer-btn-start-pause">Start</button>
-  <button class="btn" id="footer-btn-reset">Reset</button>
+  <button class="action-btn primary" id="footer-btn-start-pause">Start</button>
+  <button class="action-btn"         id="footer-btn-reset">Reset</button>
 </div>
-</div>
-<div id="viewer-badge">view only</div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
@@ -237,6 +280,8 @@
   const btnStartPause = document.getElementById('btn-start-pause');
   const btnReset      = document.getElementById('btn-reset');
   const badge         = document.getElementById('viewer-badge');
+  const tbStopwatch   = document.getElementById('tb-stopwatch');
+  const tbCountdown   = document.getElementById('tb-countdown');
 
   const footerBtnStartPause = document.getElementById('footer-btn-start-pause');
   const footerBtnReset      = document.getElementById('footer-btn-reset');
@@ -285,6 +330,11 @@
     }
 
     timeEl.classList.toggle('expired', state.expired);
+
+    // Mode toggle active state
+    tbStopwatch.classList.toggle('active', state.mode === 'stopwatch');
+    tbCountdown.classList.toggle('active', state.mode === 'countdown');
+
     btnStartPause.textContent        = state.running ? 'Pause' : 'Start';
     footerBtnStartPause.textContent  = state.running ? 'Pause' : 'Start';
 
@@ -294,14 +344,16 @@
     if (showStepper) durDisplay.textContent = fmtDuration(state.duration);
 
     // Viewer: disable controls
-    btnStartPause.disabled = isViewer;
-    btnReset.disabled      = isViewer;
-    footerBtnStartPause.disabled = isViewer;
-    footerBtnReset.disabled      = isViewer;
-    document.getElementById('footer-panel').style.display = isViewer ? 'none' : 'flex';
-    document.querySelectorAll('#duration-controls button').forEach(b => {
-      b.disabled = isViewer;
-    });
+    const canControl = !isViewer;
+    btnStartPause.disabled = !canControl;
+    btnReset.disabled      = !canControl;
+    footerBtnStartPause.disabled = !canControl;
+    footerBtnReset.disabled      = !canControl;
+    tbStopwatch.disabled = !canControl;
+    tbCountdown.disabled = !canControl;
+    document.getElementById('footer-panel').style.display = canControl ? 'flex' : 'none';
+    document.querySelectorAll('.dur-btn').forEach(b => { b.disabled = !canControl; });
+    badge.style.display = isViewer ? 'block' : 'none';
   }
 
   // ── Tick loop ─────────────────────────────────────────────────────────────────
@@ -380,6 +432,19 @@
   }
 
   // ── Button handlers ───────────────────────────────────────────────────────────
+
+  // Toolbar mode toggles
+  document.getElementById('tb-stopwatch').addEventListener('click', () => {
+    if (isViewer || state.mode === 'stopwatch') return;
+    state.mode = 'stopwatch';
+    resetTimer();
+  });
+
+  document.getElementById('tb-countdown').addEventListener('click', () => {
+    if (isViewer || state.mode === 'countdown') return;
+    state.mode = 'countdown';
+    resetTimer();
+  });
 
   btnStartPause.addEventListener('click', () => {
     if (isViewer) return;
@@ -504,7 +569,6 @@
     widgetId = cfg.id || cfg.widgetId || widgetId;
 
     isViewer = cfg.role === 'viewer';
-    badge.style.display = isViewer ? 'block' : 'none';
 
     if (cfg.mode === 'countdown' || cfg.mode === 'stopwatch') {
       state.mode = cfg.mode;

@@ -1,17 +1,15 @@
 {
   "widgets": [
     {
-      "id": "word_cloud_demo",
-      "type": "word-cloud",
-      "x": 0,
-      "y": 0,
-      "width": 1,
-      "height": 1,
+      "id": "camera_demo",
+      "type": "camera",
+      "x": 0.47,
+      "y": 0.415,
+      "width": 0.435,
+      "height": 0.43,
       "zIndex": 10,
-      "question": "Describe this lecture in one word",
-      "mode": 1,
-      "autoStart": true,
-      "interactive": true
+      "interactive": true,
+      "expandDelay": 3
     }
   ]
 }

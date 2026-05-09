@@ -40,6 +40,17 @@ function applyVideoAction(video, data) {
         video.pause();
     } else if (data.action === 'seek') {
         video.currentTime = data.time;
+    } else if (data.action === 'expand') {
+        const cr = video.parentElement.getBoundingClientRect();
+        Object.assign(video.style, { left: '0px', top: '0px', width: `${cr.width}px`, height: `${cr.height}px`, zIndex: '500' });
+    } else if (data.action === 'collapse') {
+        const x  = parseFloat(video.dataset.videoX);
+        const y  = parseFloat(video.dataset.videoY);
+        const w  = parseFloat(video.dataset.videoWidth);
+        const h  = parseFloat(video.dataset.videoHeight);
+        const z  = video.dataset.videoZIndex || '5';
+        const cr = video.parentElement.getBoundingClientRect();
+        Object.assign(video.style, { left: `${x*cr.width}px`, top: `${y*cr.height}px`, width: `${w*cr.width}px`, height: `${h*cr.height}px`, zIndex: z });
     }
 }
 
@@ -366,12 +377,15 @@ async function renderMedia(config, container, isRight = false) {
             video.src = url;
             video.volume = v.volume ?? 1;
             video.className = 'slide-video';
+            video.disablePictureInPicture = true;
             video.dataset.videoId = `${baseVideoId}${isRight ? '-r' : ''}`;
+            Object.assign(video.dataset, { videoX: v.x, videoY: v.y, videoWidth: v.width, videoHeight: v.height, videoZIndex: v.zIndex ?? 5 });
             Object.assign(video.style, {
                 position: 'absolute',
                 left: `${v.x * rect.width}px`, top: `${v.y * rect.height}px`,
                 width: `${v.width * rect.width}px`, height: `${v.height * rect.height}px`,
                 objectFit: 'contain', zIndex: v.zIndex ?? 5,
+                transition: 'left 0.45s ease, top 0.45s ease, width 0.45s ease, height 0.45s ease',
             });
             if (v.playMode === 'loop') { video.loop = true; }
             if (v.playMode === 'once' || v.playMode === 'auto') { video.muted = true; }
@@ -391,6 +405,8 @@ async function renderMedia(config, container, isRight = false) {
             mv.src = url; mv.alt = m.alt ?? '3D model';
             mv.setAttribute('shadow-intensity', '1');
             if (m.autoRotate) mv.setAttribute('auto-rotate', '');
+            if (m.animate !== false) mv.setAttribute('autoplay', '');
+            if (m.animationName) mv.setAttribute('animation-name', m.animationName);
             mv.dataset.modelId = m.id;
             Object.assign(mv.style, {
                 position: 'absolute',

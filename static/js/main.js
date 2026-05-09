@@ -266,7 +266,9 @@ bus.on('pen:select', (pen) => {
 });
 
 /* bus: tool:change from toolbar module */
+let _prevTool = 'hand';
 bus.on('tool:change', (tool) => {
+    if (tool !== 'spotlight') _prevTool = tool;
     state.annotationTool = tool;
     // Map toolbar tool names to canvas pointer modes
     const modeMap = { eraser: 'erase', laser: 'hand', select: 'hand', shape: 'shape', hand: 'hand', spotlight: 'hand' };
@@ -314,8 +316,8 @@ function wireAnnotationClear() {
 function wireKeyboardNav() {
     document.addEventListener('keydown', (e) => {
         if (e.target.matches('input,textarea,[contenteditable]')) return;
-        if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   goToSlide(state.currentSlide - 1);
-        if (e.key === 'ArrowRight' || e.key === 'PageDown')  goToSlide(state.currentSlide + 1);
+        if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   goToSlide(state.currentSlide - 1, 'back');
+        if (e.key === 'ArrowRight' || e.key === 'PageDown')  goToSlide(state.currentSlide + 1, 'forward');
         if (e.key === 'Escape') { bus.emit('ui:escape'); BeamerModal?.close(); }
         if (e.key === 'b') toggleBookmark(state.currentSlide);
     });
@@ -323,8 +325,8 @@ function wireKeyboardNav() {
 
 /* ─── nav prev/next buttons ───────────────────────────────────── */
 function wireNavButtons() {
-    document.getElementById('prev-btn')?.addEventListener('click', () => goToSlide(state.currentSlide - 1));
-    document.getElementById('next-btn')?.addEventListener('click', () => goToSlide(state.currentSlide + 1));
+    document.getElementById('prev-btn')?.addEventListener('click', () => goToSlide(state.currentSlide - 1, 'back'));
+    document.getElementById('next-btn')?.addEventListener('click', () => goToSlide(state.currentSlide + 1, 'forward'));
 }
 
 /* ─── bookmark button ─────────────────────────────────────────── */
@@ -346,37 +348,13 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
     const btn = document.getElementById('split-toggle');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-        state.splitView = !state.splitView;
-        document.body.classList.toggle('split-view-active', state.splitView);
-        btn.classList.toggle('btn_selected', state.splitView);
-
-        const moveBtn = document.getElementById('move-left-to-right-btn');
-        if (moveBtn) moveBtn.style.display = state.splitView ? 'flex' : 'none';
-
-        if (state.splitView) {
-            if (!state.annCvs2) {
-                state.annCvs2 = new Canvas(annContainer2, true);
-                state.pdfCvs2 = new Canvas(pdfContainer2, false);
-                state.annCvs2.setPointerMode('hand');
-            }
-            state.rightSlideIndex = Math.min(state.currentSlide + 1, state.slideStructure.length - 1);
-            applySplitRatio(state.splitRatio);
-            await renderLogicalSlide(state.rightSlideIndex, true);
-        }
-
-        setTimeout(async () => {
+        await setSplitActive(!state.splitView);
+        if (state.zipFile) {
             saveCurrentAnnotations();
-            state.annCvs.resizeOnly?.();
-            state.pdfCvs.resizeOnly?.();
-            if (state.annCvs2) state.annCvs2.resizeOnly?.();
-            if (state.pdfCvs2) state.pdfCvs2.resizeOnly?.();
-            if (state.zipFile) {
-                await renderLogicalSlide(state.currentSlide);
-                if (state.splitView) await renderLogicalSlide(state.rightSlideIndex, true);
-            }
-            populateSlideNavigator();
-            emitSlideState();
-        }, 100);
+            await renderLogicalSlide(state.currentSlide);
+            if (state.splitView) await renderLogicalSlide(state.rightSlideIndex, true);
+        }
+        emitSlideState();
     });
 
     const moveBtn = document.getElementById('move-left-to-right-btn');
@@ -412,12 +390,13 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
         document.addEventListener('mouseup', () => { 
             isDragging = false; 
             divider.classList.remove('active');
-            // Re-render widgets, videos, and models after resizing
+            // Re-render both panes after divider resize
             if (state.splitView) {
-                setTimeout(() => {
-                    updateWidgetPositions();
-                    state.pdfCvs.resizeOnly?.();
-                    state.pdfCvs2.resizeOnly?.();
+                setTimeout(async () => {
+                    updateWidgetPositions(document.getElementById('pdf-canvas'));
+                    updateWidgetPositions(document.getElementById('pdf-canvas-2'));
+                    await renderLogicalSlide(state.currentSlide);
+                    await renderLogicalSlide(state.rightSlideIndex, true);
                     emitSlideState();
                 }, 50);
             }
@@ -482,25 +461,92 @@ function applySplitRatio(ratioPercent) {
 
 /* ─── slide navigation ────────────────────────────────────────── */
 bus.on('slide:goto', (i) => goToSlide(i));
-bus.on('slide:next', () => goToSlide(state.currentSlide + 1));
-bus.on('slide:prev', () => goToSlide(state.currentSlide - 1));
+bus.on('slide:next', () => goToSlide(state.currentSlide + 1, 'forward'));
+bus.on('slide:prev', () => goToSlide(state.currentSlide - 1, 'back'));
 
-async function goToSlide(i) {
+async function goToSlide(i, direction = null) {
     if (i < 0 || i >= state.slideStructure.length) return;
-    // Prevent navigating to the right slide when in split view
-    if (state.splitView && i === state.rightSlideIndex) return;
     hideSpotlight(true);
-    
+
+    // ── Config-driven split-view logic ────────────────────────────
+    // Load config for slide we're LEAVING to check onLeave directives
+    const leavingObj = state.slideStructure[state.currentSlide];
+    const leavingCfg = leavingObj?.type === 'pdf'
+        ? await loadSlideConfig(leavingObj.pdfIndex) : null;
+
+    // Handle leave actions — always, regardless of navigation method
+    const onLeave = leavingCfg?.onLeave;
+    if (onLeave) {
+        if (onLeave.closeSplit && state.splitView) {
+            await setSplitActive(false);
+        }
+        // Only redirect to onLeave.goToSlide when going forward, not back
+        if (onLeave.goToSlide != null && direction !== 'back') {
+            i = Math.max(0, Math.min(state.slideStructure.length - 1, onLeave.goToSlide));
+        }
+    }
+
+    // Guard AFTER onLeave may have redirected i away from the right pane
+    if (state.splitView && i === state.rightSlideIndex) return;
+
+    // Load config for slide we're ENTERING to check onEnter directives
+    const enteringObj = state.slideStructure[i];
+    const enteringCfg = enteringObj?.type === 'pdf'
+        ? await loadSlideConfig(enteringObj.pdfIndex) : null;
+
+    // Handle enter actions
+    const onEnter = enteringCfg?.onEnter;
+    if (onEnter?.split != null) {
+        const rightIndex = Math.max(0, Math.min(state.slideStructure.length - 1, onEnter.split));
+        if (!state.splitView || state.rightSlideIndex !== rightIndex) {
+            await setSplitActive(true, rightIndex);
+        }
+    }
+    // ─────────────────────────────────────────────────────────────
+
     saveCurrentAnnotations();
     state.currentSlide = i;
     const obj = state.slideStructure[i];
     if (obj?.type === 'blank') state.collapsedParents.delete(obj.parent);
 
     await renderLogicalSlide(i);
+    if (state.splitView) await renderLogicalSlide(state.rightSlideIndex, true);
     updateSlideNavigator();
     updateBlankSlideButtons();
     emitSlideState();
     bus.emit('slide:changed', i);
+}
+
+async function setSplitActive(active, rightIndex = null) {
+    const annContainer2 = document.getElementById('ann-canvas-2');
+    const pdfContainer2 = document.getElementById('pdf-canvas-2');
+    const btn           = document.getElementById('split-toggle');
+    const moveBtn       = document.getElementById('move-left-to-right-btn');
+
+    if (active === state.splitView && (rightIndex === null || rightIndex === state.rightSlideIndex)) return;
+
+    state.splitView = active;
+    document.body.classList.toggle('split-view-active', active);
+    if (btn) btn.classList.toggle('btn_selected', active);
+    if (moveBtn) moveBtn.style.display = active ? 'flex' : 'none';
+
+    if (active) {
+        if (!state.annCvs2) {
+            state.annCvs2 = new Canvas(annContainer2, true);
+            state.pdfCvs2 = new Canvas(pdfContainer2, false);
+            state.annCvs2.setPointerMode('hand');
+        }
+        state.rightSlideIndex = rightIndex ?? Math.min(state.currentSlide + 1, state.slideStructure.length - 1);
+        applySplitRatio(state.splitRatio);
+        await renderLogicalSlide(state.rightSlideIndex, true);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+    state.annCvs.resizeOnly?.();
+    state.pdfCvs.resizeOnly?.();
+    if (state.annCvs2) state.annCvs2.resizeOnly?.();
+    if (state.pdfCvs2) state.pdfCvs2.resizeOnly?.();
+    populateSlideNavigator();
 }
 
 function emitSlideState() {
@@ -629,14 +675,40 @@ async function renderMedia(config, container, rect, isRight) {
             video.src = url;
             video.volume = v.volume ?? 1;
             video.className = 'slide-video';
-            Object.assign(video.dataset, { videoX: v.x, videoY: v.y, videoWidth: v.width, videoHeight: v.height, videoId: baseVideoId + (isRight ? '-r' : '') });
-            Object.assign(video.style, { position:'absolute', left:`${v.x*rect.width}px`, top:`${v.y*rect.height}px`, width:`${v.width*rect.width}px`, height:`${v.height*rect.height}px`, objectFit:'contain', zIndex: v.zIndex ?? 5 });
+            video.disablePictureInPicture = true;
+            Object.assign(video.dataset, { videoX: v.x, videoY: v.y, videoWidth: v.width, videoHeight: v.height, videoZIndex: v.zIndex ?? 5, videoId: baseVideoId + (isRight ? '-r' : '') });
+            Object.assign(video.style, { position:'absolute', left:`${v.x*rect.width}px`, top:`${v.y*rect.height}px`, width:`${v.width*rect.width}px`, height:`${v.height*rect.height}px`, objectFit:'contain', zIndex: v.zIndex ?? 5, transition:'left 0.45s ease, top 0.45s ease, width 0.45s ease, height 0.45s ease' });
             if (v.playMode === 'once' || v.playMode === 'auto') { video.autoplay = true; video.muted = true; }
             if (v.playMode === 'loop') { video.autoplay = true; video.loop = true; video.muted = true; }
             if (v.playMode === 'manual') { video.controls = true; }
+            // Expand-on-play logic
+            let _expandTimer = null;
+            function _expandVideo() {
+                const cr = container.getBoundingClientRect();
+                Object.assign(video.style, { left: '0px', top: '0px', width: `${cr.width}px`, height: `${cr.height}px`, zIndex: '500' });
+                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'expand' });
+            }
+            function _collapseVideo() {
+                clearTimeout(_expandTimer); _expandTimer = null;
+                const cr = container.getBoundingClientRect();
+                const vz = video.dataset.videoZIndex;
+                Object.assign(video.style, { left: `${v.x*cr.width}px`, top: `${v.y*cr.height}px`, width: `${v.width*cr.width}px`, height: `${v.height*cr.height}px`, zIndex: vz });
+                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'collapse' });
+            }
             // Emit play/pause/seek to viewers from the interacted pane.
-            video.addEventListener('play',  () => state.socket.emit('video_action', { id: video.dataset.videoId, action: 'play',  time: video.currentTime }));
-            video.addEventListener('pause', () => state.socket.emit('video_action', { id: video.dataset.videoId, action: 'pause', time: video.currentTime }));
+            video.addEventListener('play', () => {
+                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'play', time: video.currentTime });
+                if (!isRight && v.expandDelay != null && _expandTimer === null) {
+                    _expandTimer = setTimeout(_expandVideo, v.expandDelay * 1000);
+                }
+            });
+            video.addEventListener('pause', () => {
+                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'pause', time: video.currentTime });
+                if (!isRight && v.expandDelay != null) _collapseVideo();
+            });
+            video.addEventListener('ended', () => {
+                if (!isRight && v.expandDelay != null) _collapseVideo();
+            });
             video.addEventListener('seeked', () => state.socket.emit('video_action', { id: video.dataset.videoId, action: 'seek',  time: video.currentTime }));
             video.addEventListener('click', (e) => { video.paused ? video.play() : video.pause(); e.stopPropagation(); });
             container.appendChild(video);
@@ -650,6 +722,8 @@ async function renderMedia(config, container, rect, isRight) {
             mv.src = url; mv.alt = m.alt ?? '3D model';
             mv.setAttribute('camera-controls', ''); mv.setAttribute('shadow-intensity', '1');
             if (m.autoRotate) mv.setAttribute('auto-rotate', '');
+            if (m.animate !== false) mv.setAttribute('autoplay', '');
+            if (m.animationName) mv.setAttribute('animation-name', m.animationName);
             mv.dataset.modelId = m.id;
             Object.assign(mv.style, { position:'absolute', left:`${m.x*rect.width}px`, top:`${m.y*rect.height}px`, width:`${m.width*rect.width}px`, height:`${m.height*rect.height}px`, zIndex: m.zIndex ?? 5 });
             container.appendChild(mv);
@@ -867,6 +941,16 @@ function initSpotlight() {
     document.addEventListener('pointerleave', () => {
         if (state.annotationTool === 'spotlight') hideSpotlight(true);
     });
+
+    document.addEventListener('click', (event) => {
+        if (state.annotationTool !== 'spotlight') return;
+        // Restore the previous tool
+        const prev = _prevTool || 'hand';
+        const btn = document.querySelector(`#tool-container .tool-btn[data-tool="${prev}"]`);
+        document.querySelectorAll('#tool-container .tool-btn').forEach(b => b.classList.remove('btn_selected'));
+        if (btn) btn.classList.add('btn_selected');
+        bus.emit('tool:change', prev);
+    }, true);
 }
 
 function getSpotlightPaneFromPoint(clientX, clientY) {
