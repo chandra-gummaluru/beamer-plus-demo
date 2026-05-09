@@ -1,680 +1,314 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Survey — Beamer+</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
+<meta charset="utf-8">
+<title>Survey — Beamer+</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
 
-/* ── Design tokens ───────────────────────────────────────── */
 :root {
-  --bg:           #ffffff;
-  --bg-subtle:    #f9f9f8;
-  --border:       #e9e9e6;
-  --border-med:   #d4d4cf;
-  --text:         #1a1a18;
-  --text-2:       #6b6b65;
-  --text-3:       #aeaea5;
-  --accent:       #52524e;
-  --accent-bg:    #f0f0ee;
-  --green:        #15803d;
-  --red:          #dc2626;
-  --radius:       6px;
-  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-  --font-ui:      'DM Sans', system-ui, sans-serif;
+  --bg:         #ffffff;
+  --bg-subtle:  #f9f9f8;
+  --border:     #e9e9e6;
+  --border-med: #d4d4cf;
+  --text:       #1a1a18;
+  --text-2:     #6b6b65;
+  --text-3:     #aeaea5;
+  --accent:     #52524e;
+  --accent-bg:  #f0f0ee;
+  --green:      #15803d;
+  --radius:     6px;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  --font-ui:    'DM Sans', system-ui, sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; font-family: var(--font-ui); background: var(--bg); color: var(--text); font-size: 13px; }
-
+html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); background: var(--bg); color: var(--text); font-size: 13px; }
 #shell { display: flex; flex-direction: column; height: 100%; }
 
-/* ── Toolbar ─────────────────────────────────────────────── */
+/* ── Toolbar ─────────────────────────────────────────── */
 #toolbar {
-  flex-shrink: 0;
-  height: 42px;
+  flex-shrink: 0; height: 42px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  gap: 5px;
+  display: flex; align-items: center; padding: 0 14px; gap: 6px;
 }
-.toolbar-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  flex-shrink: 0;
+.toolbar-title { font-size: 13px; font-weight: 500; flex-shrink: 0; }
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+#resp-count { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); flex-shrink: 0; }
+#resp-count strong { color: var(--text-2); font-weight: 500; }
+.spacer { flex: 1; }
+#close-btn {
+  height: 28px; padding: 0 12px;
+  border: 1px solid var(--text); border-radius: var(--radius);
+  background: var(--text); color: #fff;
+  font-family: var(--font-ui); font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; display: none;
+  transition: background 0.1s;
 }
-.sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
-.tb-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.1s, border-color 0.1s;
-  flex-shrink: 0;
-}
-.tb-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
-.tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+#close-btn:hover:not(:disabled) { background: #2d2d2a; }
+#close-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* ── Status pill ─────────────────────────────────────────── */
-#toolbar-status {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-3);
-  flex-shrink: 0;
-}
-#status-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text-3);
-  flex-shrink: 0;
-  transition: background 0.3s;
-}
-#status-dot.live   { background: var(--green); animation: blink 1.2s ease-in-out infinite; }
-#status-dot.done   { background: var(--accent); animation: none; }
-#status-dot.viewer { background: var(--text-3); }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+/* ── Collect view ────────────────────────────────────── */
+#collect-view { flex: 1; display: none; flex-direction: column; overflow: hidden; }
 
-.viewer-badge {
-  font-size: 11px;
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  display: none;
-}
-
-/* Prompt header */
-#question-header {
-  flex-shrink: 0;
-  padding: 16px 24px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-subtle);
-  display: none;
+#question-area {
+  flex-shrink: 0; padding: 22px 32px 16px;
+  border-bottom: 1px solid var(--border); text-align: center;
 }
 #question-text {
-  font-size: clamp(1rem, 3vw, 1.4rem);
-  font-weight: 500;
-  line-height: 1.3;
-  color: var(--text);
-  text-align: center;
+  font-size: clamp(16px, 3vw, 24px);
+  font-weight: 500; line-height: 1.35; color: var(--text);
 }
 
-/* Body */
-#body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-
-/* ── Setup view ──────────────────────────────────────────── */
-#setup-view {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.setup-card {
-  width: 100%;
-  max-width: 400px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.field label {
-  display: block;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 500;
-  color: var(--text-3);
-  margin-bottom: 5px;
-}
-.field input, .field select, .field textarea {
-  width: 100%;
-  padding: 7px 10px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  background: var(--bg-subtle);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  outline: none;
-  transition: border-color 0.1s, background 0.1s;
-}
-.field input:focus, .field select:focus, .field textarea:focus {
-  border-color: var(--border-med);
-  background: var(--bg);
-}
-.field .hint { font-size: 11px; color: var(--text-3); margin-top: 4px; }
-.no-models { font-size: 12px; color: var(--text-3); text-align: center; line-height: 1.6; }
-
-/* ── QR collect view ─────────────────────────────────────── */
-#collect-view {
-  flex: 1;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 24px;
+#qr-area {
+  flex: 1; display: flex;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 12px 24px 10%;
 }
 .scan-hint {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--text-3);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  user-select: none;
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); user-select: none;
 }
-#qrcode {
-  padding: 10px;
-  background: white;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+#qrcode-wrap {
+  padding: 10px; background: white;
+  border: 1px solid var(--border); border-radius: var(--radius); line-height: 0;
 }
 #join-url {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-3);
-  text-align: center;
-  max-width: 400px;
-  word-break: break-all;
-  cursor: pointer;
-  transition: color 0.1s;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  text-align: center; max-width: 420px; word-break: break-all;
+  cursor: pointer; padding: 3px 8px; border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
 }
-#join-url:hover { color: var(--text-2); }
-#count-badge {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-2);
-  padding: 4px 16px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-subtle);
-  user-select: none;
-}
-#count-badge strong { color: var(--text); }
+#join-url:hover { background: var(--bg-subtle); color: var(--text-2); }
 
-/* ── Results carousel ────────────────────────────────────── */
-#results-view {
-  flex: 1;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 24px;
-}
-.summary-card {
-  width: 100%;
-  max-width: 560px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px 24px;
-}
-#summary-text {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--text-2);
-}
-#summary-meta {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-3);
-  margin-top: 12px;
-}
-.carousel-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-#nav-counter {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-3);
-  min-width: 3rem;
-  text-align: center;
-  user-select: none;
-}
-
-/* ── Loading view ────────────────────────────────────────── */
+/* ── Loading view ────────────────────────────────────── */
 #loading-view {
-  flex: 1;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  flex: 1; display: none;
+  align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px;
 }
 .spinner {
-  width: 20px; height: 20px;
-  border: 2px solid rgba(0,0,0,0.10);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.65s linear infinite;
+  width: 22px; height: 22px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.65s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-#loading-msg { font-size: 12px; color: var(--text-3); }
+#loading-msg { font-size: 13px; color: var(--text-3); }
 
-/* ── Footer ──────────────────────────────────────────────── */
-#footer-panel {
-  flex-shrink: 0;
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  gap: 12px;
+/* ── Results view ────────────────────────────────────── */
+#results-view {
+  flex: 1; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 24px; overflow-y: auto;
 }
-#resp-count-row {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-3);
-  user-select: none;
+.summary-card {
+  width: 100%; max-width: 580px;
+  background: var(--bg-subtle); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 22px 26px;
 }
-#resp-count-row strong { color: var(--text); }
-
-/* ── Action buttons ──────────────────────────────────────── */
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text-2);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.08s, border-color 0.08s;
-  user-select: none;
+#summary-text { font-size: 14px; line-height: 1.75; color: var(--text-2); }
+#summary-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-top: 14px; }
+.carousel-nav { display: flex; align-items: center; gap: 12px; }
+#nav-counter { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.nav-btn {
+  width: 28px; height: 28px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text-2); font-size: 14px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
-.action-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); }
-.action-btn:active:not(:disabled) { background: var(--accent-bg); }
-.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn.primary {
-  background: var(--text);
-  color: #fff;
-  border-color: var(--text);
-}
-.action-btn.primary:hover:not(:disabled) { background: #2d2d2a; border-color: #2d2d2a; }
-.action-btn.primary:active:not(:disabled) { background: #111110; }
-.action-btn.nav { padding: 0 12px; font-size: 14px; }
-#btn-row { display: flex; align-items: center; gap: 8px; }
-  </style>
+.nav-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); color: var(--text); }
+.nav-btn:disabled { opacity: 0.28; cursor: default; }
+</style>
 </head>
 <body>
 <div id="shell">
-  <!-- ── Toolbar ─────────────────────────────────────────── -->
+
   <div id="toolbar">
     <span class="toolbar-title">Survey</span>
     <div class="sep"></div>
-    <span id="toolbar-status"><span id="status-dot"></span><span id="status-label">ready</span></span>
-    <span class="viewer-badge" id="viewer-badge">view only</span>
+    <span id="resp-count"><strong id="resp-n">0</strong> responses</span>
+    <div class="spacer"></div>
+    <button id="close-btn" onclick="summarize()">Close &amp; Review →</button>
   </div>
 
-  <div id="question-header"><div id="question-text"></div></div>
-
-  <div id="body">
-    <!-- Setup -->
-    <div id="setup-view">
-      <div class="setup-card">
-        <div class="field">
-          <label>Question</label>
-          <input type="text" id="setup-question" placeholder="What do you think about…?">
-        </div>
-        <div id="model-field" class="field">
-          <label>Summarizer</label>
-          <select id="setup-model"></select>
-          <div class="hint">AI script to summarize responses</div>
-        </div>
-        <div class="field">
-          <label>Summaries to generate</label>
-          <input type="number" id="setup-n" min="1" max="10" value="3">
-        </div>
-        <div id="no-models-msg" class="no-models" style="display:none">
-          No AI models found. Add a Python script in the <code>ai/</code> folder.
-        </div>
-        <button class="action-btn primary" id="launch-btn" onclick="launchSurvey()">Launch Survey</button>
-      </div>
-    </div>
-
-    <!-- QR collect -->
-    <div id="collect-view">
+  <div id="collect-view">
+    <div id="question-area"><div id="question-text"></div></div>
+    <div id="qr-area">
       <div class="scan-hint">Scan to respond</div>
-      <div id="qrcode"></div>
-      <div id="join-url" onclick="copyUrl(this)" title="Click to copy"></div>
-      <div id="count-badge"><strong id="count-num">0</strong> responses</div>
-    </div>
-
-    <!-- Results carousel -->
-    <div id="results-view">
-      <div class="summary-card">
-        <div id="summary-text"></div>
-        <div id="summary-meta"></div>
-      </div>
-      <div class="carousel-nav">
-        <button class="action-btn nav" id="prev-btn" onclick="prevSummary()">&#8592;</button>
-        <span id="nav-counter">1 / 3</span>
-        <button class="action-btn nav" id="next-btn" onclick="nextSummary()">&#8594;</button>
-      </div>
-    </div>
-
-    <!-- Loading -->
-    <div id="loading-view">
-      <div class="spinner"></div>
-      <div id="loading-msg">Connecting…</div>
+      <div id="qrcode-wrap"><div id="qrcode"></div></div>
+      <div id="join-url" onclick="copyUrl()" title="Click to copy"></div>
     </div>
   </div>
 
-  <!-- Footer -->
-  <div id="footer-panel">
-    <div id="resp-count-row"><strong id="footer-resp-count">0</strong> responses</div>
-    <div id="btn-row">
-      <button class="action-btn" id="reset-btn" onclick="newSurvey()" style="display:none">Reset</button>
-      <button class="action-btn primary" id="close-btn" onclick="summarize()" disabled>Close &amp; Analyze</button>
+  <div id="loading-view">
+    <div class="spinner"></div>
+    <div id="loading-msg">Loading…</div>
+  </div>
+
+  <div id="results-view">
+    <div class="summary-card">
+      <div id="summary-text"></div>
+      <div id="summary-meta"></div>
+    </div>
+    <div class="carousel-nav">
+      <button class="nav-btn" id="prev-btn" onclick="prevSummary()" disabled>‹</button>
+      <span id="nav-counter"></span>
+      <button class="nav-btn" id="next-btn" onclick="nextSummary()" disabled>›</button>
     </div>
   </div>
+
 </div>
-
 <script>
-  let cfg = {}, socket = null, role = 'presenter';
-  let widgetId = 'survey-default', serverUrl = '', publicBaseUrl = '';
-  let currentSurvey = null, currentResults = null, currentIdx = 0, respCount = 0;
-  let phase = 'setup';
+(function () {
 
-  function deriveServer() {
-    try { return window.parent.location.origin; } catch(e) { return window.location.origin; }
+let cfg = {}, socket = null, role = 'presenter';
+let widgetId = 'survey', serverUrl = '', publicBaseUrl = '';
+let currentSurvey = null, currentResults = null, currentIdx = 0;
+let respCount = 0, phase = 'idle', minResponses = 3;
+
+function deriveServer() {
+  try { return window.parent.location.origin; } catch (_) { return window.location.origin; }
+}
+
+function setRespCount(n) {
+  respCount = n;
+  document.getElementById('resp-n').textContent = n;
+  document.getElementById('close-btn').disabled = n < minResponses;
+}
+
+function showPhase(p) {
+  phase = p;
+  document.getElementById('collect-view').style.display  = p === 'collect' ? 'flex'  : 'none';
+  document.getElementById('loading-view').style.display  = p === 'loading' ? 'flex'  : 'none';
+  document.getElementById('results-view').style.display  = p === 'results' ? 'flex'  : 'none';
+  const btn = document.getElementById('close-btn');
+  btn.style.display = (p === 'collect' && role === 'presenter') ? 'block' : 'none';
+}
+
+function showQR(url) {
+  document.getElementById('join-url').textContent = url || '';
+  const el = document.getElementById('qrcode'); el.innerHTML = '';
+  if (url) new QRCode(el, { text: url, width: 180, height: 180, colorDark: '#1a1a18', colorLight: '#ffffff' });
+}
+
+function copyUrl() {
+  navigator.clipboard?.writeText(document.getElementById('join-url').textContent).catch(() => {});
+}
+
+function emitState() {
+  if (!socket || role !== 'presenter') return;
+  const state = { phase, question: currentSurvey?.question };
+  if (phase === 'collect') { state.surveyId = currentSurvey?.survey_id; state.url = document.getElementById('join-url').textContent; state.count = respCount; }
+  else if (phase === 'results') { state.results = currentResults; state.idx = currentIdx; }
+  socket.emit('widget_state', { widgetId, state });
+}
+
+function applyState(s) {
+  if (!s) return;
+  if (s.phase === 'collect' && s.surveyId) {
+    currentSurvey = { survey_id: s.surveyId, question: s.question };
+    document.getElementById('question-text').textContent = s.question || '';
+    setRespCount(s.count || 0); showQR(s.url); showPhase('collect');
+  } else if (s.phase === 'results' && s.results) {
+    currentSurvey  = { ...(currentSurvey || {}), question: s.question };
+    currentResults = s.results; currentIdx = s.idx || 0;
+    renderSummary(); showPhase('results');
   }
+}
 
-  function getHeaderQuestion() {
-    return currentSurvey?.question || cfg.question || document.getElementById('setup-question').value.trim() || '';
-  }
+function connectSocket() {
+  if (socket) socket.disconnect();
+  socket = io(serverUrl);
+  socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
+  socket.on('widget_state', data => { if (role !== 'viewer' || data?.widgetId !== widgetId) return; applyState(data.state); });
+  socket.on('survey_response', data => {
+    if (!currentSurvey || data.survey_id !== currentSurvey.survey_id) return;
+    setRespCount(data.total); emitState();
+  });
+}
 
-  function refreshHeader() {
-    const title = getHeaderQuestion();
-    const header = document.getElementById('question-header');
-    document.getElementById('question-text').textContent = title;
-    header.style.display = title ? 'block' : 'none';
-  }
-
-  function showPhase(p) {
-    phase = p;
-    document.getElementById('setup-view').style.display   = p === 'setup'   ? ''     : 'none';
-    document.getElementById('collect-view').style.display = p === 'collect' ? 'flex' : 'none';
-    document.getElementById('results-view').style.display = p === 'results' ? 'flex' : 'none';
-    document.getElementById('loading-view').style.display = p === 'loading' ? 'flex' : 'none';
-
-    const showFooter = p !== 'setup' && p !== 'loading';
-    document.getElementById('footer-panel').style.display = showFooter ? 'flex' : 'none';
-    if (role === 'viewer') {
-      document.getElementById('btn-row').style.display = 'none';
-    } else {
-      document.getElementById('close-btn').style.display  = p === 'collect' ? '' : 'none';
-      document.getElementById('reset-btn').style.display  = p === 'results' ? '' : 'none';
-    }
-    refreshHeader();
-
-    // Update toolbar status dot + label
-    const dot   = document.getElementById('status-dot');
-    const label = document.getElementById('status-label');
-    const vbadge = document.getElementById('viewer-badge');
-    if (role === 'viewer') {
-      if (dot)   { dot.className = 'viewer'; }
-      if (vbadge) vbadge.style.display = 'block';
-    } else {
-      if (vbadge) vbadge.style.display = 'none';
-      if (dot && label) {
-        const map = {
-          setup:   { cls: '',     txt: 'ready'      },
-          collect: { cls: 'live', txt: 'live'        },
-          results: { cls: 'done', txt: 'results'     },
-          loading: { cls: '',     txt: 'loading…'    },
-        };
-        const info = map[p] || { cls: '', txt: p };
-        dot.className   = info.cls;
-        label.textContent = info.txt;
-      }
-    }
-  }
-
-  function setLoading(msg) {
-    document.getElementById('loading-msg').textContent = msg;
-    showPhase('loading');
-  }
-
-  function setRespCount(n) {
-    respCount = n;
-    document.getElementById('footer-resp-count').textContent = n;
-    const countNum = document.getElementById('count-num');
-    if (countNum) countNum.textContent = n;
-    const minN = currentSurvey?.num_summaries || 3;
-    document.getElementById('close-btn').disabled = n < minN;
-  }
-
-  /* Socket */
-  function emitState() {
-    if (!socket || role !== 'presenter') return;
-    const state = { phase, question: currentSurvey?.question };
-    if (phase === 'collect') {
-      state.surveyId = currentSurvey?.survey_id;
-      state.url = document.getElementById('join-url').textContent;
-      state.count = respCount;
-    } else if (phase === 'results') {
-      state.results = currentResults;
-      state.idx = currentIdx;
-    }
-    socket.emit('widget_state', { widgetId, state });
-  }
-
-  function applyState(s) {
-    if (!s) return;
-    if (s.phase === 'collect' && s.surveyId) {
-      currentSurvey = { survey_id: s.surveyId, question: s.question };
-      setRespCount(s.count || 0);
-      showQR(s.url);
-      showPhase('collect');
-    } else if (s.phase === 'results' && s.results) {
-      currentSurvey = { ...(currentSurvey || {}), question: s.question || currentSurvey?.question || cfg.question };
-      currentResults = s.results;
-      currentIdx = s.idx || 0;
-      renderSummary();
-      showPhase('results');
-    }
-  }
-
-  function connectSocket() {
-    if (socket) socket.disconnect();
-    socket = io(serverUrl);
-    socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
-    socket.on('widget_state', data => {
-      if (role !== 'viewer' || data?.widgetId !== widgetId) return;
-      applyState(data.state);
+async function doLaunch(question, model, n) {
+  minResponses = n || 3;
+  document.getElementById('loading-msg').textContent = 'Creating survey…';
+  showPhase('loading');
+  try {
+    const res  = await fetch(`${serverUrl}/api/survey/create`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, model, num_summaries: n }),
     });
-    socket.on('survey_response', data => {
-      if (!currentSurvey || data.survey_id !== currentSurvey.survey_id) return;
-      setRespCount(data.total);
-      emitState();
-    });
-  }
-
-  /* QR */
-  function showQR(url) {
-    document.getElementById('join-url').textContent = url || '';
-    const qrEl = document.getElementById('qrcode');
-    qrEl.innerHTML = '';
-    if (url) new QRCode(qrEl, { text: url, width: 180, height: 180, colorDark: '#222', colorLight: '#ffffff' });
-  }
-
-  function copyUrl(el) { navigator.clipboard?.writeText(el.textContent).catch(()=>{}); }
-
-  /* Models */
-  async function loadModels() {
-    try {
-      const res = await fetch(`${serverUrl}/api/models`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const sel = document.getElementById('setup-model');
-      sel.innerHTML = '';
-      if (!data.models.length) {
-        document.getElementById('model-field').style.display = 'none';
-        document.getElementById('no-models-msg').style.display = '';
-        document.getElementById('launch-btn').disabled = true;
-        return;
-      }
-      data.models.forEach(m => {
-        const o = document.createElement('option');
-        o.value = m; o.textContent = m.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-        sel.appendChild(o);
-      });
-    } catch(e) { /* non-fatal */ }
-  }
-
-  async function launchSurvey() {
-    const question = document.getElementById('setup-question').value.trim() || 'Survey';
-    const model    = document.getElementById('setup-model').value;
-    const n        = parseInt(document.getElementById('setup-n').value) || 3;
-    await doLaunch(question, model, n);
-  }
-
-  async function doLaunch(question, model, n) {
-    setLoading('Creating survey…');
-    try {
-      const res = await fetch(`${serverUrl}/api/survey/create`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ question, model, num_summaries: n }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      currentSurvey = { ...data, question, model, num_summaries: n };
-      setRespCount(0);
-      socket?.emit('join_survey', { survey_id: data.survey_id });
-      const base = publicBaseUrl || serverUrl;
-      showQR(base + data.url);
-      showPhase('collect');
-      emitState();
-    } catch(e) {
-      alert('Failed to create survey: ' + e.message);
-      showPhase('setup');
-    }
-  }
-
-  async function summarize() {
-    if (!currentSurvey) return;
-    const n = currentSurvey.num_summaries || 3;
-    if (respCount < n) { alert(`Need at least ${n} responses.`); return; }
-    await fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/close`, {method:'POST'}).catch(()=>{});
-    setLoading('Summarizing responses…');
-    try {
-      const res = await fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/analyze`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
-      currentResults = await res.json();
-      currentIdx = 0;
-      renderSummary();
-      showPhase('results');
-      emitState();
-    } catch(e) {
-      alert('Analysis failed: ' + e.message);
-      showPhase('collect');
-    }
-  }
-
-  function renderSummary() {
-    if (!currentResults?.summaries?.length) return;
-    const s = currentResults.summaries[currentIdx];
-    const tot = currentResults.summaries.length;
-    document.getElementById('summary-text').textContent = s.summary;
-    document.getElementById('summary-meta').textContent =
-      `${s.num_respondents} respondent${s.num_respondents!==1?'s':''} · based on ${currentResults.num_responses} total response${currentResults.num_responses!==1?'s':''}`;
-    document.getElementById('nav-counter').textContent = `${currentIdx+1} / ${tot}`;
-    document.getElementById('prev-btn').disabled = currentIdx === 0;
-    document.getElementById('next-btn').disabled = currentIdx === tot - 1;
-    emitState();
-  }
-
-  function prevSummary() { if (currentIdx > 0) { currentIdx--; renderSummary(); } }
-  function nextSummary() {
-    if (currentResults && currentIdx < currentResults.summaries.length - 1) { currentIdx++; renderSummary(); }
-  }
-
-  async function newSurvey() {
-    const question = currentSurvey?.question || cfg.question || document.getElementById('setup-question').value.trim() || 'Survey';
-    const model = currentSurvey?.model || cfg.model || document.getElementById('setup-model').value;
-    const n = currentSurvey?.num_summaries || parseInt(cfg.numSummaries) || parseInt(document.getElementById('setup-n').value) || 3;
-    if (currentSurvey) fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/close`, {method:'POST'}).catch(()=>{});
-    currentSurvey = null; currentResults = null; currentIdx = 0;
-    document.getElementById('qrcode').innerHTML = '';
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    currentSurvey = { ...data, question, model, num_summaries: n };
     setRespCount(0);
-    await doLaunch(question, model, n);
+    document.getElementById('question-text').textContent = question;
+    showQR((publicBaseUrl || serverUrl) + data.url);
+    showPhase('collect'); emitState();
+  } catch (e) { console.error('doLaunch:', e); }
+}
+
+async function summarize() {
+  if (!currentSurvey) return;
+  await fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/close`, { method: 'POST' }).catch(() => {});
+  document.getElementById('loading-msg').textContent = 'Summarizing responses…';
+  showPhase('loading');
+  try {
+    const res = await fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    currentResults = await res.json(); currentIdx = 0;
+    renderSummary(); showPhase('results'); emitState();
+  } catch (e) { console.error('summarize:', e); showPhase('collect'); }
+}
+
+function renderSummary() {
+  if (!currentResults?.summaries?.length) return;
+  const s = currentResults.summaries[currentIdx];
+  const tot = currentResults.summaries.length;
+  document.getElementById('summary-text').textContent = s.summary;
+  document.getElementById('summary-meta').textContent =
+    `${s.num_respondents} respondent${s.num_respondents !== 1 ? 's' : ''} · ${currentResults.num_responses} total responses`;
+  document.getElementById('nav-counter').textContent = `${currentIdx + 1} / ${tot}`;
+  document.getElementById('prev-btn').disabled = currentIdx === 0;
+  document.getElementById('next-btn').disabled = currentIdx === tot - 1;
+  emitState();
+}
+
+function prevSummary() { if (currentIdx > 0) { currentIdx--; renderSummary(); } }
+function nextSummary() { if (currentResults && currentIdx < currentResults.summaries.length - 1) { currentIdx++; renderSummary(); } }
+
+document.addEventListener('keydown', e => {
+  if (phase !== 'results') return;
+  if (e.key === 'ArrowLeft') prevSummary();
+  if (e.key === 'ArrowRight') nextSummary();
+});
+
+async function updateConfig(c) {
+  cfg = c || {}; role = cfg.role || 'presenter';
+  widgetId = cfg.id || cfg.widgetId || widgetId;
+  serverUrl = cfg.socketUrl || cfg.serverUrl || deriveServer();
+  publicBaseUrl = cfg.publicBaseUrl || serverUrl;
+  minResponses = parseInt(cfg.numSummaries) || 3;
+  connectSocket();
+  if (role === 'viewer') { showPhase('loading'); return; }
+  if (cfg.question && cfg.model && cfg.autoStart !== false) {
+    await doLaunch(cfg.question, cfg.model, parseInt(cfg.numSummaries) || 3);
   }
+}
 
-  document.addEventListener('keydown', e => {
-    if (phase !== 'results') return;
-    if (e.key === 'ArrowLeft') prevSummary();
-    if (e.key === 'ArrowRight') nextSummary();
-  });
-
-  async function updateConfig(c) {
-    cfg = c || {};
-    role = cfg.role || 'presenter';
-    widgetId = cfg.id || cfg.widgetId || widgetId;
-    serverUrl = cfg.socketUrl || cfg.serverUrl || deriveServer();
-    publicBaseUrl = cfg.publicBaseUrl || serverUrl;
-    setLoading('Connecting…');
-    if (cfg.question) document.getElementById('setup-question').value = cfg.question;
-    if (cfg.numSummaries) document.getElementById('setup-n').value = cfg.numSummaries;
-    refreshHeader();
-    await loadModels();
-    connectSocket();
-    if (role === 'viewer') { showPhase('loading'); return; }
-    if (cfg.model) document.getElementById('setup-model').value = cfg.model;
-    const hasConfig = cfg.question && cfg.model;
-    if (hasConfig && cfg.autoStart !== false) {
-      await doLaunch(cfg.question, cfg.model, parseInt(cfg.numSummaries) || 3);
-    } else {
-      showPhase('setup');
-    }
-  }
-
-  window.addEventListener('message', e => {
-    if (e.data?.type === 'widget-config') updateConfig(e.data.config);
-    if (e.data?.type === 'widget-cleanup') socket?.disconnect();
-  });
-
-  (async () => {
-    serverUrl = deriveServer();
-    await loadModels();
-    connectSocket();
-    refreshHeader();
-    showPhase('setup');
-  })();
+window.addEventListener('message', e => {
+  if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
+  if (e.data?.type === 'widget-cleanup') socket?.disconnect();
+});
+window.summarize   = summarize;
+window.prevSummary = prevSummary;
+window.nextSummary = nextSummary;
+window.copyUrl     = copyUrl;
+})();
 </script>
 </body>
 </html>

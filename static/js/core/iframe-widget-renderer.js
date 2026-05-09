@@ -41,10 +41,10 @@ function _ensureExpandListener() {
 
 export function renderWidgets(slideConfig, container, zipFile, viewerMode = false) {
     if (!slideConfig.widgets || slideConfig.widgets.length === 0) {
-        return;
+        return Promise.resolve();
     }
 
-    slideConfig.widgets.forEach(async (w) => {
+    const promises = slideConfig.widgets.map(async (w) => {
         const iframe = document.createElement("iframe");
         iframe.className = "widget-iframe";
         iframe.dataset.widgetId = w.id;
@@ -79,11 +79,6 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
 
         // Load widget HTML from zip
         try {
-            // Accept common config fields for widget file path.
-            // Example supported values:
-            // - { path: "widgets/graph-search.html" }
-            // - { src: "widgets/graph-search.html" }
-            // - { file: "graph-search.html" }
             const widgetPath = resolveWidgetPath(w);
             const widgetFile = findWidgetFile(zipFile, widgetPath);
             
@@ -94,20 +89,24 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             }
             
             const htmlContent = await widgetFile.async("string");
-            
-            // Set the iframe content
-            iframe.srcdoc = htmlContent;
-            
-            // Pass full widget config (plus host context) to iframe once loaded
-            iframe.addEventListener('load', () => {
-                iframe.contentWindow.postMessage({
-                    type: 'widget-config',
-                    config: {
-                        ...w,
-                        role: viewerMode ? 'viewer' : 'presenter',
-                        socketUrl: window.location.origin,
-                    },
-                }, '*');
+
+            // Resolve when the iframe fires 'load', with a 6 s safety fallback.
+            await new Promise((resolve) => {
+                let settled = false;
+                const finish = () => { if (!settled) { settled = true; resolve(); } };
+                iframe.addEventListener('load', () => {
+                    iframe.contentWindow.postMessage({
+                        type: 'widget-config',
+                        config: {
+                            ...w,
+                            role: viewerMode ? 'viewer' : 'presenter',
+                            socketUrl: window.location.origin,
+                        },
+                    }, '*');
+                    finish();
+                }, { once: true });
+                setTimeout(finish, 6000);
+                iframe.srcdoc = htmlContent;
             });
             
         } catch (error) {
@@ -115,6 +114,8 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#e74c3c;">Error loading widget: ${error.message}</div>`;
         }
     });
+
+    return Promise.all(promises);
 }
 
 function resolveWidgetPath(widget) {

@@ -348,11 +348,21 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
     const btn = document.getElementById('split-toggle');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-        await setSplitActive(!state.splitView);
+        const enteringSplit = !state.splitView;
+        // Show overlay(s) immediately before any layout work
+        _slideOverlay(false)?.classList.add('visible');
+        if (enteringSplit) _slideOverlay(true)?.classList.add('visible');
+        await setSplitActive(enteringSplit);
         if (state.zipFile) {
             saveCurrentAnnotations();
-            await renderLogicalSlide(state.currentSlide);
-            if (state.splitView) await renderLogicalSlide(state.rightSlideIndex, true);
+            if (state.splitView) {
+                await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
+            } else {
+                await renderLogicalSlide(state.currentSlide);
+            }
+        } else {
+            _slideOverlay(false)?.classList.remove('visible');
+            _slideOverlay(true)?.classList.remove('visible');
         }
         emitSlideState();
     });
@@ -373,8 +383,7 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
                 state.currentSlide = state.currentSlide + 1;
             }
             
-            await renderLogicalSlide(state.currentSlide);
-            await renderLogicalSlide(state.rightSlideIndex, true);
+            await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
             updateSlideNavigator();
             updateBlankSlideButtons();
             emitSlideState();
@@ -387,16 +396,16 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
     let isDragging = false;
     if (divider) {
         divider.addEventListener('mousedown', () => { isDragging = true; divider.classList.add('active'); });
-        document.addEventListener('mouseup', () => { 
-            isDragging = false; 
+        document.addEventListener('mouseup', () => {
+            const wasDragging = isDragging;
+            isDragging = false;
             divider.classList.remove('active');
-            // Re-render both panes after divider resize
-            if (state.splitView) {
+            // Re-render both panes after divider resize — only if we were actually dragging
+            if (wasDragging && state.splitView) {
                 setTimeout(async () => {
                     updateWidgetPositions(document.getElementById('pdf-canvas'));
                     updateWidgetPositions(document.getElementById('pdf-canvas-2'));
-                    await renderLogicalSlide(state.currentSlide);
-                    await renderLogicalSlide(state.rightSlideIndex, true);
+                    await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
                     emitSlideState();
                 }, 50);
             }
@@ -468,6 +477,10 @@ async function goToSlide(i, direction = null) {
     if (i < 0 || i >= state.slideStructure.length) return;
     hideSpotlight(true);
 
+    // Show overlay(s) immediately — before any async config loading or layout work
+    _slideOverlay(false)?.classList.add('visible');
+    if (state.splitView) _slideOverlay(true)?.classList.add('visible');
+
     // ── Config-driven split-view logic ────────────────────────────
     // Load config for slide we're LEAVING to check onLeave directives
     const leavingObj = state.slideStructure[state.currentSlide];
@@ -499,18 +512,32 @@ async function goToSlide(i, direction = null) {
     if (onEnter?.split != null) {
         const rightIndex = Math.max(0, Math.min(state.slideStructure.length - 1, onEnter.split));
         if (!state.splitView || state.rightSlideIndex !== rightIndex) {
+            // About to enter split — also cover the right pane immediately
+            _slideOverlay(true)?.classList.add('visible');
             await setSplitActive(true, rightIndex);
         }
     }
     // ─────────────────────────────────────────────────────────────
 
     saveCurrentAnnotations();
+    const prevRightIndex = state.rightSlideIndex;
     state.currentSlide = i;
     const obj = state.slideStructure[i];
     if (obj?.type === 'blank') state.collapsedParents.delete(obj.parent);
 
-    await renderLogicalSlide(i);
-    if (state.splitView) await renderLogicalSlide(state.rightSlideIndex, true);
+    if (state.splitView) {
+        const rightChanged = state.rightSlideIndex !== prevRightIndex;
+        if (rightChanged) {
+            // Both panes need re-rendering
+            await renderSplitSlides(i, state.rightSlideIndex);
+        } else {
+            // Only left pane changed — render it alone and hide its overlay
+            _slideOverlay(true)?.classList.remove('visible');
+            await renderLogicalSlide(i, false);
+        }
+    } else {
+        await renderLogicalSlide(i);
+    }
     updateSlideNavigator();
     updateBlankSlideButtons();
     emitSlideState();
@@ -585,7 +612,25 @@ function updateBlankSlideButtons() {
 }
 
 /* ─── slide rendering ─────────────────────────────────────────── */
-async function renderLogicalSlide(logicalIndex, isRight = false) {
+function _slideOverlay(isRight) {
+    const id = isRight ? 'pdf-canvas-2' : 'pdf-canvas';
+    return document.getElementById(id)?.querySelector('.slide-loading-overlay') ?? null;
+}
+
+async function renderSplitSlides(leftIdx, rightIdx) {
+    const lo = _slideOverlay(false);
+    const ro = _slideOverlay(true);
+    lo?.classList.add('visible');
+    ro?.classList.add('visible');
+    await Promise.all([
+        renderLogicalSlide(leftIdx,  false, true),
+        renderLogicalSlide(rightIdx, true,  true),
+    ]);
+    lo?.classList.remove('visible');
+    ro?.classList.remove('visible');
+}
+
+async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay = false) {
     const obj = state.slideStructure[logicalIndex];
     if (!obj) return;
 
@@ -601,7 +646,7 @@ async function renderLogicalSlide(logicalIndex, isRight = false) {
 
     if (!cvs || !annCvs) return;
 
-    const loading = slideContainer?.querySelector('.slide-loading-overlay');
+    const loading = suppressOverlay ? null : slideContainer?.querySelector('.slide-loading-overlay');
     if (loading) loading.classList.add('visible');
 
     if (obj.type === 'pdf') {
@@ -743,7 +788,7 @@ async function renderMedia(config, container, rect, isRight) {
         }
     }
     if (config.widgets) {
-        renderWidgets(config, container, state.zipFile);
+        await renderWidgets(config, container, state.zipFile);
         setWidgetInteractivityForSpotlight(state.annotationTool === 'spotlight');
     }
 }

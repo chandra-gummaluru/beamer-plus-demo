@@ -722,6 +722,15 @@ function addMarkdownCell(src = '', insertAfterId = null) {
     ta.addEventListener('input', () => autoResize(ta));
     ta.addEventListener('focus', () => selectCell(id));
     ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = ta.selectionStart, end = ta.selectionEnd;
+        const indent = '    '; // 4 spaces
+        ta.value = ta.value.slice(0, start) + indent + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + indent.length;
+        autoResize(ta);
+        return;
+      }
       if (e.key === 'Escape' || (e.key === 'Enter' && e.shiftKey)) {
         e.preventDefault();
         commitMarkdown(id);
@@ -947,6 +956,42 @@ function selectCell(id) {
 }
 
 function onCellKey(e, id) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ta = e.target;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const indent = '    '; // 4 spaces
+    if (e.shiftKey) {
+      // un-indent: remove up to 4 leading spaces from each selected line
+      const before = ta.value.slice(0, start);
+      const selected = ta.value.slice(start, end);
+      const after = ta.value.slice(end);
+      const lineStart = before.lastIndexOf('\n') + 1;
+      const fullSel = ta.value.slice(lineStart, end);
+      const dedented = fullSel.replace(/^    /gm, '');
+      const removed = fullSel.length - dedented.length;
+      ta.value = ta.value.slice(0, lineStart) + dedented + after;
+      ta.selectionStart = Math.max(lineStart, start - Math.min(4, start - lineStart));
+      ta.selectionEnd = lineStart + dedented.length;
+    } else if (start !== end && ta.value.slice(start, end).includes('\n')) {
+      // multi-line selection: indent each line
+      const before = ta.value.slice(0, start);
+      const selected = ta.value.slice(start, end);
+      const after = ta.value.slice(end);
+      const lineStart = before.lastIndexOf('\n') + 1;
+      const fullSel = ta.value.slice(lineStart, end);
+      const indented = fullSel.replace(/^/gm, indent);
+      ta.value = ta.value.slice(0, lineStart) + indented + after;
+      ta.selectionStart = lineStart + indent.length;
+      ta.selectionEnd = lineStart + indented.length;
+    } else {
+      // single cursor or single-line selection: insert 4 spaces
+      ta.value = ta.value.slice(0, start) + indent + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = start + indent.length;
+    }
+    autoResize(ta);
+    return;
+  }
   if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); runCell(id); }
   if (e.key === 'Enter' && e.ctrlKey)  { e.preventDefault(); addCodeCell('', id); }
 }

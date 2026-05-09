@@ -1,464 +1,351 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>MCQ Poll</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    :root {
-      --bg:          oklch(99% 0.003 80);
-      --bg-2:        oklch(97% 0.005 80);
-      --bg-3:        oklch(94% 0.007 80);
-      --bg-4:        oklch(90% 0.008 80);
-      --ink-1:       oklch(22% 0.012 260);
-      --ink-2:       oklch(38% 0.010 260);
-      --ink-3:       oklch(55% 0.008 260);
-      --ink-4:       oklch(72% 0.006 260);
-      --accent:      oklch(45% 0.005 260);
-      --accent-hi:   oklch(32% 0.006 260);
-      --ok:          oklch(48% 0.13 155);
-      --ok-lo:       oklch(94% 0.06 155);
-      --bar-default: oklch(36% 0.004 260);
-      --line:        1px solid oklch(85% 0.005 260);
-      --r:           8px;
-      --font:        "EB Garamond", Georgia, serif;
-      --mono:        ui-monospace, "SF Mono", Menlo, monospace;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink-1); }
+<meta charset="utf-8">
+<title>MCQ — Beamer+</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
 
-    #shell { display: flex; flex-direction: column; height: 100%; }
+:root {
+  --bg:         #ffffff;
+  --bg-subtle:  #f9f9f8;
+  --border:     #e9e9e6;
+  --border-med: #d4d4cf;
+  --text:       #1a1a18;
+  --text-2:     #6b6b65;
+  --text-3:     #aeaea5;
+  --accent:     #52524e;
+  --accent-bg:  #f0f0ee;
+  --green:      #15803d;
+  --red:        #dc2626;
+  --radius:     6px;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  --font-ui:    'DM Sans', system-ui, sans-serif;
+}
 
-    /* Prompt header */
-    #question-header {
-      flex-shrink: 0;
-      padding: 28px 32px 22px;
-      border-bottom: var(--line);
-      background: var(--bg);
-    }
-    #question-text {
-      font-size: clamp(1.4rem, 4vw, 2.1rem);
-      font-weight: 500;
-      line-height: 1.25;
-      color: var(--ink-1);
-      text-align: center;
-    }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); background: var(--bg); color: var(--text); font-size: 13px; }
 
-    /* Body */
-    #body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#shell { display: flex; flex-direction: column; height: 100%; }
 
-    /* QR collect view */
-    #collect-view {
-      flex: 1;
-      display: none;
-      flex-direction: row;
-      align-items: stretch;
-      overflow: hidden;
-    }
-    #options-list {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 8px;
-      padding: 24px 20px 24px 28px;
-      overflow-y: auto;
-    }
-    .choice-card {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 11px 14px;
-      background: var(--bg-2);
-      border: var(--line);
-      border-radius: var(--r);
-    }
-    .choice-letter {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: var(--bg-3);
-      border: var(--line);
-      color: var(--accent);
-      font-size: 0.9rem;
-      font-weight: 500;
-      flex-shrink: 0;
-    }
-    .choice-text {
-      font-size: 1rem;
-      line-height: 1.35;
-      color: var(--ink-1);
-      word-break: break-word;
-      padding-top: 2px;
-    }
-    #qr-col {
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      padding: 24px 28px 24px 20px;
-      border-left: var(--line);
-    }
-    #qrcode {
-      padding: 10px;
-      background: white;
-      border: var(--line);
-      border-radius: var(--r);
-    }
-    #join-url {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--ink-4);
-      text-align: center;
-      max-width: 400px;
-      word-break: break-all;
-      cursor: pointer;
-    }
+/* ── Toolbar ─────────────────────────────────────────── */
+#toolbar {
+  flex-shrink: 0; height: 42px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 14px; gap: 6px;
+}
+.toolbar-title { font-size: 13px; font-weight: 500; flex-shrink: 0; }
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+#resp-count {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
+  flex-shrink: 0;
+}
+#resp-count strong { color: var(--text-2); font-weight: 500; }
+.spacer { flex: 1; }
+#close-btn {
+  height: 28px; padding: 0 12px;
+  border: 1px solid var(--text); border-radius: var(--radius);
+  background: var(--text); color: #fff;
+  font-family: var(--font-ui); font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; display: none;
+  transition: background 0.1s;
+}
+#close-btn:hover { background: #2d2d2a; }
 
-    /* Results bar chart */
-    #results-view {
-      flex: 1;
-      display: none;
-      flex-direction: column;
-      padding: 24px 32px;
-      gap: 6px;
-      overflow-y: auto;
-      justify-content: center;
-    }
-    .bar-row {
-      display: grid;
-      grid-template-columns: 2rem 1fr 3.6rem;
-      align-items: center;
-      gap: 10px;
-    }
-    .bar-label {
-      font-size: 1rem;
-      font-weight: 500;
-      color: var(--ink-2);
-      text-align: right;
-    }
-    .bar-label.correct { color: var(--ok); }
-    .bar-track {
-      height: 30px;
-      background: var(--bg-3);
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .bar-fill {
-      height: 100%;
-      width: 0%;
-      background: var(--bar-default);
-      border-radius: 4px;
-      transition: width 0.65s cubic-bezier(.22,1,.36,1);
-    }
-    .bar-fill.correct { background: var(--ok); }
-    .bar-meta {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-    }
-    .bar-pct {
-      font-size: 0.92rem;
-      font-weight: 500;
-      color: var(--ink-2);
-      font-variant-numeric: tabular-nums;
-    }
-    .bar-votes { font-size: 0.75rem; color: var(--ink-4); }
-    .bar-text-row {
-      display: grid;
-      grid-template-columns: 2rem 1fr 3.6rem;
-      gap: 10px;
-      margin-top: -2px;
-      margin-bottom: 8px;
-    }
-    .bar-text {
-      grid-column: 2;
-      font-size: 0.82rem;
-      color: var(--ink-3);
-      padding-left: 2px;
-    }
+/* ── Collect view ────────────────────────────────────── */
+#collect-view {
+  flex: 1; display: none;
+  flex-direction: column; overflow: hidden;
+}
 
-    /* Idle */
-    #idle-msg {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      color: var(--ink-4);
-      font-style: italic;
-    }
-    .pulse {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 1.1s ease-in-out infinite;
-      display: inline-block;
-      margin-right: 8px;
-    }
-    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.7)} }
+/* Question */
+#question-area {
+  flex-shrink: 0;
+  padding: 22px 32px 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+#question-text {
+  font-size: clamp(16px, 3vw, 24px);
+  font-weight: 500; line-height: 1.35; color: var(--text);
+}
+#question-text p { margin: 0; }
+#question-text .katex { font-size: 1em; }
 
-    /* Footer */
-    #footer-panel {
-      flex-shrink: 0;
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 24px;
-      border-top: var(--line);
-      background: var(--bg);
-      gap: 12px;
-    }
-    #resp-count-row { font-size: 14px; color: var(--ink-3); }
-    #resp-count-row strong { color: var(--ink-1); font-size: 15px; }
+/* Choices row */
+#choices-row {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 14px 24px 0; flex-wrap: wrap;
+}
+.choice-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 14px 6px 8px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-subtle); font-size: 12.5px; color: var(--text-2);
+  line-height: 1.3;
+}
+.choice-pill .letter {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent-bg); border: 1px solid var(--border-med);
+  color: var(--accent); font-size: 10.5px; font-weight: 700;
+  font-family: var(--font-mono); flex-shrink: 0;
+}
+.choice-pill .choice-label { color: var(--text); }
+.choice-pill .choice-label .katex { font-size: 1em; }
+.choice-pill .choice-label p { margin: 0; display: inline; }
 
-    /* Buttons */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 22px;
-      font-family: var(--font);
-      font-size: 1rem;
-      background: var(--bg);
-      color: var(--ink-2);
-      border: var(--line);
-      border-radius: var(--r);
-      cursor: pointer;
-      transition: background 100ms;
-      white-space: nowrap;
-    }
-    .btn:hover:not(:disabled) { background: var(--bg-4); }
-    .btn:disabled { opacity: 0.4; cursor: default; }
-    .btn.primary {
-      background: var(--accent);
-      color: oklch(97% 0.003 80);
-      border-color: var(--accent-hi);
-    }
-    .btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
-    #btn-row { display: flex; align-items: center; gap: 8px; }
-  </style>
+/* QR area — biased slightly above true centre */
+#qr-area {
+  flex: 1; display: flex;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 12px 24px 10%;
+}
+.scan-hint {
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); user-select: none;
+}
+#qrcode-wrap {
+  padding: 10px; background: white;
+  border: 1px solid var(--border); border-radius: var(--radius); line-height: 0;
+}
+#join-url {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  text-align: center; max-width: 420px; word-break: break-all;
+  cursor: pointer; padding: 3px 8px; border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+#join-url:hover { background: var(--bg-subtle); color: var(--text-2); }
+
+/* ── Results view ────────────────────────────────────── */
+#results-view {
+  flex: 1; display: none;
+  flex-direction: column; padding: 18px 24px;
+  gap: 4px; overflow-y: auto; justify-content: center;
+}
+.bar-row { display: grid; grid-template-columns: 28px 1fr 56px; align-items: center; gap: 8px; }
+.bar-label { font-size: 11px; font-weight: 700; font-family: var(--font-mono); color: var(--text-2); text-align: center; }
+.bar-label.correct { color: var(--green); }
+.bar-track { height: 28px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.65s cubic-bezier(.22,1,.36,1); }
+.bar-fill.correct { background: var(--green); }
+.bar-meta { display: flex; flex-direction: column; align-items: flex-end; }
+.bar-pct { font-size: 12px; font-weight: 600; font-family: var(--font-mono); color: var(--text); }
+.bar-votes { font-size: 10px; color: var(--text-3); font-family: var(--font-mono); }
+.bar-text-row { display: grid; grid-template-columns: 28px 1fr 56px; gap: 8px; margin-top: -2px; margin-bottom: 4px; }
+.bar-option-text { grid-column: 2; font-size: 11px; color: var(--text-3); line-height: 1.3; }
+.bar-option-text .katex { font-size: 1em; }
+.bar-option-text p { margin: 0; }
+</style>
 </head>
 <body>
 <div id="shell">
-  <div id="question-header">
-    <div id="question-text">Multiple Choice Poll</div>
+
+  <div id="toolbar">
+    <span class="toolbar-title">MCQ Poll</span>
+    <div class="sep"></div>
+    <span id="resp-count"><strong id="resp-n">0</strong> responses</span>
+    <div class="spacer"></div>
+    <button id="close-btn" onclick="closePoll()">Close &amp; Review →</button>
   </div>
 
-  <div id="body">
-    <div id="idle-msg"><span class="pulse"></span>Waiting for poll to start…</div>
-
-    <div id="collect-view">
-      <div id="options-list"></div>
-      <div id="qr-col">
-        <div id="qrcode"></div>
-        <div id="join-url" onclick="copyUrl(this)" title="Click to copy"></div>
-      </div>
+  <div id="collect-view">
+    <div id="question-area">
+      <div id="question-text"></div>
     </div>
-
-    <div id="results-view"></div>
-  </div>
-
-  <div id="footer-panel">
-    <div id="resp-count-row"><strong id="footer-resp-count">0</strong> responses</div>
-    <div id="btn-row">
-      <button class="btn primary" id="close-btn" onclick="closePoll()">Close</button>
-      <button class="btn" id="reset-btn" onclick="newPoll()" style="display:none">Reset</button>
+    <div id="choices-row"></div>
+    <div id="qr-area">
+      <div class="scan-hint">Scan to respond</div>
+      <div id="qrcode-wrap"><div id="qrcode"></div></div>
+      <div id="join-url" onclick="copyUrl()" title="Click to copy"></div>
     </div>
   </div>
+
+  <div id="results-view"></div>
+
 </div>
-
 <script>
-  const LETTERS = ['A','B','C','D','E','F','G','H'];
-  let cfg = {}, socket = null, role = 'presenter';
-  let widgetId = 'mcq-default', serverUrl = '', publicBaseUrl = '';
-  let surveyId = null, pollInterval = null, revealed = false, pollClosed = false;
-  let votes = {}, options = [], correctAnswer = null;
+(function () {
 
-  function letter(i) { return LETTERS[i] || String(i+1); }
+const LETTERS = ['A','B','C','D','E','F','G','H'];
+const letter  = i => LETTERS[i] || String(i + 1);
 
-  function renderOptionList() {
-    const list = document.getElementById('options-list');
-    list.innerHTML = '';
-    options.forEach((opt, i) => {
-      const card = document.createElement('div');
-      card.className = 'choice-card';
-      card.innerHTML = `<span class="choice-letter">${letter(i)}</span><span class="choice-text">${opt}</span>`;
-      list.appendChild(card);
+let cfg = {}, socket = null, role = 'presenter';
+let widgetId = 'mcq', serverUrl = '', publicBaseUrl = '';
+let surveyId = null, pollInterval = null, pollClosed = false, revealed = false;
+let votes = {}, options = [], correctAnswer = null;
+
+function setMd(el, src) {
+  if (!src) { el.textContent = ''; return; }
+  el.innerHTML = marked.parse(src, { breaks: false });
+  if (window.renderMathInElement) {
+    renderMathInElement(el, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$',  right: '$',  display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true },
+      ], throwOnError: false,
     });
   }
+}
 
-  function renderChart() {
-    const view = document.getElementById('results-view');
-    const total = Object.values(votes).reduce((s,v)=>s+v, 0);
-    view.innerHTML = '';
-    options.forEach((opt, i) => {
-      const k = letter(i);
-      const n = votes[k] || 0;
-      const pct = total > 0 ? Math.round(n / total * 100) : 0;
-      const isCorrect = revealed && correctAnswer === i;
+function setRespCount(n) { document.getElementById('resp-n').textContent = n; }
 
-      const row = document.createElement('div');
-      row.className = 'bar-row';
-      row.innerHTML = `
-        <span class="bar-label${isCorrect ? ' correct' : ''}">${k}</span>
-        <div class="bar-track"><div class="bar-fill${isCorrect ? ' correct' : ''}" data-pct="${pct}"></div></div>
-        <div class="bar-meta">
-          <span class="bar-pct">${pct}%</span>
-          <span class="bar-votes">${n}v</span>
-        </div>`;
-      view.appendChild(row);
-
-      const textRow = document.createElement('div');
-      textRow.className = 'bar-text-row';
-      textRow.innerHTML = `<span></span><span class="bar-text">${opt}</span>`;
-      view.appendChild(textRow);
-    });
-    requestAnimationFrame(() => {
-      view.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.dataset.pct + '%'; });
-    });
-  }
-
-  function emitState() {
-    if (!socket || role !== 'presenter') return;
-    socket.emit('widget_state', {
-      widgetId,
-      state: { question: cfg.question, options, votes, revealed, correctAnswer, surveyId, pollClosed },
-    });
-  }
-
-  function applyState(s) {
-    if (!s || !s.options?.length) return;
-    options = s.options; votes = s.votes || {};
-    revealed = s.revealed || false;
-    correctAnswer = s.correctAnswer ?? null;
-    pollClosed = s.pollClosed || false;
-    document.getElementById('question-text').textContent = s.question || 'Multiple Choice Poll';
-    setRespCount(Object.values(votes).reduce((a,b)=>a+b,0));
-    showPhase(pollClosed ? 'results' : 'collect');
-  }
-
-  function initSocket() {
-    const url = cfg.socketUrl || serverUrl;
-    if (!url) return;
-    socket = io(url);
-    socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
-    socket.on('widget_state', data => {
-      if (role !== 'viewer' || data?.widgetId !== widgetId) return;
-      applyState(data.state);
-      if (data.state?.surveyId && !data.state.pollClosed) showQR(data.state.surveyId);
-    });
-  }
-
-  function showPhase(p) {
-    document.getElementById('idle-msg').style.display     = p === 'idle'    ? '' : 'none';
-    document.getElementById('collect-view').style.display = p === 'collect' ? 'flex' : 'none';
-    document.getElementById('results-view').style.display = p === 'results' ? 'flex' : 'none';
-    document.getElementById('footer-panel').style.display = p !== 'idle' ? 'flex' : 'none';
-    if (role !== 'presenter') {
-      document.getElementById('btn-row').style.display = 'none';
-    } else {
-      document.getElementById('close-btn').style.display = p === 'collect' ? '' : 'none';
-      document.getElementById('reset-btn').style.display  = p === 'results' ? '' : 'none';
-    }
-    if (p === 'collect') renderOptionList();
-    if (p === 'results') renderChart();
-  }
-
-  function setRespCount(n) {
-    document.getElementById('footer-resp-count').textContent = n;
-  }
-
-  function showQR(sid) {
-    const base = publicBaseUrl || serverUrl;
-    const url = `${base}/mcq/${sid}`;
-    document.getElementById('join-url').textContent = url;
-    const qrEl = document.getElementById('qrcode');
-    if (qrEl.innerHTML) return;
-    new QRCode(qrEl, { text: url, width: 180, height: 180, colorDark: '#222', colorLight: '#ffffff' });
-  }
-
-  function copyUrl(el) { navigator.clipboard?.writeText(el.textContent).catch(()=>{}); }
-
-  async function startPoll() {
-    if (!cfg.question || !options.length) return;
-    try {
-      const res = await fetch(`${serverUrl}/api/survey/create`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ question: cfg.question, options, model: null, num_summaries: 0 }),
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      surveyId = data.survey_id;
-      votes = {}; revealed = false; pollClosed = false;
-      setRespCount(0);
-      showQR(surveyId);
-      showPhase('collect');
-      pollInterval = setInterval(fetchVotes, 3000);
-      emitState();
-    } catch(e) { console.error('startPoll:', e); }
-  }
-
-  async function fetchVotes() {
-    if (!surveyId) return;
-    const res = await fetch(`${serverUrl}/api/survey/${surveyId}/responses`).catch(()=>null);
-    if (!res?.ok) return;
-    const data = await res.json();
-    const newVotes = {};
-    (data.responses || []).forEach(r => {
-      const k = (r.text||'').trim().toUpperCase();
-      if (k) newVotes[k] = (newVotes[k]||0) + 1;
-    });
-    votes = newVotes;
-    setRespCount(Object.values(votes).reduce((a,b)=>a+b,0));
-    if (pollClosed) renderChart();
-    emitState();
-  }
-
-  async function closePoll() {
-    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-    await fetchVotes();
-    pollClosed = true;
-    if (surveyId) fetch(`${serverUrl}/api/survey/${surveyId}/close`, {method:'POST'}).catch(()=>{});
-    showPhase('results');
-    emitState();
-  }
-
-  function newPoll() {
-    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-    surveyId = null; votes = {}; revealed = false; pollClosed = false;
-    document.getElementById('qrcode').innerHTML = '';
-    document.getElementById('join-url').textContent = '';
-    setRespCount(0);
-    showPhase('idle');
-    startPoll();
-  }
-
-  function init(c) {
-    cfg = c || {};
-    role = cfg.role || 'presenter';
-    widgetId = cfg.id || cfg.widgetId || widgetId;
-    serverUrl = cfg.socketUrl || cfg.serverUrl || (()=>{ try{return window.parent.location.origin}catch(e){return window.location.origin} })();
-    publicBaseUrl = cfg.publicBaseUrl || serverUrl;
-    options = cfg.options || [];
-    correctAnswer = cfg.correctAnswer ?? null;
-    document.getElementById('question-text').textContent = cfg.question || 'Multiple Choice Poll';
-    initSocket();
-    if (role !== 'viewer' && cfg.question && options.length) startPoll();
-  }
-
-  window.addEventListener('message', e => {
-    if (e.data?.type === 'widget-config') init(e.data.config);
-    if (e.data?.type === 'widget-cleanup') { clearInterval(pollInterval); socket?.disconnect(); }
+function renderChoices() {
+  const row = document.getElementById('choices-row');
+  row.innerHTML = '';
+  options.forEach((opt, i) => {
+    const pill  = document.createElement('div');
+    pill.className = 'choice-pill';
+    const ls = document.createElement('span'); ls.className = 'letter'; ls.textContent = letter(i);
+    const ts = document.createElement('span'); ts.className = 'choice-label md-content';
+    pill.appendChild(ls); pill.appendChild(ts); row.appendChild(pill);
+    setMd(ts, opt);
   });
+}
+
+function renderChart() {
+  const view  = document.getElementById('results-view');
+  const total = Object.values(votes).reduce((s, v) => s + v, 0);
+  view.innerHTML = '';
+  options.forEach((opt, i) => {
+    const k   = letter(i);
+    const n   = votes[k] || 0;
+    const pct = total > 0 ? Math.round(n / total * 100) : 0;
+    const ok  = revealed && correctAnswer === i;
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `
+      <span class="bar-label${ok ? ' correct' : ''}">${k}</span>
+      <div class="bar-track"><div class="bar-fill${ok ? ' correct' : ''}" data-pct="${pct}"></div></div>
+      <div class="bar-meta"><span class="bar-pct">${pct}%</span><span class="bar-votes">${n}v</span></div>`;
+    view.appendChild(row);
+    const tr = document.createElement('div'); tr.className = 'bar-text-row';
+    const te = document.createElement('span'); te.className = 'bar-option-text md-content';
+    tr.appendChild(document.createElement('span'));
+    tr.appendChild(te);
+    tr.appendChild(document.createElement('span'));
+    view.appendChild(tr); setMd(te, opt);
+  });
+  requestAnimationFrame(() => {
+    view.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.dataset.pct + '%'; });
+  });
+}
+
+function showPhase(p) {
+  document.getElementById('collect-view').style.display = p === 'collect' ? 'flex' : 'none';
+  document.getElementById('results-view').style.display = p === 'results' ? 'flex' : 'none';
+  const btn = document.getElementById('close-btn');
+  btn.style.display = (p === 'collect' && role === 'presenter') ? 'block' : 'none';
+  if (p === 'collect') renderChoices();
+  if (p === 'results') renderChart();
+}
+
+function showQR(sid) {
+  const url = `${publicBaseUrl || serverUrl}/mcq/${sid}`;
+  document.getElementById('join-url').textContent = url;
+  const el = document.getElementById('qrcode');
+  if (!el.innerHTML)
+    new QRCode(el, { text: url, width: 180, height: 180, colorDark: '#1a1a18', colorLight: '#ffffff' });
+}
+
+function copyUrl() {
+  navigator.clipboard?.writeText(document.getElementById('join-url').textContent).catch(() => {});
+}
+
+function emitState() {
+  if (!socket || role !== 'presenter') return;
+  socket.emit('widget_state', { widgetId,
+    state: { question: cfg.question, options, votes, revealed, correctAnswer, surveyId, pollClosed } });
+}
+
+function applyState(s) {
+  if (!s || !s.options?.length) return;
+  options = s.options; votes = s.votes || {}; revealed = s.revealed || false;
+  correctAnswer = s.correctAnswer ?? null; pollClosed = s.pollClosed || false;
+  setMd(document.getElementById('question-text'), s.question || '');
+  setRespCount(Object.values(votes).reduce((a, b) => a + b, 0));
+  showPhase(pollClosed ? 'results' : 'collect');
+  if (!pollClosed && s.surveyId) showQR(s.surveyId);
+}
+
+function initSocket() {
+  const url = cfg.socketUrl || serverUrl;
+  if (!url) return;
+  socket = io(url);
+  socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
+  socket.on('widget_state', data => {
+    if (role !== 'viewer' || data?.widgetId !== widgetId) return;
+    applyState(data.state);
+  });
+}
+
+async function startPoll() {
+  if (!cfg.question || !options.length) return;
+  try {
+    const res = await fetch(`${serverUrl}/api/survey/create`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: cfg.question, options, model: null, num_summaries: 0 }),
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    surveyId = data.survey_id; votes = {}; revealed = false; pollClosed = false;
+    setRespCount(0);
+    setMd(document.getElementById('question-text'), cfg.question);
+    showQR(surveyId); showPhase('collect');
+    pollInterval = setInterval(fetchVotes, 3000);
+    emitState();
+  } catch (e) { console.error('startPoll:', e); }
+}
+
+async function fetchVotes() {
+  if (!surveyId) return;
+  const res = await fetch(`${serverUrl}/api/survey/${surveyId}/responses`).catch(() => null);
+  if (!res?.ok) return;
+  const data = await res.json();
+  const nv = {};
+  (data.responses || []).forEach(r => { const k = (r.text || '').trim().toUpperCase(); if (k) nv[k] = (nv[k] || 0) + 1; });
+  votes = nv;
+  setRespCount(Object.values(votes).reduce((a, b) => a + b, 0));
+  if (pollClosed) renderChart();
+  emitState();
+}
+
+async function closePoll() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  await fetchVotes(); pollClosed = true;
+  if (surveyId) fetch(`${serverUrl}/api/survey/${surveyId}/close`, { method: 'POST' }).catch(() => {});
+  showPhase('results'); emitState();
+}
+
+function init(c) {
+  cfg = c || {}; role = cfg.role || 'presenter';
+  widgetId = cfg.id || cfg.widgetId || widgetId;
+  serverUrl = cfg.socketUrl || cfg.serverUrl || (() => { try { return window.parent.location.origin; } catch (_) { return window.location.origin; } })();
+  publicBaseUrl = cfg.publicBaseUrl || serverUrl;
+  options = cfg.options || []; correctAnswer = cfg.correctAnswer ?? null;
+  if (cfg.question) setMd(document.getElementById('question-text'), cfg.question);
+  initSocket();
+  if (role !== 'viewer' && cfg.question && options.length) startPoll();
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'widget-config')  init(e.data.config);
+  if (e.data?.type === 'widget-cleanup') { clearInterval(pollInterval); socket?.disconnect(); }
+});
+window.closePoll = closePoll;
+window.copyUrl   = copyUrl;
+})();
 </script>
 </body>
 </html>

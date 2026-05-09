@@ -1,183 +1,209 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Respond</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    :root {
-      --bg:        oklch(99% 0.003 80);
-      --bg-2:      oklch(97% 0.005 80);
-      --bg-3:      oklch(94% 0.007 80);
-      --ink-1:     oklch(22% 0.012 260);
-      --ink-2:     oklch(38% 0.010 260);
-      --ink-3:     oklch(55% 0.008 260);
-      --ink-4:     oklch(72% 0.006 260);
-      --accent:    oklch(45% 0.005 260);
-      --accent-hi: oklch(32% 0.006 260);
-      --ok:        oklch(52% 0.14 160);
-      --err:       oklch(58% 0.18 25);
-      --line:      1px solid oklch(85% 0.005 260);
-      --r:         6px;
-      --font:      "EB Garamond", Georgia, serif;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { height: 100%; background: var(--bg); }
-    body {
-      min-height: 100%; font-family: var(--font); color: var(--ink-1);
-      display: flex; flex-direction: column;
-    }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Respond — Beamer+</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
 
-    /* Loading */
-    #loading-area {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 10px;
-    }
-    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)} }
-    .loading-text { font-size: 14px; color: var(--ink-4); font-style: italic; }
+:root {
+  --bg:         #ffffff;
+  --bg-subtle:  #f9f9f8;
+  --border:     #e9e9e6;
+  --border-med: #d4d4cf;
+  --text:       #1a1a18;
+  --text-2:     #6b6b65;
+  --text-3:     #aeaea5;
+  --accent:     #52524e;
+  --accent-bg:  #f0f0ee;
+  --green:      #15803d;
+  --red:        #dc2626;
+  --radius:     8px;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  --font-ui:    'DM Sans', system-ui, sans-serif;
+}
 
-    /* Main content */
-    #main-area { flex: 1; display: none; flex-direction: column; padding: 24px 20px; gap: 18px; max-width: 520px; width: 100%; margin: 0 auto; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  min-height: 100%; background: var(--bg);
+  color: var(--text); font-family: var(--font-ui); font-size: 15px;
+  display: flex; flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
 
-    .question-text {
-      font-size: 1.5rem; font-weight: 500; line-height: 1.35; color: var(--ink-1); text-align: center;
-    }
 
-    textarea {
-      width: 100%; min-height: 100px;
-      padding: 10px 12px; font-family: var(--font); font-size: 1rem; line-height: 1.5;
-      color: var(--ink-1); background: var(--bg-2);
-      border: var(--line); border-radius: var(--r);
-      outline: none; resize: vertical; transition: border-color 120ms;
-    }
-    textarea:focus { border-color: var(--accent); }
-    textarea:disabled { opacity: 0.5; }
+/* ── Loading ─────────────────────────────────────────── */
+#loading-area {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+}
+.spinner {
+  width: 24px; height: 24px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.65s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 13px; color: var(--text-3); }
 
-    .submit-btn {
-      width: 100%; padding: 10px;
-      font-family: var(--font); font-size: 1rem;
-      background: var(--accent); color: oklch(97% 0.003 80);
-      border: none; border-radius: var(--r);
-      cursor: pointer; transition: background 100ms;
-    }
-    .submit-btn:hover:not(:disabled) { background: var(--accent-hi); }
-    .submit-btn:disabled { opacity: 0.4; cursor: default; }
+/* ── Main form area ──────────────────────────────────── */
+#main-area {
+  flex: 1; display: none; flex-direction: column;
+  padding: 28px 20px 32px;
+  gap: 20px; max-width: 520px; width: 100%; margin: 0 auto;
+}
 
-    /* Status cards */
-    .status-card {
-      flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center;
-      padding: 32px 20px; gap: 10px; text-align: center;
-    }
-    .status-card.visible { display: flex; }
-    .status-title { font-size: 1.5rem; font-weight: 500; color: var(--ink-1); }
-    .status-sub { font-size: 1rem; color: var(--ink-3); }
-    .status-card.ok .status-title { color: var(--ok); }
-  </style>
+.question-text {
+  font-size: 1.35rem; font-weight: 500; line-height: 1.4;
+  color: var(--text); text-align: center;
+}
+
+textarea {
+  width: 100%; min-height: 110px;
+  padding: 12px 14px;
+  font-family: var(--font-ui); font-size: 15px; line-height: 1.55;
+  color: var(--text); background: var(--bg-subtle);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  outline: none; resize: vertical;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-appearance: none;
+}
+textarea:focus { border-color: var(--border-med); background: var(--bg); }
+textarea:disabled { opacity: 0.5; }
+textarea::placeholder { color: var(--text-3); }
+
+.submit-btn {
+  width: 100%; height: 48px;
+  border: none; border-radius: var(--radius);
+  background: var(--text); color: #fff;
+  font-family: var(--font-ui); font-size: 15px; font-weight: 500;
+  cursor: pointer; transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.submit-btn:hover:not(:disabled) { background: #2d2d2a; }
+.submit-btn:disabled { opacity: 0.4; cursor: default; }
+
+.hint-text {
+  font-size: 12px; color: var(--text-3);
+  text-align: center; font-family: var(--font-mono);
+}
+
+/* ── Status cards ────────────────────────────────────── */
+.status-card {
+  flex: 1; display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 40px 24px; gap: 8px; text-align: center;
+}
+.status-card.visible { display: flex; }
+
+.status-title {
+  font-size: 1.3rem; font-weight: 600; color: var(--text);
+  line-height: 1.3;
+}
+.status-sub {
+  font-size: 14px; color: var(--text-3); line-height: 1.5; margin-top: 2px;
+}
+.status-card.ok .status-title { color: var(--green); }
+.status-card.err .status-title { color: var(--red); }
+</style>
 </head>
 <body>
 
-  <div id="loading-area">
-    <div class="pulse"></div>
-    <div class="loading-text">Loading…</div>
-  </div>
 
-  <div id="main-area">
-    <div class="question-text" id="question-text"></div>
-    <textarea id="response-input" placeholder="Type your response…"></textarea>
-    <button class="submit-btn" id="submit-btn" onclick="submit()">Submit</button>
-  </div>
+<div id="loading-area">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading…</div>
+</div>
 
-  <div class="status-card ok" id="thanks-card">
-    <div class="status-title">Thank you!</div>
-    <div class="status-sub">Your response has been recorded.</div>
-  </div>
+<div id="main-area">
+  <div class="question-text" id="question-text"></div>
+  <textarea id="response-input" placeholder="Type your response…"></textarea>
+  <button class="submit-btn" id="submit-btn" onclick="submit()">Submit</button>
+  <div class="hint-text">Ctrl + Enter to submit</div>
+</div>
 
-  <div class="status-card" id="already-card">
-    <div class="status-title">Already submitted</div>
-    <div class="status-sub">You have already responded to this survey.</div>
-  </div>
+<div class="status-card ok" id="thanks-card">
+  <div class="status-title">Thank you!</div>
+  <div class="status-sub">Your response has been recorded.</div>
+</div>
 
-  <div class="status-card" id="closed-card">
-    <div class="status-title">Survey closed</div>
-    <div class="status-sub">This survey is no longer accepting responses.</div>
-  </div>
+<div class="status-card" id="already-card">
+  <div class="status-title">Already submitted</div>
+  <div class="status-sub">You have already responded to this survey.</div>
+</div>
 
-  <div class="status-card" id="error-card">
-    <div class="status-title">Unavailable</div>
-    <div class="status-sub" id="error-detail">This survey could not be loaded.</div>
-  </div>
+<div class="status-card" id="closed-card">
+  <div class="status-title">Survey closed</div>
+  <div class="status-sub">This survey is no longer accepting responses.</div>
+</div>
 
-  <script>
-    const SURVEY_ID = "{{ survey_id }}";
-    const SESSION_KEY = 'responded_' + SURVEY_ID;
+<div class="status-card err" id="error-card">
+  <div class="status-title">Unavailable</div>
+  <div class="status-sub" id="error-detail">This survey could not be loaded.</div>
+</div>
 
-    function hide(id) { document.getElementById(id).style.display = 'none'; }
-    function showCard(id) {
-      hide('loading-area'); hide('main-area');
-      ['thanks-card','already-card','closed-card','error-card'].forEach(c => {
-        document.getElementById(c).classList.toggle('visible', c === id);
-      });
-    }
+<script>
+const SURVEY_ID  = "{{ survey_id }}";
+const SESSION_KEY = 'responded_' + SURVEY_ID;
+const CARDS = ['thanks-card', 'already-card', 'closed-card', 'error-card'];
 
-    async function submit() {
-      const text = document.getElementById('response-input').value.trim();
-      if (!text) { document.getElementById('response-input').focus(); return; }
+function showCard(id) {
+  document.getElementById('loading-area').style.display = 'none';
+  document.getElementById('main-area').style.display   = 'none';
+  CARDS.forEach(c => document.getElementById(c).classList.toggle('visible', c === id));
+}
 
-      const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
-      document.getElementById('response-input').disabled = true;
-
-      try {
-        const res = await fetch(`/api/survey/${SURVEY_ID}/respond`, {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ response: text }),
-        });
-        if (!res.ok) {
-          const d = await res.json().catch(()=>({}));
-          if ((d.error||'').toLowerCase().includes('closed')) { showCard('closed-card'); return; }
-          throw new Error(d.error || 'Failed');
-        }
-        sessionStorage.setItem(SESSION_KEY, '1');
-        showCard('thanks-card');
-      } catch(e) {
-        btn.disabled = false;
-        document.getElementById('response-input').disabled = false;
-        alert('Could not submit. Please try again.');
-      }
-    }
-
-    async function load() {
-      if (sessionStorage.getItem(SESSION_KEY)) { showCard('already-card'); return; }
-      try {
-        const res = await fetch(`/api/survey/${SURVEY_ID}`);
-        if (!res.ok) { showCard('error-card'); return; }
-        const data = await res.json();
-        if (!data.active) { showCard('closed-card'); return; }
-
-        document.getElementById('question-text').textContent = data.question || 'Share your thoughts';
-        hide('loading-area');
-        document.getElementById('main-area').style.display = 'flex';
-
-        // Listen for close event
-        try {
-          const socket = io();
-          socket.on('survey_closed', d => { if (!d?.survey_id || d.survey_id === SURVEY_ID) showCard('closed-card'); });
-        } catch(e) {}
-      } catch(e) {
-        document.getElementById('error-detail').textContent = 'Could not connect to the server.';
-        showCard('error-card');
-      }
-    }
-
-    document.getElementById('response-input').addEventListener('keydown', e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submit();
+async function submit() {
+  const text = document.getElementById('response-input').value.trim();
+  if (!text) { document.getElementById('response-input').focus(); return; }
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  document.getElementById('response-input').disabled = true;
+  try {
+    const res = await fetch(`/api/survey/${SURVEY_ID}/respond`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response: text }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if ((d.error || '').toLowerCase().includes('closed')) { showCard('closed-card'); return; }
+      throw new Error(d.error || 'Failed');
+    }
+    sessionStorage.setItem(SESSION_KEY, '1');
+    showCard('thanks-card');
+  } catch (e) {
+    btn.disabled = false;
+    document.getElementById('response-input').disabled = false;
+  }
+}
 
-    load();
-  </script>
+async function load() {
+  if (sessionStorage.getItem(SESSION_KEY)) { showCard('already-card'); return; }
+  try {
+    const res = await fetch(`/api/survey/${SURVEY_ID}`);
+    if (!res.ok) { showCard('error-card'); return; }
+    const data = await res.json();
+    if (!data.active) { showCard('closed-card'); return; }
+    document.getElementById('question-text').textContent = data.question || 'Share your thoughts';
+    document.getElementById('loading-area').style.display = 'none';
+    document.getElementById('main-area').style.display = 'flex';
+    try {
+      const socket = io();
+      socket.on('survey_closed', d => { if (!d?.survey_id || d.survey_id === SURVEY_ID) showCard('closed-card'); });
+    } catch (_) {}
+  } catch (_) {
+    document.getElementById('error-detail').textContent = 'Could not connect to the server.';
+    showCard('error-card');
+  }
+}
+
+document.getElementById('response-input').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submit();
+});
+
+load();
+</script>
 </body>
 </html>

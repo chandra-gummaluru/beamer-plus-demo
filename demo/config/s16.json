@@ -1,16 +1,15 @@
 {
   "widgets": [
     {
-      "id": "textbook_demo",
-      "type": "textbook",
+      "id": "lecture_notebook",
+      "type": "ipynb_widget",
       "x": 0,
       "y": 0,
       "width": 1,
       "height": 1,
       "zIndex": 10,
-      "interactive": true,
-      "pdf": "/api/demo/config/assets/csc236.pdf",
-      "title": "CSC236"
-    }
+      "notebook": "",
+      "viewer": false
+      }
   ]
 }

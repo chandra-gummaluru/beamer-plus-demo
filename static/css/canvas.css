@@ -274,11 +274,12 @@ model-viewer {
     background: #ffffff;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.1s ease;
+    transition: opacity 0.15s ease;
 }
 
 .slide-loading-overlay.visible {
     opacity: 1;
+    transition: none; /* appear instantly, only fade out on remove */
 }
 
 .slide-squiggle {
