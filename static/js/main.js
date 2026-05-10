@@ -349,12 +349,13 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
     if (!btn) return;
     btn.addEventListener('click', async () => {
         const enteringSplit = !state.splitView;
+        // Save before setSplitActive — resizeOnly() inside it clears the canvas
+        saveCurrentAnnotations();
         // Show overlay(s) immediately before any layout work
         _slideOverlay(false)?.classList.add('visible');
         if (enteringSplit) _slideOverlay(true)?.classList.add('visible');
         await setSplitActive(enteringSplit);
         if (state.zipFile) {
-            saveCurrentAnnotations();
             if (state.splitView) {
                 await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
             } else {
@@ -403,6 +404,11 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
             // Re-render both panes after divider resize — only if we were actually dragging
             if (wasDragging && state.splitView) {
                 setTimeout(async () => {
+                    // Save first (canvas still has correct pixels), then resize
+                    // buffers to match new layout so coordinates align with mouse
+                    saveCurrentAnnotations();
+                    state.annCvs.resizeOnly?.();
+                    state.annCvs2?.resizeOnly?.();
                     updateWidgetPositions(document.getElementById('pdf-canvas'));
                     updateWidgetPositions(document.getElementById('pdf-canvas-2'));
                     await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
@@ -493,8 +499,8 @@ async function goToSlide(i, direction = null) {
         if (onLeave.closeSplit && state.splitView) {
             await setSplitActive(false);
         }
-        // Only redirect to onLeave.goToSlide when going forward, not back
-        if (onLeave.goToSlide != null && direction !== 'back') {
+        // Only redirect to onLeave.goToSlide when using next-slide (forward), not when clicking a slide directly
+        if (onLeave.goToSlide != null && direction === 'forward') {
             i = Math.max(0, Math.min(state.slideStructure.length - 1, onLeave.goToSlide));
         }
     }
@@ -514,7 +520,7 @@ async function goToSlide(i, direction = null) {
         if (!state.splitView || state.rightSlideIndex !== rightIndex) {
             // About to enter split — also cover the right pane immediately
             _slideOverlay(true)?.classList.add('visible');
-            await setSplitActive(true, rightIndex);
+            await setSplitActive(true, rightIndex, onEnter.splitRatio ?? null);
         }
     }
     // ─────────────────────────────────────────────────────────────
@@ -544,7 +550,7 @@ async function goToSlide(i, direction = null) {
     bus.emit('slide:changed', i);
 }
 
-async function setSplitActive(active, rightIndex = null) {
+async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     const annContainer2 = document.getElementById('ann-canvas-2');
     const pdfContainer2 = document.getElementById('pdf-canvas-2');
     const btn           = document.getElementById('split-toggle');
@@ -564,7 +570,7 @@ async function setSplitActive(active, rightIndex = null) {
             state.annCvs2.setPointerMode('hand');
         }
         state.rightSlideIndex = rightIndex ?? Math.min(state.currentSlide + 1, state.slideStructure.length - 1);
-        applySplitRatio(state.splitRatio);
+        applySplitRatio(splitRatio ?? state.splitRatio);
         await renderLogicalSlide(state.rightSlideIndex, true);
     }
 
@@ -642,7 +648,7 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
         : document.getElementById('ann-canvas');
     const cvs    = isRight ? state.pdfCvs2 : state.pdfCvs;
     const annCvs = isRight ? state.annCvs2 : state.annCvs;
-    const annotsMap = isRight ? state.annotationsRight : state.annotations;
+    const annotsMap = state.annotations;
 
     if (!cvs || !annCvs) return;
 
@@ -685,7 +691,7 @@ async function renderPdfSlide(pdfIndex, logicalIndex, isRight = false) {
 
     const cvs    = isRight ? state.pdfCvs2 : state.pdfCvs;
     const annCvs = isRight ? state.annCvs2 : state.annCvs;
-    const annotsMap = isRight ? state.annotationsRight : state.annotations;
+    const annotsMap = state.annotations;
     const container = isRight
         ? document.getElementById('pdf-canvas-2')
         : document.getElementById('pdf-canvas');
@@ -771,6 +777,10 @@ async function renderMedia(config, container, rect, isRight) {
             if (m.animationName) mv.setAttribute('animation-name', m.animationName);
             mv.dataset.modelId = m.id;
             Object.assign(mv.style, { position:'absolute', left:`${m.x*rect.width}px`, top:`${m.y*rect.height}px`, width:`${m.width*rect.width}px`, height:`${m.height*rect.height}px`, zIndex: m.zIndex ?? 5 });
+            mv.style.setProperty('--progress-bar-height', '0px');
+            const progressBarSlot = document.createElement('div');
+            progressBarSlot.slot = 'progress-bar';
+            mv.appendChild(progressBarSlot);
             container.appendChild(mv);
             if (!isRight) {
                 let cameraTimer = null;
@@ -831,6 +841,10 @@ function saveCurrentAnnotations() {
     const data = state.annCvs.canvas.toDataURL('image/png');
     state.annotations[state.currentSlide] = data;
     state.socket.emit('annotation_update', { annotations: data, slideIndex: state.currentSlide });
+    // Also save the right pane when in split view
+    if (state.splitView && state.annCvs2) {
+        state.annotations[state.rightSlideIndex] = state.annCvs2.canvas.toDataURL('image/png');
+    }
 }
 
 /* ─── populate slide navigator ────────────────────────────────── */

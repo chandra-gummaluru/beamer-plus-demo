@@ -239,6 +239,7 @@ body.split-view-active #ann-canvas-2 {
 /* Model viewer */
 model-viewer {
     pointer-events: auto !important;
+    --progress-bar-height: 0px;
 }
 
 /* Widget iframes */
