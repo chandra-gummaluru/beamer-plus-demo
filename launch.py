@@ -179,10 +179,24 @@ Examples:
     )
     return parser.parse_args()
 
+def find_free_port(start_port):
+    """Return start_port if free, otherwise the next available port."""
+    port = start_port
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('', port))
+                return port
+            except OSError:
+                port += 1
+
+
 def main():
     # Parse command line arguments
     args = parse_arguments()
-    port = args.port
+    port = find_free_port(args.port)
+    if port != args.port:
+        print_warning(f"Port {args.port} is in use. Using port {port} instead.")
     
     # Skip app.py check when running as bundled executable
     # PyInstaller bundles everything, so this check is unnecessary
@@ -214,6 +228,8 @@ def main():
         print_warning("LAN IP not detected")
     
     print_success(f"Port: {port}")
+    if port != args.port:
+        print_warning(f"(requested port {args.port} was already in use)")
     print()
     
     # Display connection info
