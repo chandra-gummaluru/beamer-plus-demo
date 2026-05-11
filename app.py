@@ -475,14 +475,18 @@ if __name__ == '__main__':
     parser.add_argument('--http', action='store_true', help='Force plain HTTP (disables camera widget on LAN)')
     args = parser.parse_args()
 
-    if args.http:
+    def _can_use_adhoc_ssl():
+        try:
+            from cryptography import x509  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    if args.http or not _can_use_adhoc_ssl():
+        if not args.http:
+            print("[WARN] Could not start HTTPS (cryptography library not found). Falling back to HTTP.")
+            print("[WARN] Camera widget requires HTTPS on LAN addresses.")
         socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
     else:
-        try:
-            ssl_context = 'adhoc'  # requires: pip install pyopenssl
-            socketio.run(app, host='0.0.0.0', port=args.port, debug=False,
-                         ssl_context=ssl_context, allow_unsafe_werkzeug=True)
-        except Exception as e:
-            print(f"[WARN] Could not start HTTPS ({e}). Falling back to HTTP.")
-            print("[WARN] Camera widget requires HTTPS on LAN addresses.")
-            socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=False,
+                     ssl_context='adhoc', allow_unsafe_werkzeug=True)
