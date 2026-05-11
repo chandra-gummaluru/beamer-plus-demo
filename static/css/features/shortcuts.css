@@ -2,36 +2,52 @@
    Keyboard shortcuts help button + modal content
    ============================================================ */
 
-#shortcuts-btn {
+/* ── Bottom controls pill cluster ─────────────────────────── */
+#bottom-controls {
     position: fixed;
-    bottom: var(--sp-4);
-    right: var(--sp-4);
+    bottom: var(--sp-3);
+    right: var(--sp-3);
     z-index: 240;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border-radius: 50%;
-    background: oklch(99% 0.003 80 / 0.86);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px) saturate(1.4);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
     border: var(--line-hairline);
+    border-radius: var(--r-pill);
     box-shadow: var(--shadow-2);
-    color: var(--ink-2);
-    font-size: 15px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
 }
 
-#shortcuts-btn:hover {
+#bottom-controls .btn {
+    width: var(--hit-min);
+    height: var(--hit-min);
+    padding: 0;
+    font-size: var(--fs-base);
+    line-height: 1;
+    background: transparent;
+    border-color: transparent;
+    border-radius: var(--r-pill);
+}
+
+#bottom-controls .btn:hover {
     background: var(--surface-cream-2);
-    color: var(--ink-1);
+    border-color: var(--line-strong);
 }
 
-body.focus-mode #shortcuts-btn {
+#bottom-controls .btn i { font-size: 16px; }
+
+body.focus-mode #bottom-controls {
     display: none;
+}
+
+body.split-view-active #bottom-controls {
+    top: var(--sp-2);
+    left: var(--sp-2);
+    bottom: auto;
+    right: auto;
 }
 
 /* ── Shortcuts modal grid ─────────────────────────────────── */
@@ -92,4 +108,29 @@ body.focus-mode #shortcuts-btn {
 
 .shortcuts-desc {
     color: var(--ink-2);
+}
+
+/* ── Settings modal ──────────────────────────────────────── */
+.settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-width: 200px;
+}
+
+.settings-label {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+}
+
+.settings-theme-row {
+    display: flex;
+    gap: var(--sp-2);
+}
+
+.settings-theme-row .btn {
+    flex: 1;
 }

@@ -13,7 +13,7 @@
     align-items: center;
     gap: var(--sp-2);
     padding: var(--sp-1);
-    background: oklch(99% 0.003 80 / 0.86);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px) saturate(1.4);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
     border: var(--line-hairline);

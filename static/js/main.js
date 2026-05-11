@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wireResizeAndFullscreen();
     wireSocketEvents();
     wireShortcutsBtn();
+    wireSettingsBtn();
     initSpotlight();
 
     // annotation sync
@@ -435,6 +436,61 @@ function showShortcutsModal() {
 
 function wireShortcutsBtn() {
     document.getElementById('shortcuts-btn')?.addEventListener('click', showShortcutsModal);
+}
+
+/* ─── settings modal ──────────────────────────────────────── */
+function applyTheme(theme) {
+    localStorage.setItem('beamer-theme', theme);
+    const html = document.documentElement;
+    if (theme === 'dark') {
+        html.setAttribute('data-theme', 'dark');
+    } else if (theme === 'light') {
+        html.removeAttribute('data-theme');
+    } else { // 'system'
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) html.setAttribute('data-theme', 'dark');
+        else html.removeAttribute('data-theme');
+    }
+}
+
+function showSettingsModal() {
+    const current = localStorage.getItem('beamer-theme') || 'system';
+
+    const body = document.createElement('div');
+    body.className = 'settings-grid';
+
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = 'Theme';
+    body.appendChild(label);
+
+    const row = document.createElement('div');
+    row.className = 'settings-theme-row';
+
+    ['Light', 'Dark', 'System'].forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'btn' + (current === t.toLowerCase() ? ' btn_selected' : '');
+        btn.textContent = t;
+        btn.addEventListener('click', () => {
+            applyTheme(t.toLowerCase());
+            row.querySelectorAll('.btn').forEach(b => b.classList.remove('btn_selected'));
+            btn.classList.add('btn_selected');
+        });
+        row.appendChild(btn);
+    });
+    body.appendChild(row);
+
+    window.BeamerModal?.show({
+        kind: 'info',
+        title: 'Settings',
+        body,
+        buttons: [{ label: 'Close', kind: 'cancel' }],
+    });
+}
+
+function wireSettingsBtn() {
+    document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
+    applyTheme(localStorage.getItem('beamer-theme') || 'system');
 }
 
 /* ─── nav prev/next buttons ───────────────────────────────────── */
