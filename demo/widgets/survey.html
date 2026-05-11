@@ -122,6 +122,42 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); backgr
 }
 .nav-btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-med); color: var(--text); }
 .nav-btn:disabled { opacity: 0.28; cursor: default; }
+
+/* ── Responses view ─────────────────────────────────── */
+#responses-view {
+  flex: 1; display: none;
+  flex-direction: column; overflow: hidden;
+}
+#responses-list {
+  flex: 1; overflow-y: auto;
+  padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;
+}
+.resp-card {
+  background: var(--bg-subtle); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 11px 14px;
+  font-size: 13px; line-height: 1.55; color: var(--text);
+}
+.resp-card .resp-meta {
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--text-3); margin-top: 6px;
+}
+#responses-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 13px;
+}
+
+/* ── Mode pill ───────────────────────────────────────── */
+.mode-btn {
+  height: 26px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text-2);
+  font-family: var(--font-ui); font-size: 11.5px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.mode-btn.active {
+  background: var(--text); color: #fff; border-color: var(--text);
+}
 </style>
 </head>
 <body>
@@ -131,8 +167,11 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); backgr
     <span class="toolbar-title">Survey</span>
     <div class="sep"></div>
     <span id="resp-count"><strong id="resp-n">0</strong> responses</span>
+    <div class="sep"></div>
+    <button class="mode-btn active" id="mode-responses" onclick="setMode('responses')">Responses</button>
+    <button class="mode-btn"        id="mode-summary"   onclick="setMode('summary')">Summary</button>
     <div class="spacer"></div>
-    <button id="close-btn" onclick="summarize()">Close &amp; Review →</button>
+    <button id="close-btn" onclick="closeAndReview()">Close &amp; Review →</button>
   </div>
 
   <div id="collect-view">
@@ -147,6 +186,10 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); backgr
   <div id="loading-view">
     <div class="spinner"></div>
     <div id="loading-msg">Loading…</div>
+  </div>
+
+  <div id="responses-view">
+    <div id="responses-list"></div>
   </div>
 
   <div id="results-view">
@@ -168,7 +211,8 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); backgr
 let cfg = {}, socket = null, role = 'presenter';
 let widgetId = 'survey', serverUrl = '', publicBaseUrl = '';
 let currentSurvey = null, currentResults = null, currentIdx = 0;
-let respCount = 0, phase = 'idle', minResponses = 3;
+let respCount = 0, phase = 'idle', minResponses = 1;
+let surveyMode = 'responses'; // 'responses' | 'summary'
 
 function deriveServer() {
   try { return window.parent.location.origin; } catch (_) { return window.location.origin; }
@@ -182,11 +226,18 @@ function setRespCount(n) {
 
 function showPhase(p) {
   phase = p;
-  document.getElementById('collect-view').style.display  = p === 'collect' ? 'flex'  : 'none';
-  document.getElementById('loading-view').style.display  = p === 'loading' ? 'flex'  : 'none';
-  document.getElementById('results-view').style.display  = p === 'results' ? 'flex'  : 'none';
+  document.getElementById('collect-view').style.display    = p === 'collect'   ? 'flex' : 'none';
+  document.getElementById('loading-view').style.display    = p === 'loading'   ? 'flex' : 'none';
+  document.getElementById('responses-view').style.display  = p === 'responses' ? 'flex' : 'none';
+  document.getElementById('results-view').style.display    = p === 'results'   ? 'flex' : 'none';
   const btn = document.getElementById('close-btn');
   btn.style.display = (p === 'collect' && role === 'presenter') ? 'block' : 'none';
+}
+
+function setMode(m) {
+  surveyMode = m;
+  document.getElementById('mode-responses').classList.toggle('active', m === 'responses');
+  document.getElementById('mode-summary').classList.toggle('active', m === 'summary');
 }
 
 function showQR(url) {
@@ -201,18 +252,23 @@ function copyUrl() {
 
 function emitState() {
   if (!socket || role !== 'presenter') return;
-  const state = { phase, question: currentSurvey?.question };
+  const state = { phase, question: currentSurvey?.question, surveyMode };
   if (phase === 'collect') { state.surveyId = currentSurvey?.survey_id; state.url = document.getElementById('join-url').textContent; state.count = respCount; }
+  else if (phase === 'responses') { state.surveyId = currentSurvey?.survey_id; }
   else if (phase === 'results') { state.results = currentResults; state.idx = currentIdx; }
   socket.emit('widget_state', { widgetId, state });
 }
 
 function applyState(s) {
   if (!s) return;
+  if (s.surveyMode) setMode(s.surveyMode);
   if (s.phase === 'collect' && s.surveyId) {
     currentSurvey = { survey_id: s.surveyId, question: s.question };
     document.getElementById('question-text').textContent = s.question || '';
     setRespCount(s.count || 0); showQR(s.url); showPhase('collect');
+  } else if (s.phase === 'responses' && s.surveyId) {
+    currentSurvey = { ...(currentSurvey || {}), survey_id: s.surveyId, question: s.question };
+    fetchAndShowResponses();
   } else if (s.phase === 'results' && s.results) {
     currentSurvey  = { ...(currentSurvey || {}), question: s.question };
     currentResults = s.results; currentIdx = s.idx || 0;
@@ -227,12 +283,15 @@ function connectSocket() {
   socket.on('widget_state', data => { if (role !== 'viewer' || data?.widgetId !== widgetId) return; applyState(data.state); });
   socket.on('survey_response', data => {
     if (!currentSurvey || data.survey_id !== currentSurvey.survey_id) return;
-    setRespCount(data.total); emitState();
+    setRespCount(data.total);
+    // Live-append to responses view if it's open
+    if (phase === 'responses' && data.response) appendResponseCard(data.response);
+    emitState();
   });
 }
 
 async function doLaunch(question, model, n) {
-  minResponses = n || 3;
+  minResponses = n || 1;
   document.getElementById('loading-msg').textContent = 'Creating survey…';
   showPhase('loading');
   try {
@@ -250,9 +309,61 @@ async function doLaunch(question, model, n) {
   } catch (e) { console.error('doLaunch:', e); }
 }
 
-async function summarize() {
+async function closeAndReview() {
   if (!currentSurvey) return;
   await fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/close`, { method: 'POST' }).catch(() => {});
+  if (surveyMode === 'summary') {
+    await summarize();
+  } else {
+    await fetchAndShowResponses();
+  }
+}
+
+async function fetchAndShowResponses() {
+  document.getElementById('loading-msg').textContent = 'Loading responses…';
+  showPhase('loading');
+  try {
+    const res = await fetch(`${serverUrl}/api/survey/${currentSurvey.survey_id}/responses`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderResponsesList(data.responses || []);
+    showPhase('responses'); emitState();
+  } catch (e) {
+    console.error('fetchAndShowResponses:', e);
+    showPhase('collect');
+  }
+}
+
+function renderResponsesList(responses) {
+  const list = document.getElementById('responses-list');
+  list.innerHTML = '';
+  if (!responses.length) {
+    list.innerHTML = '<div id="responses-empty">No responses yet.</div>';
+    return;
+  }
+  for (const r of responses) appendResponseCard(r, list);
+}
+
+function appendResponseCard(r, list) {
+  list = list || document.getElementById('responses-list');
+  const empty = list.querySelector('#responses-empty');
+  if (empty) empty.remove();
+  const card = document.createElement('div');
+  card.className = 'resp-card';
+  const text = document.createElement('div');
+  text.textContent = typeof r === 'string' ? r : (r.response || r.text || JSON.stringify(r));
+  card.appendChild(text);
+  if (r.timestamp) {
+    const meta = document.createElement('div');
+    meta.className = 'resp-meta';
+    meta.textContent = new Date(r.timestamp * 1000).toLocaleTimeString();
+    card.appendChild(meta);
+  }
+  list.appendChild(card);
+}
+
+async function summarize() {
+  if (!currentSurvey) return;
   document.getElementById('loading-msg').textContent = 'Summarizing responses…';
   showPhase('loading');
   try {
@@ -292,11 +403,12 @@ async function updateConfig(c) {
   widgetId = cfg.id || cfg.widgetId || widgetId;
   serverUrl = cfg.socketUrl || cfg.serverUrl || deriveServer();
   publicBaseUrl = cfg.publicBaseUrl || serverUrl;
-  minResponses = parseInt(cfg.numSummaries) || 3;
+  minResponses = parseInt(cfg.minResponses) || 1;
+  if (cfg.mode) setMode(cfg.mode);
   connectSocket();
   if (role === 'viewer') { showPhase('loading'); return; }
-  if (cfg.question && cfg.model && cfg.autoStart !== false) {
-    await doLaunch(cfg.question, cfg.model, parseInt(cfg.numSummaries) || 3);
+  if (cfg.question && cfg.autoStart !== false) {
+    await doLaunch(cfg.question, cfg.model || null, parseInt(cfg.numSummaries) || 3);
   }
 }
 
@@ -304,10 +416,11 @@ window.addEventListener('message', e => {
   if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
   if (e.data?.type === 'widget-cleanup') socket?.disconnect();
 });
-window.summarize   = summarize;
-window.prevSummary = prevSummary;
-window.nextSummary = nextSummary;
-window.copyUrl     = copyUrl;
+window.setMode      = setMode;
+window.closeAndReview = closeAndReview;
+window.prevSummary  = prevSummary;
+window.nextSummary  = nextSummary;
+window.copyUrl      = copyUrl;
 })();
 </script>
 </body>

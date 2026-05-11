@@ -4,6 +4,7 @@
 #main-content {
     display: flex;
     margin-left: 120px;
+    padding-right: 120px;
     height: 100vh;
     position: relative;
 }
@@ -267,11 +268,16 @@ model-viewer {
 /* Slide transition loading overlay */
 .slide-loading-overlay {
     position: absolute;
-    inset: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 95%;
+    aspect-ratio: 4 / 3;
+    max-width: 95%;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 50;
+    z-index: 10;
     background: #ffffff;
     opacity: 0;
     pointer-events: none;

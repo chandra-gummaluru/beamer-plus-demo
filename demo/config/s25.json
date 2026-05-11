@@ -1,0 +1,15 @@
+{
+  "widgets": [
+    {
+      "id": "beamer_blog",
+      "type": "browser",
+      "url": "https://chandra-gummaluru.github.io/post/beamer-plus",
+      "x": 0.15,
+      "y": 0.265,
+      "width": 0.7,
+      "height": 0.68,
+      "zIndex": 10,
+      "interactive": true
+    }
+  ]
+}

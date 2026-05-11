@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Circuit Simulator — Beamer+</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #ffffff;
+  --panel:     #f9f9f8;
+  --panel-2:   #f3f3f1;
+  --border:    #e9e9e6;
+  --border-md: #d4d4cf;
+  --ink:       #1a1a18;
+  --ink-2:     #6b6b65;
+  --ink-3:     #aeaea5;
+  --grid:      #e9e9e6;
+  --high:      #f59e0b;
+  --low:       #d1d0cc;
+  --low-p:     #6b6b65;
+  --shadow:    0 1px 0 rgba(26,26,24,.04), 0 6px 20px -8px rgba(26,26,24,.14);
+  --r:         6px;
+  --mono:      'JetBrains Mono','Fira Code',ui-monospace,monospace;
+  --ui:        'DM Sans',system-ui,-apple-system,sans-serif;
+}
+*,*::before,*::after { box-sizing: border-box; }
+html,body,#root { height:100%; margin:0; }
+body { font-family:var(--ui); color:var(--ink); background:var(--bg); overflow:hidden; font-size:13px; }
+
+.app  { height:100%; display:flex; flex-direction:column; }
+.main { flex:1; display:flex; min-height:0; }
+
+/* toolbar */
+.tb {
+  flex-shrink:0; height:42px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 14px; gap:8px;
+}
+.tb-title { font-size:13px; font-weight:600; letter-spacing:-.01em; }
+.tb-sep { width:1px; height:18px; background:var(--border); flex-shrink:0; }
+.tb-hint { font-size:11px; color:var(--ink-3); }
+.tb-delay {
+  margin-left:auto; display:flex; align-items:center; gap:7px;
+  font-size:11.5px; color:var(--ink-2);
+}
+.tb-delay input[type=range] { width:80px; accent-color:var(--high); cursor:pointer; }
+.tb-delay-val { font-family:var(--mono); font-size:11px; color:var(--ink); min-width:46px; }
+
+/* palette */
+.palette {
+  width:190px; background:var(--panel);
+  border-right:1px solid var(--border);
+  overflow-y:auto; padding:12px 9px 20px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+.palette::-webkit-scrollbar { width:4px; }
+.palette::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+.pal-group { margin-top:16px; }
+.pal-group:first-child { margin-top:0; }
+.pal-group-title {
+  font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--ink-3); padding:0 2px 7px;
+}
+.pal-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.pal-item {
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--r);
+  padding:7px 3px 5px;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  cursor:grab; font:inherit; color:inherit;
+  transition:background .1s, border-color .1s, transform .1s, box-shadow .1s;
+}
+.pal-item:hover { background:var(--panel-2); border-color:var(--border-md); transform:translateY(-1px); box-shadow:0 3px 8px rgba(26,26,24,.07); }
+.pal-item:active { cursor:grabbing; transform:none; box-shadow:none; }
+.pal-label { font-size:10px; font-family:var(--mono); color:var(--ink-2); }
+
+/* canvas */
+.canvas-wrap { flex:1; position:relative; min-width:0; }
+.canvas      { display:block; }
+
+/* floating counter */
+.fc {
+  position:absolute; top:12px; left:12px; pointer-events:none;
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:999px; padding:4px 11px;
+  font-size:11.5px; color:var(--ink-2); box-shadow:var(--shadow);
+}
+.fc-n   { font-family:var(--mono); font-weight:500; color:var(--ink); }
+.fc-lbl { font-size:11px; color:var(--ink-3); }
+.fc-div { width:1px; height:11px; background:var(--border); }
+
+/* clock overlay */
+.clk-panel {
+  position:absolute; z-index:20; pointer-events:all;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:8px; padding:10px 12px 8px;
+  box-shadow:var(--shadow);
+  font-size:11.5px; min-width:148px;
+  transform:translateX(-50%);
+}
+.clk-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
+.clk-label  { font-weight:600; font-size:12px; }
+.clk-status { font-family:var(--mono); font-size:10.5px; color:var(--ink-2); }
+.clk-period { display:flex; align-items:center; gap:6px; }
+.clk-period input[type=range] { flex:1; accent-color:var(--high); }
+.clk-period-val { font-family:var(--mono); font-size:11px; color:var(--ink-2); min-width:42px; text-align:right; }
+
+/* modal */
+.modal-bg { position:fixed; inset:0; background:rgba(26,26,24,.28); display:grid; place-items:center; z-index:100; }
+.modal { background:var(--bg); border-radius:10px; padding:20px; width:400px; max-width:calc(100vw - 32px); box-shadow:var(--shadow); border:1px solid var(--border); }
+.modal-title { font-size:14px; font-weight:600; margin-bottom:12px; }
+.text-input { width:100%; padding:8px 10px; border-radius:var(--r); border:1px solid var(--border); font:inherit; font-size:13px; background:var(--bg); color:var(--ink); outline:none; }
+.text-input:focus { border-color:var(--border-md); box-shadow:0 0 0 3px rgba(26,26,24,.06); }
+.dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.btn { font-family:var(--ui); font-size:12.5px; font-weight:500; height:28px; padding:0 12px; border-radius:var(--r); border:1px solid var(--border); cursor:pointer; transition:background .1s; display:inline-flex; align-items:center; }
+.btn:disabled { opacity:.35; cursor:not-allowed; }
+.btn.ghost   { background:var(--bg); color:var(--ink); }
+.btn.ghost:hover:not(:disabled) { background:var(--panel); border-color:var(--border-md); }
+.btn.ghost.danger { color:#dc2626; }
+.btn.ghost.danger:hover:not(:disabled) { background:#fef2f2; border-color:#fecaca; }
+.btn.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+.btn.primary:hover:not(:disabled) { background:#2d2d2a; }
+.empty { color:var(--ink-2); padding:16px 0; text-align:center; font-size:12.5px; }
+.saved-list { display:flex; flex-direction:column; gap:6px; max-height:320px; overflow-y:auto; margin-top:4px; }
+.saved-item { display:flex; justify-content:space-between; align-items:center; padding:9px 10px; background:var(--panel); border-radius:var(--r); border:1px solid var(--border); }
+.saved-name { font-weight:600; font-size:13px; }
+.saved-meta { font-size:11px; color:var(--ink-2); font-family:var(--mono); margin-top:2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+
+<script type="text/babel">
+/* ═══ ENGINE ═══════════════════════════════════════════════════════════════ */
+(function () {
+'use strict';
+
+const GATE_DEFS = {
+  INPUT:  { kind:'INPUT',  label:'IN',    inputs:0, outputs:1, family:'io',
+            compute:(i,s) => [s.value?1:0] },
+  OUTPUT: { kind:'OUTPUT', label:'OUT',   inputs:1, outputs:0, family:'io',
+            compute:()=>[] },
+  CLOCK:  { kind:'CLOCK',  label:'CLK',   inputs:0, outputs:1, family:'io',
+            compute:(i,s) => [s.value?1:0] },
+  AND:    { kind:'AND',  label:'AND',   inputs:2, outputs:1, family:'and',  compute:([a,b])=>[(a&b)&1] },
+  OR:     { kind:'OR',   label:'OR',    inputs:2, outputs:1, family:'or',   compute:([a,b])=>[(a|b)&1] },
+  NOT:    { kind:'NOT',  label:'NOT',   inputs:1, outputs:1, family:'not',  compute:([a])=>[a?0:1] },
+  NAND:   { kind:'NAND', label:'NAND',  inputs:2, outputs:1, family:'and',  compute:([a,b])=>[(a&b)?0:1] },
+  NOR:    { kind:'NOR',  label:'NOR',   inputs:2, outputs:1, family:'or',   compute:([a,b])=>[(a|b)?0:1] },
+  XOR:    { kind:'XOR',  label:'XOR',   inputs:2, outputs:1, family:'xor',  compute:([a,b])=>[(a^b)&1] },
+  XNOR:   { kind:'XNOR', label:'XNOR',  inputs:2, outputs:1, family:'xor',  compute:([a,b])=>[(a^b)?0:1] },
+  DFF:    { kind:'DFF',  label:'D-FF',  inputs:2, outputs:1, family:'seq',
+            compute:([d,clk],s)=>{ const r=clk&&!s.lastClk; s.lastClk=clk; if(r)s.q=d?1:0; return[s.q||0]; } },
+  TFF:    { kind:'TFF',  label:'T-FF',  inputs:2, outputs:1, family:'seq',
+            compute:([t,clk],s)=>{ const r=clk&&!s.lastClk; s.lastClk=clk; if(r&&t)s.q=s.q?0:1; return[s.q||0]; } },
+  JKFF:   { kind:'JKFF', label:'JK-FF', inputs:3, outputs:1, family:'seq',
+            compute:([j,k,clk],s)=>{ const r=clk&&!s.lastClk; s.lastClk=clk; if(r){if(j&&k)s.q=s.q?0:1; else if(j)s.q=1; else if(k)s.q=0;} return[s.q||0]; } },
+  SRFF:   { kind:'SRFF', label:'SR-FF', inputs:2, outputs:1, family:'seq',
+            compute:([s2,r],s)=>{ if(s2&&!r)s.q=1; else if(r&&!s2)s.q=0; return[s.q||0]; } },
+};
+
+function createCircuit() {
+  let nextId = 1;
+  const components = new Map();
+  const wires = new Map();
+
+  function addComponent(kind, x, y) {
+    const def = GATE_DEFS[kind];
+    const id = 'c'+(nextId++);
+    const comp = {
+      id, kind, x, y,
+      state: kind==='INPUT' ? {value:0}
+           : kind==='CLOCK' ? {value:0, period:1000, lastTick:0, paused:false}
+           : kind==='DFF'   ? {q:0, lastClk:0} : {},
+      inputVals:  new Array(def.inputs).fill(0),
+      outputVals: new Array(def.outputs).fill(0),
+      lastChange: 0,
+    };
+    components.set(id, comp);
+    return comp;
+  }
+
+  function removeComponent(id) {
+    components.delete(id);
+    for (const [wid,w] of wires) { if (w.from.compId===id||w.to.compId===id) wires.delete(wid); }
+  }
+
+  function addWire(from, to) {
+    for (const w of wires.values()) { if (w.to.compId===to.compId&&w.to.pin===to.pin) return null; }
+    const id = 'w'+(nextId++);
+    const wire = {id, from, to, value:0, lastChange:0, points:[]};
+    wires.set(id, wire);
+    return wire;
+  }
+
+  function removeWire(id) { wires.delete(id); }
+
+  function step(now, delayMs) {
+    // Tick clocks
+    for (const c of components.values()) {
+      if (c.kind==='CLOCK' && !c.state.paused) {
+        if (now - c.state.lastTick >= c.state.period/2) {
+          c.state.value = c.state.value ? 0 : 1;
+          c.state.lastTick = now;
+        }
+      }
+    }
+    // Compute outputs
+    for (const c of components.values()) {
+      const def = GATE_DEFS[c.kind];
+      const outs = def.compute(c.inputVals, c.state)||[];
+      for (let i=0;i<outs.length;i++) { if(c.outputVals[i]!==outs[i]){c.outputVals[i]=outs[i];c.lastChange=now;} }
+    }
+    // Propagate with delay
+    for (const w of wires.values()) {
+      const src = components.get(w.from.compId); if(!src) continue;
+      const srcVal = src.outputVals[w.from.pin]||0;
+      if (srcVal!==w.pendingValue && srcVal!==w.value) { w.pendingValue=srcVal; w.pendingStart=now; }
+      if (typeof w.pendingValue!=='undefined' && now-(w.pendingStart||0)>=delayMs) {
+        if(w.value!==w.pendingValue){w.value=w.pendingValue;w.lastChange=now;}
+        w.pendingValue=undefined; w.pendingStart=undefined;
+      }
+      const dst = components.get(w.to.compId);
+      if (dst) dst.inputVals[w.to.pin]=w.value;
+    }
+    // Reset inputs from wires
+    const acc = new Map();
+    for (const c of components.values()) acc.set(c.id, new Array(GATE_DEFS[c.kind].inputs).fill(0));
+    for (const w of wires.values()) { const a=acc.get(w.to.compId); if(a) a[w.to.pin]=w.value; }
+    for (const c of components.values()) c.inputVals=acc.get(c.id);
+  }
+
+  function serialize() {
+    return {
+      components: [...components.values()].map(c=>({id:c.id,kind:c.kind,x:c.x,y:c.y,
+        state:c.kind==='INPUT'?{value:c.state.value}:c.kind==='CLOCK'?{period:c.state.period,paused:c.state.paused}:{}})),
+      wires: [...wires.values()].map(w=>({id:w.id,from:w.from,to:w.to,points:w.points||[]})),
+      nextId,
+    };
+  }
+
+  function load(data) {
+    components.clear(); wires.clear(); if(!data) return;
+    for (const cd of data.components||[]) {
+      const c=addComponent(cd.kind,cd.x,cd.y); components.delete(c.id); c.id=cd.id;
+      if(cd.state) Object.assign(c.state,cd.state); components.set(c.id,c);
+    }
+    for (const wd of data.wires||[]) {
+      const w=addWire(wd.from,wd.to); if(w){wires.delete(w.id);w.id=wd.id;w.points=wd.points||[];wires.set(w.id,w);}
+    }
+    nextId=Math.max(data.nextId||1,nextId);
+  }
+
+  return {
+    components, wires,
+    addComponent, removeComponent, addWire, removeWire, step, serialize, load,
+    toggleInput(id){const c=components.get(id);if(c&&c.kind==='INPUT')c.state.value=c.state.value?0:1;},
+    toggleClock(id){const c=components.get(id);if(c&&c.kind==='CLOCK'){c.state.paused=!c.state.paused;if(!c.state.paused)c.state.lastTick=performance.now();}},
+    setClockPeriod(id,p){const c=components.get(id);if(c&&c.kind==='CLOCK')c.state.period=p;},
+  };
+}
+
+window.GATE_DEFS = GATE_DEFS;
+window.createCircuit = createCircuit;
+})();
+
+
+/* ═══ GATES ════════════════════════════════════════════════════════════════ */
+(function () {
+'use strict';
+const { GATE_DEFS } = window;
+
+const FAMILY_FILL = { and:'#fef3e2', or:'#e8f5ee', not:'#ede8f7', xor:'#e4eef8', seq:'#fce8ee', io:'#fefce8' };
+const VIS = {};
+const W=80,H=80,BX=12,YT=20,YB=60,YO=40,BT=6,BB=74;
+
+VIS.AND  = { w:W,h:H, inputs:[{x:0,y:YT},{x:0,y:YB}], outputs:[{x:W,y:YO}],
+  body:(f)=><g><path d={`M ${BX} ${BT} H ${W*.5} a ${(BB-BT)/2} ${(BB-BT)/2} 0 0 1 0 ${BB-BT} H ${BX} Z`} fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/></g> };
+VIS.OR   = { w:W,h:H, inputs:[{x:0,y:YT},{x:0,y:YB}], outputs:[{x:W,y:YO}],
+  body:(f)=><g><path d={`M ${BX} ${BT} Q ${BX+14} ${YO}, ${BX} ${BB} Q ${W*.5} ${BB}, ${W-2} ${YO} Q ${W*.5} ${BT}, ${BX} ${BT} Z`} fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/></g> };
+VIS.NOT  = { w:80,h:40, inputs:[{x:0,y:20}], outputs:[{x:80,y:20}],
+  body:(f)=><g><path d="M 12 6 L 60 20 L 12 34 Z" fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/><circle cx="66" cy="20" r="5" fill={f} stroke="var(--ink)" strokeWidth="2"/></g> };
+VIS.NAND = { w:W,h:H, inputs:[{x:0,y:YT},{x:0,y:YB}], outputs:[{x:W,y:YO}],
+  body:(f)=><g><path d={`M ${BX} ${BT} H ${W*.45} a ${(BB-BT)/2} ${(BB-BT)/2} 0 0 1 0 ${BB-BT} H ${BX} Z`} fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/><circle cx={W-7} cy={YO} r="5" fill={f} stroke="var(--ink)" strokeWidth="2"/></g> };
+VIS.NOR  = { w:W,h:H, inputs:[{x:0,y:YT},{x:0,y:YB}], outputs:[{x:W,y:YO}],
+  body:(f)=><g><path d={`M ${BX} ${BT} Q ${BX+14} ${YO}, ${BX} ${BB} Q ${W*.45} ${BB}, ${W-12} ${YO} Q ${W*.45} ${BT}, ${BX} ${BT} Z`} fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/><circle cx={W-7} cy={YO} r="5" fill={f} stroke="var(--ink)" strokeWidth="2"/></g> };
+VIS.XOR  = { w:W,h:H, inputs:[{x:0,y:YT},{x:0,y:YB}], outputs:[{x:W,y:YO}],
+  body:(f)=><g>
+    <path d={`M ${BX-6} ${BT} Q ${BX+8} ${YO}, ${BX-6} ${BB}`} fill="none" stroke="var(--ink)" strokeWidth="2"/>
+    <path d={`M ${BX} ${BT} Q ${BX+14} ${YO}, ${BX} ${BB} Q ${W*.5} ${BB}, ${W-2} ${YO} Q ${W*.5} ${BT}, ${BX} ${BT} Z`} fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/>
+  </g> };
+VIS.XNOR = { w:W,h:H, inputs:[{x:0,y:YT},{x:0,y:YB}], outputs:[{x:W,y:YO}],
+  body:(f)=><g>
+    <path d={`M ${BX-6} ${BT} Q ${BX+8} ${YO}, ${BX-6} ${BB}`} fill="none" stroke="var(--ink)" strokeWidth="2"/>
+    <path d={`M ${BX} ${BT} Q ${BX+14} ${YO}, ${BX} ${BB} Q ${W*.45} ${BB}, ${W-12} ${YO} Q ${W*.45} ${BT}, ${BX} ${BT} Z`} fill={f} stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round"/>
+    <circle cx={W-7} cy={YO} r="5" fill={f} stroke="var(--ink)" strokeWidth="2"/>
+  </g> };
+
+VIS.INPUT = { w:60,h:40, inputs:[], outputs:[{x:60,y:20}],
+  body:(f,comp)=>{
+    const on=comp.state.value;
+    return <g>
+      <rect x="4" y="4" width="52" height="32" rx="16" fill={on?'#fef3c7':'#f3f3f1'} stroke="var(--ink)" strokeWidth="2"/>
+      <circle cx={on?40:20} cy="20" r="11" fill="white" stroke="var(--ink)" strokeWidth="1.5"/>
+      <text x={on?18:38} y="24" fontFamily="var(--mono)" fontSize="11" fontWeight="600" textAnchor="middle" fill="var(--ink)" opacity="0.45">{on?'1':'0'}</text>
+    </g>;
+  }
+};
+
+VIS.CLOCK = { w:60,h:40, inputs:[], outputs:[{x:60,y:20}],
+  body:(f,comp)=>{
+    const on=comp.state.value, paused=comp.state.paused;
+    return <g>
+      <rect x="4" y="4" width="52" height="32" rx="8" fill={paused?'#f3f3f1':'#fefce8'} stroke="var(--ink)" strokeWidth="2"/>
+      {paused ? <>
+        <rect x="20" y="13" width="6" height="14" rx="2" fill="var(--ink)" opacity="0.3"/>
+        <rect x="30" y="13" width="6" height="14" rx="2" fill="var(--ink)" opacity="0.3"/>
+      </> : <path d="M 12 28 L 18 28 L 18 14 L 28 14 L 28 28 L 38 28 L 38 14 L 44 14"
+             fill="none" stroke={on?'var(--high)':'var(--ink)'}
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>}
+    </g>;
+  }
+};
+
+VIS.OUTPUT = { w:40,h:40, inputs:[{x:0,y:20}], outputs:[],
+  body:(f,comp)=>{
+    const on=comp.inputVals[0];
+    return <g>
+      {on?<circle cx="22" cy="20" r="20" fill="#fef3c7" opacity="0.55"/>:null}
+      <circle cx="22" cy="20" r="13" fill={on?'#fde68a':'#f3f3f1'} stroke="var(--ink)" strokeWidth="2"/>
+      <path d="M 17 26 L 17 30 L 27 30 L 27 26" fill="none" stroke="var(--ink)" strokeWidth="1.5" strokeLinecap="round"/>
+      {on?<g stroke="#d97706" strokeWidth="1.5" strokeLinecap="round">
+        <line x1="22" y1="3"  x2="22" y2="6"/><line x1="37" y1="20" x2="40" y2="20"/>
+        <line x1="4"  y1="20" x2="7"  y2="20"/><line x1="33" y1="9"  x2="35" y2="7"/>
+        <line x1="11" y1="9"  x2="9"  y2="7"/>
+      </g>:null}
+    </g>;
+  }
+};
+
+function ffRect(f,h){return<rect x="6" y="6" width="68" height={h-12} rx="7" fill={f} stroke="var(--ink)" strokeWidth="2"/>;}
+const ffTxt=(x,y,t)=><text x={x} y={y} fontFamily="var(--mono)" fontSize="12" fill="var(--ink)">{t}</text>;
+const ffSub=(t)=><text x="40" y="74" fontFamily="var(--ui)" fontSize="9" textAnchor="middle" fill="var(--ink)" opacity="0.38">{t}</text>;
+
+VIS.DFF  = {w:80,h:80,  inputs:[{x:0,y:20},{x:0,y:60}],            outputs:[{x:80,y:40}], body:(f)=><g>{ffRect(f,80)}{ffTxt(14,24,'D')}{ffTxt(14,64,'▷')}{ffTxt(66,44,'Q')}{ffSub('D')}</g>};
+VIS.TFF  = {w:80,h:80,  inputs:[{x:0,y:20},{x:0,y:60}],            outputs:[{x:80,y:40}], body:(f)=><g>{ffRect(f,80)}{ffTxt(14,24,'T')}{ffTxt(14,64,'▷')}{ffTxt(66,44,'Q')}{ffSub('T')}</g>};
+VIS.SRFF = {w:80,h:80,  inputs:[{x:0,y:20},{x:0,y:60}],            outputs:[{x:80,y:40}], body:(f)=><g>{ffRect(f,80)}{ffTxt(14,24,'S')}{ffTxt(14,64,'R')}{ffTxt(66,44,'Q')}{ffSub('SR')}</g>};
+VIS.JKFF = {w:80,h:120, inputs:[{x:0,y:20},{x:0,y:60},{x:0,y:100}],outputs:[{x:80,y:40}], body:(f)=><g>{ffRect(f,120)}{ffTxt(14,24,'J')}{ffTxt(14,64,'K')}{ffTxt(14,104,'▷')}{ffTxt(66,44,'Q')}<text x="40" y="114" fontFamily="var(--ui)" fontSize="9" textAnchor="middle" fill="var(--ink)" opacity="0.38">JK</text></g>};
+
+function GateBody({ comp }) {
+  const def=GATE_DEFS[comp.kind], vis=VIS[comp.kind];
+  if (!vis) return null;
+  const fill=FAMILY_FILL[def.family]||'#fff';
+  return <g>
+    {vis.inputs.map((p,i)=><line key={'i'+i} x1={p.x} y1={p.y} x2={p.x+12} y2={p.y} stroke="var(--ink)" strokeWidth="2" strokeLinecap="round"/>)}
+    {vis.outputs.map((p,i)=><line key={'o'+i} x1={p.x-12} y1={p.y} x2={p.x} y2={p.y} stroke="var(--ink)" strokeWidth="2" strokeLinecap="round"/>)}
+    {vis.body(fill,comp)}
+    {['AND','OR','NAND','NOR','XOR','XNOR'].includes(comp.kind)&&
+      <text x={vis.w/2+2} y={vis.h/2+4} textAnchor="middle" fontFamily="var(--mono)" fontSize="10" fontWeight="600" fill="var(--ink)" opacity="0.35" pointerEvents="none">{def.label}</text>}
+  </g>;
+}
+
+window.GATE_VIS=VIS; window.FAMILY_FILL=FAMILY_FILL; window.GateBody=GateBody;
+})();
+
+
+/* ═══ CANVAS ═══════════════════════════════════════════════════════════════ */
+(function () {
+'use strict';
+const { useState, useEffect, useRef, useCallback } = React;
+const { GATE_VIS, GATE_DEFS, GateBody } = window;
+
+const GRID = 20;
+const snap = (v, on=true) => on ? Math.round(v/GRID)*GRID : v;
+
+// ── Wire path helpers ────────────────────────────────────────────────────────
+
+// Resolve a wire (with waypoints) into a flat polyline of {x,y} points
+function resolveWire(x1,y1,x2,y2,pts=[]) {
+  const knots=[{x:x1,y:y1},...pts,{x:x2,y:y2}];
+  const out=[knots[0]];
+  for (let i=1;i<knots.length;i++) {
+    const a=knots[i-1],b=knots[i],dx=b.x-a.x;
+    if (Math.abs(dx)<4) { out.push(b); }
+    else { const mx=a.x+Math.max(20,dx/2); out.push({x:mx,y:a.y},{x:mx,y:b.y},b); }
+  }
+  return out;
+}
+
+function wirePath(x1,y1,x2,y2,pts=[]) {
+  const p=resolveWire(x1,y1,x2,y2,pts);
+  return p.map((v,i)=>(i?'L ':' M ')+v.x+' '+v.y).join('');
+}
+
+function sampleWire(x1,y1,x2,y2,pts=[],t) {
+  const p=resolveWire(x1,y1,x2,y2,pts);
+  let total=0; const lens=[];
+  for (let i=1;i<p.length;i++){const dx=p[i].x-p[i-1].x,dy=p[i].y-p[i-1].y,l=Math.hypot(dx,dy);lens.push(l);total+=l;}
+  let d=t*total;
+  for (let i=0;i<lens.length;i++){
+    if(d<=lens[i]||i===lens.length-1){const f=lens[i]>0?Math.min(1,d/lens[i]):0;return[p[i].x+(p[i+1].x-p[i].x)*f,p[i].y+(p[i+1].y-p[i].y)*f];}
+    d-=lens[i];
+  }
+  return [p[p.length-1].x,p[p.length-1].y];
+}
+
+function distToSeg(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  if(l2===0) return Math.hypot(px-ax,py-ay);
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+  return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+}
+
+// Insert a waypoint into wire.points at the correct position
+function insertWaypoint(wire,wx,wy,a,b) {
+  const pts = wire.points||[];
+  const knots=[{x:a.x,y:a.y},...pts,{x:b.x,y:b.y}];
+  // Build resolved segments, tracking which knot-pair each came from
+  let resolved=[knots[0]], segPair=[];
+  for (let k=1;k<knots.length;k++){
+    const p=knots[k-1],q=knots[k],dx=q.x-p.x;
+    if(Math.abs(dx)<4){resolved.push(q);segPair.push(k-1);}
+    else{const mx=p.x+Math.max(20,dx/2);resolved.push({x:mx,y:p.y},{x:mx,y:q.y},q);segPair.push(k-1,k-1,k-1);}
+  }
+  // Find closest segment
+  let minD=Infinity,bestK=0;
+  for(let i=0;i<resolved.length-1;i++){
+    const d=distToSeg(wx,wy,resolved[i].x,resolved[i].y,resolved[i+1].x,resolved[i+1].y);
+    if(d<minD){minD=d;bestK=segPair[i];}
+  }
+  const nw=[...pts];
+  nw.splice(bestK,0,{x:wx,y:wy});
+  wire.points=nw;
+}
+
+function pinAbs(comp,kind,idx){
+  const vis=GATE_VIS[comp.kind],p=kind==='in'?vis.inputs[idx]:vis.outputs[idx];
+  return{x:comp.x+p.x,y:comp.y+p.y};
+}
+
+// ── Canvas component ─────────────────────────────────────────────────────────
+
+function Canvas({ circuit, onSelect, selectedId, paletteDrag, onClearPaletteDrag, onComponentChanged, snapGrid=true }) {
+  const svgRef = useRef(null);
+  const [view, setView] = useState({x:0,y:0,zoom:1});
+  const [wiringFrom, setWiringFrom] = useState(null);
+  const [mousePos, setMousePos] = useState({x:0,y:0});
+  const [isPanning, setIsPanning] = useState(false);
+
+  // Drag state in refs to avoid stale closures
+  const panRef      = useRef(null); // {sx,sy,vx,vy}
+  const compDragRef = useRef(null); // {id,ox,oy,startSX,startSY,moved}
+  const wpDragRef   = useRef(null); // {wireId,idx,ox,oy}
+
+  // Stable refs for values needed in effects
+  const viewRef          = useRef(view);
+  const paletteDragRef   = useRef(paletteDrag);
+  const snapGridRef      = useRef(snapGrid);
+  const onChangedRef     = useRef(onComponentChanged);
+  const onClearPalRef    = useRef(onClearPaletteDrag);
+  const onSelectRef      = useRef(onSelect);
+  const wiringFromRef    = useRef(wiringFrom);
+  useEffect(()=>{viewRef.current=view;},[view]);
+  useEffect(()=>{paletteDragRef.current=paletteDrag;},[paletteDrag]);
+  useEffect(()=>{snapGridRef.current=snapGrid;},[snapGrid]);
+  useEffect(()=>{onChangedRef.current=onComponentChanged;},[onComponentChanged]);
+  useEffect(()=>{onClearPalRef.current=onClearPaletteDrag;},[onClearPaletteDrag]);
+  useEffect(()=>{onSelectRef.current=onSelect;},[onSelect]);
+  useEffect(()=>{wiringFromRef.current=wiringFrom;},[wiringFrom]);
+
+  // Re-render every frame for live simulation display
+  const [, tick] = useState(0);
+  useEffect(()=>{let r; const l=()=>{tick(n=>n+1);r=requestAnimationFrame(l);}; r=requestAnimationFrame(l); return()=>cancelAnimationFrame(r);},[]);
+
+  const screenToWorld = useCallback((sx,sy)=>{
+    const r=svgRef.current.getBoundingClientRect(),v=viewRef.current;
+    return{x:(sx-r.left)/v.zoom-v.x, y:(sy-r.top)/v.zoom-v.y};
+  },[]);
+
+  // Global mouse move / up
+  useEffect(()=>{
+    const onMove=(e)=>{
+      const w=screenToWorld(e.clientX,e.clientY);
+      setMousePos(w);
+
+      if (panRef.current) {
+        const p=panRef.current;
+        setView(v=>({...v, x:p.vx+(e.clientX-p.sx)/v.zoom, y:p.vy+(e.clientY-p.sy)/v.zoom}));
+      }
+      if (compDragRef.current) {
+        const d=compDragRef.current;
+        if (Math.hypot(e.clientX-d.startSX,e.clientY-d.startSY)>4) {
+          d.moved=true;
+          const c=circuit.components.get(d.id);
+          if(c){c.x=snap(w.x-d.ox,snapGridRef.current);c.y=snap(w.y-d.oy,snapGridRef.current);onChangedRef.current?.();}
+        }
+      }
+      if (wpDragRef.current) {
+        const d=wpDragRef.current, wire=circuit.wires.get(d.wireId);
+        if(wire?.points?.[d.idx]){
+          wire.points[d.idx].x=snap(w.x+d.ox,snapGridRef.current);
+          wire.points[d.idx].y=snap(w.y+d.oy,snapGridRef.current);
+          onChangedRef.current?.();
+        }
+      }
+    };
+    const onUp=(e)=>{
+      // Drop from palette
+      if (paletteDragRef.current) {
+        const w=screenToWorld(e.clientX,e.clientY),pd=paletteDragRef.current;
+        const vis=GATE_VIS[pd.kind];
+        circuit.addComponent(pd.kind,snap(w.x-vis.w/2,snapGridRef.current),snap(w.y-vis.h/2,snapGridRef.current));
+        onChangedRef.current?.(); onClearPalRef.current?.();
+      }
+      // Component drag end — maybe it was a click
+      if (compDragRef.current) {
+        const d=compDragRef.current;
+        if (!d.moved) {
+          const comp=circuit.components.get(d.id);
+          if (comp?.kind==='INPUT') { circuit.toggleInput(comp.id); onChangedRef.current?.(); }
+          if (comp?.kind==='CLOCK')  { circuit.toggleClock(comp.id);  onChangedRef.current?.(); }
+        }
+        compDragRef.current=null;
+      }
+      panRef.current=null; wpDragRef.current=null;
+      setIsPanning(false);
+    };
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+    return()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);};
+  },[circuit, screenToWorld]);
+
+  // Scroll to zoom
+  const onWheel=(e)=>{
+    e.preventDefault();
+    const r=svgRef.current.getBoundingClientRect(),v=viewRef.current;
+    const cx=(e.clientX-r.left)/v.zoom-v.x, cy=(e.clientY-r.top)/v.zoom-v.y;
+    const nz=Math.max(.3,Math.min(2.5,v.zoom*Math.exp(-e.deltaY*.0015)));
+    setView(()=>({x:(e.clientX-r.left)/nz-cx, y:(e.clientY-r.top)/nz-cy, zoom:nz}));
+  };
+
+  const onMouseDownBg=(e)=>{
+    if(e.button!==0&&e.button!==1)return;
+    if(e.target!==svgRef.current&&!e.target.classList?.contains('canvas-bg'))return;
+    panRef.current={sx:e.clientX,sy:e.clientY,vx:view.x,vy:view.y};
+    setIsPanning(true); setWiringFrom(null); onSelect(null);
+  };
+
+  const onCompMouseDown=(e,comp)=>{
+    e.stopPropagation(); if(e.button===2)return;
+    const w=screenToWorld(e.clientX,e.clientY);
+    compDragRef.current={id:comp.id,ox:w.x-comp.x,oy:w.y-comp.y,startSX:e.clientX,startSY:e.clientY,moved:false};
+    onSelect(comp.id);
+  };
+  const onCompContext=(e,comp)=>{e.preventDefault();circuit.removeComponent(comp.id);onComponentChanged?.();};
+  const onWireContext=(e,wireId)=>{e.preventDefault();e.stopPropagation();circuit.removeWire(wireId);onComponentChanged?.();};
+
+  const onOutputPinDown=(e,comp,idx)=>{
+    e.stopPropagation();
+    const p=pinAbs(comp,'out',idx);
+    setWiringFrom({compId:comp.id,pin:idx,x:p.x,y:p.y});
+  };
+  const onInputPinUp=(e,comp,idx)=>{
+    e.stopPropagation();
+    if(wiringFrom){circuit.addWire({compId:wiringFrom.compId,pin:wiringFrom.pin},{compId:comp.id,pin:idx});onComponentChanged?.();setWiringFrom(null);}
+  };
+  const onWireClick=(e,wire)=>{
+    // Only add waypoint if we're not coming from a pan
+    if(isPanning) return;
+    e.stopPropagation();
+    const w=screenToWorld(e.clientX,e.clientY);
+    const src=circuit.components.get(wire.from.compId),dst=circuit.components.get(wire.to.compId);
+    if(!src||!dst)return;
+    const a=pinAbs(src,'out',wire.from.pin),b=pinAbs(dst,'in',wire.to.pin);
+    insertWaypoint(wire,snap(w.x,snapGrid),snap(w.y,snapGrid),a,b);
+    onComponentChanged?.();
+  };
+  const onWaypointMouseDown=(e,wire,idx,pt)=>{
+    e.stopPropagation();
+    const w=screenToWorld(e.clientX,e.clientY);
+    wpDragRef.current={wireId:wire.id,idx,ox:pt.x-w.x,oy:pt.y-w.y};
+  };
+  const onWaypointContext=(e,wire,idx)=>{
+    e.preventDefault(); e.stopPropagation();
+    wire.points.splice(idx,1); onComponentChanged?.();
+  };
+
+  const components=[...circuit.components.values()];
+  const wires=[...circuit.wires.values()];
+  const tx=view.x*view.zoom, ty=view.y*view.zoom;
+
+  // Clock overlay
+  const selComp = selectedId ? circuit.components.get(selectedId) : null;
+  const clockPanel = selComp?.kind==='CLOCK' ? (()=>{
+    const vis=GATE_VIS.CLOCK;
+    const sx=(selComp.x+vis.w/2+view.x)*view.zoom;
+    const sy=(selComp.y+vis.h+10+view.y)*view.zoom;
+    return (
+      <div className="clk-panel" style={{left:sx,top:sy}}
+           onMouseDown={e=>e.stopPropagation()}>
+        <div className="clk-header">
+          <span className="clk-label">Clock</span>
+          <span className="clk-status">{selComp.state.paused?'paused':`${selComp.state.period}ms`}</span>
+        </div>
+        <div className="clk-period">
+          <span style={{fontSize:10.5,color:'var(--ink-3)',fontFamily:'var(--mono)'}}>100</span>
+          <input type="range" min="100" max="4000" step="100"
+                 value={selComp.state.period}
+                 onChange={e=>{circuit.setClockPeriod(selComp.id,Number(e.target.value));onComponentChanged?.();}}/>
+          <span className="clk-period-val">{selComp.state.period}ms</span>
+        </div>
+      </div>
+    );
+  })() : null;
+
+  return <>
+    <svg ref={svgRef} className="canvas"
+         style={{width:'100%',height:'100%',cursor:isPanning?'grabbing':'default',background:'transparent'}}
+         onMouseDown={onMouseDownBg}
+         onMouseUp={()=>setWiringFrom(null)}
+         onWheel={onWheel}
+         onContextMenu={e=>e.preventDefault()}>
+      <defs>
+        <pattern id="grid-dots" x="0" y="0" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
+          <circle cx={GRID/2} cy={GRID/2} r="1" fill="var(--grid)"/>
+        </pattern>
+      </defs>
+      <rect className="canvas-bg" x="-5000" y="-5000" width="10000" height="10000"
+            fill="url(#grid-dots)"
+            transform={`translate(${tx},${ty}) scale(${view.zoom})`}/>
+
+      <g transform={`translate(${tx},${ty}) scale(${view.zoom})`}>
+        {/* Wires */}
+        {wires.map(w=>{
+          const src=circuit.components.get(w.from.compId),dst=circuit.components.get(w.to.compId);
+          if(!src||!dst)return null;
+          const a=pinAbs(src,'out',w.from.pin),b=pinAbs(dst,'in',w.to.pin);
+          const pts=w.points||[];
+          const path=wirePath(a.x,a.y,b.x,b.y,pts);
+          const high=w.value===1;
+          return <g key={w.id}>
+            {/* Shadow */}
+            <path d={path} fill="none" stroke="var(--ink)" strokeWidth="3.5"
+                  strokeLinejoin="round" strokeLinecap="round" opacity="0.07"/>
+            {/* Signal color */}
+            <path d={path} fill="none"
+                  stroke={high?'var(--high)':'var(--low)'}
+                  strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"
+                  style={{transition:'stroke 100ms ease'}}/>
+            {/* Fat hit target — click to add elbow */}
+            <path d={path} fill="none" stroke="transparent" strokeWidth="16"
+                  style={{cursor:'cell'}}
+                  onClick={e=>onWireClick(e,w)}
+                  onContextMenu={e=>onWireContext(e,w.id)}/>
+            {/* Particles on HIGH */}
+            {high&&<ParticleStream a={a} b={b} pts={pts}/>}
+            {/* In-flight pulse */}
+            {typeof w.pendingValue!=='undefined'&&
+              <InflightPulse a={a} b={b} pts={pts} pendingValue={w.pendingValue}
+                             pendingStart={w.pendingStart} delayMs={window.__delayMs||600}/>}
+            {/* Waypoint handles */}
+            {pts.map((pt,idx)=>(
+              <circle key={'wp'+idx} cx={pt.x} cy={pt.y} r="5"
+                      fill="var(--bg)" stroke="var(--border-md)" strokeWidth="1.5"
+                      style={{cursor:'move'}}
+                      onMouseDown={e=>onWaypointMouseDown(e,w,idx,pt)}
+                      onContextMenu={e=>onWaypointContext(e,w,idx)}/>
+            ))}
+          </g>;
+        })}
+
+        {/* Components */}
+        {components.map(comp=>{
+          const vis=GATE_VIS[comp.kind],isSel=selectedId===comp.id;
+          return <g key={comp.id} transform={`translate(${comp.x},${comp.y})`}
+                    onMouseDown={e=>onCompMouseDown(e,comp)}
+                    onContextMenu={e=>onCompContext(e,comp)}
+                    style={{cursor:'move'}}>
+            {isSel&&<rect x="-6" y="-6" width={vis.w+12} height={vis.h+12} rx="10"
+                          fill="none" stroke="var(--ink)" strokeWidth="1.5"
+                          strokeDasharray="4 3" opacity="0.35"/>}
+            <GateBody comp={comp}/>
+            {vis.inputs.map((p,i)=>(
+              <circle key={'in'+i} cx={p.x} cy={p.y} r="6"
+                      fill={comp.inputVals[i]?'var(--high)':'var(--bg)'}
+                      stroke="var(--border-md)" strokeWidth="1.5"
+                      style={{cursor:'crosshair'}}
+                      onMouseUp={e=>onInputPinUp(e,comp,i)}
+                      onMouseDown={e=>e.stopPropagation()}/>
+            ))}
+            {vis.outputs.map((p,i)=>(
+              <circle key={'out'+i} cx={p.x} cy={p.y} r="6"
+                      fill={comp.outputVals[i]?'var(--high)':'var(--bg)'}
+                      stroke="var(--border-md)" strokeWidth="1.5"
+                      style={{cursor:'crosshair'}}
+                      onMouseDown={e=>onOutputPinDown(e,comp,i)}/>
+            ))}
+          </g>;
+        })}
+
+        {/* Wiring preview */}
+        {wiringFrom&&
+          <path d={wirePath(wiringFrom.x,wiringFrom.y,mousePos.x,mousePos.y)}
+                fill="none" stroke="var(--high)" strokeWidth="2"
+                strokeDasharray="6 4" opacity="0.7"/>}
+
+        {/* Palette drag ghost */}
+        {paletteDrag&&(()=>{
+          const vis=GATE_VIS[paletteDrag.kind];
+          return <g transform={`translate(${snap(mousePos.x-vis.w/2,snapGrid)},${snap(mousePos.y-vis.h/2,snapGrid)})`}
+                    opacity="0.6" pointerEvents="none">
+            <GateBody comp={{kind:paletteDrag.kind,inputVals:new Array(GATE_DEFS[paletteDrag.kind].inputs).fill(0),outputVals:new Array(GATE_DEFS[paletteDrag.kind].outputs).fill(0),state:{value:0}}}/>
+          </g>;
+        })()}
+      </g>
+    </svg>
+    {clockPanel}
+  </>;
+}
+
+function ParticleStream({a,b,pts=[]}) {
+  const [t,setT]=useState(0);
+  useEffect(()=>{let r,l=performance.now();const fn=(now)=>{setT(p=>(p+(now-l)*.0006)%1);l=now;r=requestAnimationFrame(fn);};r=requestAnimationFrame(fn);return()=>cancelAnimationFrame(r);},[]);
+  const N=window.__particleDensity??4; if(N===0)return null;
+  return <g pointerEvents="none">{Array.from({length:N},(_,i)=>{
+    const tt=(t+i/N)%1,[x,y]=sampleWire(a.x,a.y,b.x,b.y,pts,tt);
+    return <circle key={i} cx={x} cy={y} r="2.4" fill="var(--high)" opacity=".8"/>;
+  })}</g>;
+}
+function InflightPulse({a,b,pts=[],pendingValue,pendingStart,delayMs}) {
+  const [now,setNow]=useState(performance.now());
+  useEffect(()=>{let r;const l=()=>{setNow(performance.now());r=requestAnimationFrame(l);};r=requestAnimationFrame(l);return()=>cancelAnimationFrame(r);},[]);
+  const t=Math.min(1,(now-(pendingStart||now))/delayMs);
+  const[x,y]=sampleWire(a.x,a.y,b.x,b.y,pts,t);
+  const col=pendingValue===1?'var(--high)':'var(--low-p)';
+  return <g pointerEvents="none"><circle cx={x} cy={y} r="7" fill={col} opacity=".22"/><circle cx={x} cy={y} r="3.5" fill={col}/></g>;
+}
+
+window.Canvas=Canvas;
+})();
+
+
+/* ═══ PALETTE ══════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+const{GATE_VIS,GATE_DEFS,GateBody}=window;
+const GROUPS=[
+  {title:'Sources',   kinds:['INPUT','CLOCK']},
+  {title:'Sinks',     kinds:['OUTPUT']},
+  {title:'Logic',     kinds:['AND','OR','NOT','NAND','NOR','XOR','XNOR']},
+  {title:'Flip-flops',kinds:['DFF','TFF','JKFF','SRFF']},
+];
+function Thumb({kind}){
+  const vis=GATE_VIS[kind],def=GATE_DEFS[kind];
+  const tw=62,th=44,sc=Math.min(tw/(vis.w+24),th/(vis.h+8));
+  const tx2=(tw-(vis.w+12)*sc)/2,ty2=(th-vis.h*sc)/2;
+  return <svg width={tw} height={th}><g transform={`translate(${tx2},${ty2}) scale(${sc})`}><GateBody comp={{kind,inputVals:new Array(def.inputs).fill(0),outputVals:new Array(def.outputs).fill(0),state:{value:0}}}/></g></svg>;
+}
+function Palette({onDragStart}){
+  return <div className="palette">{GROUPS.map(g=><div className="pal-group" key={g.title}>
+    <div className="pal-group-title">{g.title}</div>
+    <div className="pal-grid">{g.kinds.map(k=><button key={k} className="pal-item"
+      onMouseDown={e=>{e.preventDefault();onDragStart(k);}}>
+      <Thumb kind={k}/><div className="pal-label">{GATE_DEFS[k].label}</div>
+    </button>)}</div>
+  </div>)}</div>;
+}
+window.Palette=Palette;
+})();
+
+
+/* ═══ APP ══════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+const{useState,useEffect,useCallback}=React;
+const{Canvas,Palette,createCircuit,GATE_DEFS}=window;
+
+function App(){
+  const[circuit]=useState(()=>createCircuit());
+  const[,tick]=useState(0);
+  const refresh=useCallback(()=>tick(n=>n+1),[]);
+  const[selectedId,setSelectedId]=useState(null);
+  const[palDrag,setPalDrag]=useState(null);
+  const[delayMs,setDelayMs]=useState(600);
+  const[saved,setSaved]=useState(()=>{try{return JSON.parse(localStorage.getItem('dss_v2')||'[]');}catch{return[];}});
+  const[showSave,setShowSave]=useState(false);
+  const[saveName,setSaveName]=useState('');
+  const[showLoad,setShowLoad]=useState(false);
+
+  window.__delayMs=delayMs;
+  window.__particleDensity=4;
+
+  // Sim loop
+  useEffect(()=>{
+    let r;const l=()=>{circuit.step(performance.now(),delayMs);r=requestAnimationFrame(l);};
+    r=requestAnimationFrame(l);return()=>cancelAnimationFrame(r);
+  },[delayMs]);
+
+  // Keyboard delete
+  useEffect(()=>{
+    const fn=(e)=>{
+      if((e.key==='Delete'||e.key==='Backspace')&&selectedId){
+        if(e.target.tagName==='INPUT')return;
+        circuit.removeComponent(selectedId);setSelectedId(null);refresh();
+      }
+    };
+    window.addEventListener('keydown',fn);return()=>window.removeEventListener('keydown',fn);
+  },[selectedId]);
+
+  const doSave=()=>{
+    const name=saveName.trim()||`Circuit ${saved.length+1}`;
+    const next=[...saved.filter(s=>s.name!==name),{name,data:circuit.serialize(),ts:Date.now()}];
+    setSaved(next);localStorage.setItem('dss_v2',JSON.stringify(next));setShowSave(false);setSaveName('');
+  };
+  const doLoad=(s)=>{circuit.load(s.data);setShowLoad(false);refresh();};
+  const delSaved=(name)=>{const n=saved.filter(s=>s.name!==name);setSaved(n);localStorage.setItem('dss_v2',JSON.stringify(n));};
+  const doClear=()=>{if(!confirm('Clear canvas?'))return;[...circuit.components.keys()].forEach(id=>circuit.removeComponent(id));refresh();};
+
+  const n=circuit.components.size;
+
+  return <div className="app">
+    <div className="tb">
+      <span className="tb-title">Circuit Simulator</span>
+      {/* Save / Load / Clear */}
+      <div className="tb-sep"/>
+      <button className="btn ghost" style={{height:26,fontSize:12}} onClick={()=>setShowSave(true)} disabled={n===0}>Save</button>
+      <button className="btn ghost" style={{height:26,fontSize:12}} onClick={()=>setShowLoad(true)}>Load</button>
+      <button className="btn ghost" style={{height:26,fontSize:12,color:'var(--ink-3)'}} onClick={doClear} disabled={n===0}>Clear</button>
+      {/* Propagation delay */}
+      <div className="tb-delay">
+        <span>Delay</span>
+        <input type="range" min="50" max="2000" step="50" value={delayMs}
+               onChange={e=>setDelayMs(Number(e.target.value))}/>
+        <span className="tb-delay-val">{delayMs}ms</span>
+      </div>
+    </div>
+
+    <div className="main">
+      <Palette onDragStart={kind=>setPalDrag({kind})}/>
+      <div className="canvas-wrap">
+        <Canvas circuit={circuit}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                paletteDrag={palDrag}
+                onClearPaletteDrag={()=>setPalDrag(null)}
+                onComponentChanged={refresh}
+                snapGrid={true}/>
+        <div className="fc">
+          <span className="fc-n">{n}</span><span className="fc-lbl">gates</span>
+          <span className="fc-div"/>
+          <span className="fc-n">{circuit.wires.size}</span><span className="fc-lbl">wires</span>
+        </div>
+      </div>
+    </div>
+
+    {showSave&&<Dialog title="Save circuit" onClose={()=>setShowSave(false)}>
+      <input className="text-input" placeholder="My circuit" value={saveName} autoFocus
+             onChange={e=>setSaveName(e.target.value)}
+             onKeyDown={e=>e.key==='Enter'&&doSave()}/>
+      <div className="dialog-actions">
+        <button className="btn ghost" onClick={()=>setShowSave(false)}>Cancel</button>
+        <button className="btn primary" onClick={doSave}>Save</button>
+      </div>
+    </Dialog>}
+
+    {showLoad&&<Dialog title="Saved circuits" onClose={()=>setShowLoad(false)}>
+      {saved.length===0
+        ? <div className="empty">No saved circuits yet.</div>
+        : <div className="saved-list">{saved.map(s=><div key={s.name} className="saved-item">
+            <div>
+              <div className="saved-name">{s.name}</div>
+              <div className="saved-meta">{s.data.components.length} gates · {s.data.wires.length} wires</div>
+            </div>
+            <div style={{display:'flex',gap:6}}>
+              <button className="btn ghost danger" onClick={()=>delSaved(s.name)}>Delete</button>
+              <button className="btn primary" onClick={()=>doLoad(s)}>Load</button>
+            </div>
+          </div>)}</div>}
+    </Dialog>}
+  </div>;
+}
+
+function Dialog({title,children,onClose}){
+  return <div className="modal-bg" onClick={onClose}>
+    <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal-title">{title}</div>
+      {children}
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+})();
+</script>
+</body>
+</html>

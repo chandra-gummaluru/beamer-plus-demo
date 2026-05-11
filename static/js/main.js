@@ -19,7 +19,6 @@ import { initThumbnails } from './slides/thumbnails.js';
 import { initBookmarks } from './slides/bookmarks.js';
 
 import { initUploader } from './upload/uploader.js';
-import { initShare } from './screen-share/share.js';
 import { initSurveyBridge } from './surveys/survey-bridge.js';
 
 /* ─── shared state ────────────────────────────────────────────── */
@@ -95,13 +94,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initPenSlots(state);
     initShapeTools(state);
     initUploader(state);
-    initShare(state);
     initSurveyBridge(state);
 
     // pen + hand defaults
     applyDefaultPen();
     wireHandButton();
     wireEraserButton();
+    wireFocusMode();
     wireSplitViewButton(annContainer2, pdfContainer2);
     wireNavButtons();
     wireBookmarkButton();
@@ -110,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wireKeyboardNav();
     wireResizeAndFullscreen();
     wireSocketEvents();
+    wireShortcutsBtn();
     initSpotlight();
 
     // annotation sync
@@ -320,7 +320,121 @@ function wireKeyboardNav() {
         if (e.key === 'ArrowRight' || e.key === 'PageDown')  goToSlide(state.currentSlide + 1, 'forward');
         if (e.key === 'Escape') { bus.emit('ui:escape'); BeamerModal?.close(); }
         if (e.key === 'b') toggleBookmark(state.currentSlide);
+
+        // Tool shortcuts
+        if (e.key === 'h') document.querySelector('[data-tool="hand"], #hand-btn')?.click();
+        if (e.key === 'e') document.querySelector('[data-tool="eraser"]')?.click();
+        if (e.key === 's') document.querySelector('[data-tool="spotlight"], #spotlight-btn')?.click();
+
+        // Pen slot shortcuts (1–5)
+        if (e.key >= '1' && e.key <= '5') {
+            const idx = parseInt(e.key) - 1;
+            document.querySelectorAll('#pen-slots .pen-slot-btn')[idx]?.click();
+        }
+
+        // Undo / Redo
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            document.getElementById('annotation-undo')?.click();
+        }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+            e.preventDefault();
+            document.getElementById('annotation-redo')?.click();
+        }
+
+        // Clear annotations
+        if (e.key === 'c' && !e.ctrlKey && !e.metaKey) document.getElementById('annotation-clear-btn')?.click();
+
+        // Split view toggle
+        if (e.key === 'v') document.getElementById('split-toggle')?.click();
+
+        // Focus mode toggle
+        if (e.key === 'f') document.getElementById('focus-mode-btn')?.click();
+
+        // Shortcuts help
+        if (e.key === '?') showShortcutsModal();
     });
+}
+
+/* ─── keyboard shortcuts modal ────────────────────────────────── */
+function showShortcutsModal() {
+    const sections = [
+        {
+            heading: 'Navigation',
+            rows: [
+                ['→ / Page Down', 'Next slide'],
+                ['← / Page Up',   'Previous slide'],
+            ],
+        },
+        {
+            heading: 'Tools',
+            rows: [
+                ['H', 'Hand / pointer'],
+                ['E', 'Eraser'],
+                ['S', 'Spotlight'],
+                ['1 – 5', 'Select pen / highlighter slot'],
+            ],
+        },
+        {
+            heading: 'Annotations',
+            rows: [
+                ['Ctrl Z', 'Undo'],
+                ['Ctrl Y / Ctrl Shift Z', 'Redo'],
+                ['C', 'Clear all annotations'],
+            ],
+        },
+        {
+            heading: 'View',
+            rows: [
+                ['V', 'Toggle split view'],
+                ['F', 'Toggle focus mode'],
+                ['B', 'Bookmark current slide'],
+            ],
+        },
+        {
+            heading: 'General',
+            rows: [
+                ['?', 'Show this help'],
+                ['Esc', 'Close dialogs / exit focus mode'],
+            ],
+        },
+    ];
+
+    const body = document.createElement('div');
+    body.className = 'shortcuts-grid';
+    sections.forEach(sec => {
+        const heading = document.createElement('div');
+        heading.className = 'shortcuts-section-heading';
+        heading.textContent = sec.heading;
+        body.appendChild(heading);
+
+        sec.rows.forEach(([key, desc]) => {
+            const keyEl = document.createElement('div');
+            keyEl.className = 'shortcuts-key';
+            // each segment of the key separated by spaces → wrap in <kbd>
+            keyEl.innerHTML = key.split(' / ').map(part =>
+                part.split(' ').map(k => `<kbd>${k}</kbd>`).join(' ')
+            ).join('<span class="shortcuts-or">or</span>');
+
+            const descEl = document.createElement('div');
+            descEl.className = 'shortcuts-desc';
+            descEl.textContent = desc;
+
+            body.appendChild(keyEl);
+            body.appendChild(descEl);
+        });
+    });
+
+    window.BeamerModal?.show({
+        kind: 'info',
+        title: 'Keyboard shortcuts',
+        body,
+        buttons: [{ label: 'Close', kind: 'cancel' }],
+    });
+}
+
+function wireShortcutsBtn() {
+    document.getElementById('shortcuts-btn')?.addEventListener('click', showShortcutsModal);
 }
 
 /* ─── nav prev/next buttons ───────────────────────────────────── */
@@ -341,6 +455,33 @@ function toggleBookmark(i) {
     else state.bookmarks[i] = true;
     bus.emit('bookmarks:changed', state.bookmarks);
     populateBookmarkPins();
+}
+
+/* ─── focus mode ─────────────────────────────────────────────── */
+function wireFocusMode() {
+    const btn = document.getElementById('focus-mode-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        const active = document.body.classList.toggle('focus-mode');
+        btn.title = active ? 'Exit focus mode' : 'Focus mode (hide UI)';
+        btn.querySelector('i').className = active ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        // Trigger canvas resize so annotations stay aligned with the new layout
+        setTimeout(() => {
+            state.annCvs?.resizeOnly?.();
+            state.pdfCvs?.resizeOnly?.();
+            if (state.splitView) {
+                state.annCvs2?.resizeOnly?.();
+                state.pdfCvs2?.resizeOnly?.();
+            }
+        }, 300); // wait for CSS transition to finish
+    });
+
+    // Pressing Escape also exits focus mode
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('focus-mode')) {
+            btn.click();
+        }
+    });
 }
 
 /* ─── split-view ──────────────────────────────────────────────── */
@@ -488,6 +629,9 @@ async function goToSlide(i, direction = null) {
     if (state.splitView) _slideOverlay(true)?.classList.add('visible');
 
     // ── Config-driven split-view logic ────────────────────────────
+    // Save BEFORE any setSplitActive call — resizeOnly() inside it clears canvases
+    saveCurrentAnnotations();
+
     // Load config for slide we're LEAVING to check onLeave directives
     const leavingObj = state.slideStructure[state.currentSlide];
     const leavingCfg = leavingObj?.type === 'pdf'
@@ -501,7 +645,7 @@ async function goToSlide(i, direction = null) {
         }
         // Only redirect to onLeave.goToSlide when using next-slide (forward), not when clicking a slide directly
         if (onLeave.goToSlide != null && direction === 'forward') {
-            i = Math.max(0, Math.min(state.slideStructure.length - 1, onLeave.goToSlide));
+            i = resolvePdfRef(onLeave.goToSlide) ?? Math.max(0, Math.min(state.slideStructure.length - 1, onLeave.goToSlide));
         }
     }
 
@@ -515,8 +659,9 @@ async function goToSlide(i, direction = null) {
 
     // Handle enter actions
     const onEnter = enteringCfg?.onEnter;
+    const prevRightIndex = state.rightSlideIndex;
     if (onEnter?.split != null) {
-        const rightIndex = Math.max(0, Math.min(state.slideStructure.length - 1, onEnter.split));
+        const rightIndex = resolvePdfRef(onEnter.split) ?? Math.max(0, Math.min(state.slideStructure.length - 1, onEnter.split));
         if (!state.splitView || state.rightSlideIndex !== rightIndex) {
             // About to enter split — also cover the right pane immediately
             _slideOverlay(true)?.classList.add('visible');
@@ -525,8 +670,6 @@ async function goToSlide(i, direction = null) {
     }
     // ─────────────────────────────────────────────────────────────
 
-    saveCurrentAnnotations();
-    const prevRightIndex = state.rightSlideIndex;
     state.currentSlide = i;
     const obj = state.slideStructure[i];
     if (obj?.type === 'blank') state.collapsedParents.delete(obj.parent);
@@ -619,7 +762,7 @@ function updateBlankSlideButtons() {
 
 /* ─── slide rendering ─────────────────────────────────────────── */
 function _slideOverlay(isRight) {
-    const id = isRight ? 'pdf-canvas-2' : 'pdf-canvas';
+    const id = isRight ? 'pdf-container-2' : 'pdf-container';
     return document.getElementById(id)?.querySelector('.slide-loading-overlay') ?? null;
 }
 
@@ -652,7 +795,7 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
 
     if (!cvs || !annCvs) return;
 
-    const loading = suppressOverlay ? null : slideContainer?.querySelector('.slide-loading-overlay');
+    const loading = suppressOverlay ? null : _slideOverlay(isRight);
     if (loading) loading.classList.add('visible');
 
     if (obj.type === 'pdf') {
@@ -804,6 +947,16 @@ async function renderMedia(config, container, rect, isRight) {
 }
 
 /* ─── slide config / media cache ─────────────────────────────── */
+
+// Resolve a pdfIndex reference (used in onEnter.split / onLeave.goToSlide) to
+// the corresponding slideStructure position.  Blank slides inserted by the user
+// shift positions but never change pdfIndex values, so this keeps config
+// cross-references stable regardless of how many blank slides exist.
+function resolvePdfRef(pdfIndex) {
+    const idx = state.slideStructure.findIndex(s => s.type === 'pdf' && s.pdfIndex === pdfIndex);
+    return idx === -1 ? null : idx;
+}
+
 async function loadSlideConfig(pdfIndex) {
     if (state.slideConfigs[pdfIndex]) return state.slideConfigs[pdfIndex];
     try {

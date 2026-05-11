@@ -459,8 +459,10 @@ body {
 // ─────────────────────────────────────────────────────────────────────────────
 const _qs      = new URLSearchParams(location.search);
 const CFG      = window.WIDGET_CONFIG || {};
-const WIDGET_ID      = CFG.id       || 'jupyter-notebook';
-const NOTEBOOK_PATH  = CFG.notebook || _qs.get('notebook') || null;
+const WIDGET_ID      = CFG.id              || 'jupyter-notebook';
+const NOTEBOOK_PATH  = CFG.notebook        || _qs.get('notebook') || null;
+const NOTEBOOK_OBJ   = CFG.notebookContent || null;  // pre-loaded by renderer
+const STARTER_CODE   = CFG.starterCode     || '';
 const IS_VIEWER      = !!(CFG.viewer || _qs.get('viewer') === '1');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -537,10 +539,12 @@ def _bp_capture_figures():
   setKernel('ready', 'Python 3 · Pyodide');
   enablePresenterToolbar();
 
-  if (NOTEBOOK_PATH) {
+  if (NOTEBOOK_OBJ) {
+    await loadNotebookObj(NOTEBOOK_OBJ, NOTEBOOK_PATH || 'notebook.ipynb');
+  } else if (NOTEBOOK_PATH) {
     await loadNotebookFile(NOTEBOOK_PATH);
   } else {
-    addCodeCell('');
+    addCodeCell(STARTER_CODE);
   }
 }
 
@@ -580,6 +584,32 @@ async function loadNotebookFile(path) {
   } catch (e) {
     console.warn('Notebook load failed:', e);
     removeBoot();
+    addCodeCell('# Could not load notebook: ' + e.message);
+  }
+}
+
+// Load a notebook from an already-parsed JSON object (passed by the renderer)
+async function loadNotebookObj(nb, filename) {
+  try {
+    document.getElementById('notebook-title').textContent = filename.split('/').pop();
+    for (const cell of nb.cells || []) {
+      const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
+      if (cell.cell_type === 'markdown') {
+        addMarkdownCell(src);
+      } else if (cell.cell_type === 'code') {
+        const id = addCodeCell(src);
+        if (cell.outputs?.length) {
+          const outputs = parseIpynbOutputs(cell.outputs);
+          renderOutputs(id, outputs, cell.execution_count);
+          if (cell.execution_count != null) {
+            const en = document.getElementById(`enum-${id}`);
+            if (en) { en.textContent = `[${cell.execution_count}]`; en.classList.add('ran'); }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Notebook object load failed:', e);
     addCodeCell('# Could not load notebook: ' + e.message);
   }
 }

@@ -1,0 +1,95 @@
+/* ============================================================
+   Keyboard shortcuts help button + modal content
+   ============================================================ */
+
+#shortcuts-btn {
+    position: fixed;
+    bottom: var(--sp-4);
+    right: var(--sp-4);
+    z-index: 240;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    background: oklch(99% 0.003 80 / 0.86);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border: var(--line-hairline);
+    box-shadow: var(--shadow-2);
+    color: var(--ink-2);
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+#shortcuts-btn:hover {
+    background: var(--surface-cream-2);
+    color: var(--ink-1);
+}
+
+body.focus-mode #shortcuts-btn {
+    display: none;
+}
+
+/* ── Shortcuts modal grid ─────────────────────────────────── */
+.shortcuts-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: var(--sp-4);
+    row-gap: var(--sp-1);
+    align-items: baseline;
+    font-size: var(--fs-sm);
+    max-width: 420px;
+}
+
+.shortcuts-section-heading {
+    grid-column: 1 / -1;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    padding-top: var(--sp-3);
+    border-top: var(--line-soft);
+    margin-top: var(--sp-1);
+}
+
+.shortcuts-section-heading:first-child {
+    padding-top: 0;
+    border-top: none;
+    margin-top: 0;
+}
+
+.shortcuts-key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.shortcuts-key kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
+    background: var(--surface-cream-2);
+    border: var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    color: var(--ink-1);
+    white-space: nowrap;
+}
+
+.shortcuts-or {
+    font-size: var(--fs-xs);
+    color: var(--ink-3);
+    padding: 0 2px;
+}
+
+.shortcuts-desc {
+    color: var(--ink-2);
+}

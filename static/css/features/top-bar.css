@@ -61,6 +61,33 @@ body.split-view-active #top-right-controls {
     top: var(--sp-2);
 }
 
+/* ── Focus mode — hide all chrome, show only the slide stage ── */
+body.focus-mode #slide-navigator,
+body.focus-mode #floating-annotation-toolbar,
+body.focus-mode #top-right-controls #upload-container,
+body.focus-mode #top-right-controls #screen-share-container,
+body.focus-mode #top-right-controls #timer-container {
+    display: none !important;
+}
+
+body.focus-mode #focus-mode-btn i {
+    /* swap icon to compress/exit when active */
+}
+
+body.focus-mode #main-content {
+    margin-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100vw !important;
+}
+
+body.focus-mode #top-right-controls {
+    /* keep only the exit button visible */
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    padding: 0;
+}
+
 @media (max-width: 1024px) {
     #top-right-controls {
         top: var(--sp-2);

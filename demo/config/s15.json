@@ -1,0 +1,17 @@
+{
+  "onEnter": { "split": 13, "splitRatio": 70 },
+  "onLeave": { "closeSplit": true, "goToSlide": 16 },
+  "widgets": [
+    {
+      "id": "lecture_notebook",
+      "type": "ipynb_widget",
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
+      "zIndex": 10,
+      "notebook": "config/assets/ll_delete_starter.ipynb",
+      "viewer": false
+      }
+  ]
+}

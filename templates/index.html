@@ -52,25 +52,23 @@
     <main id="main-content">
         <div id="main-menu" class="hidden"></div>
         <div id="pdf-container">
-            <div id="pdf-canvas">
-                <div class="slide-loading-overlay">
-                    <svg class="slide-squiggle" viewBox="0 0 120 40">
-                        <path d="M5 20 Q 15 5, 25 20 T 45 20 T 65 20 T 85 20 T 105 20" />
-                    </svg>
-                </div>
-            </div>
+            <div id="pdf-canvas"></div>
             <div id="ann-canvas"></div>
+            <div class="slide-loading-overlay">
+                <svg class="slide-squiggle" viewBox="0 0 120 40">
+                    <path d="M5 20 Q 15 5, 25 20 T 45 20 T 65 20 T 85 20 T 105 20" />
+                </svg>
+            </div>
         </div>
         <div id="split-view-divider"></div>
         <div id="pdf-container-2">
-            <div id="pdf-canvas-2">
-                <div class="slide-loading-overlay">
-                    <svg class="slide-squiggle" viewBox="0 0 120 40">
-                        <path d="M5 20 Q 15 5, 25 20 T 45 20 T 65 20 T 85 20 T 105 20" />
-                    </svg>
-                </div>
-            </div>
+            <div id="pdf-canvas-2"></div>
             <div id="ann-canvas-2"></div>
+            <div class="slide-loading-overlay">
+                <svg class="slide-squiggle" viewBox="0 0 120 40">
+                    <path d="M5 20 Q 15 5, 25 20 T 45 20 T 65 20 T 85 20 T 105 20" />
+                </svg>
+            </div>
         </div>
     </main>
 
@@ -80,7 +78,7 @@
             <button class="btn" id="upload-presentation-btn" title="Upload presentation"><i class="fa-solid fa-upload"></i></button>
         </div>
         <div id="screen-share-container">
-            <button class="btn" id="screen-share-btn" title="Screen share"><i class="fa-solid fa-display"></i></button>
+            <button class="btn" id="focus-mode-btn" title="Focus mode (hide UI)"><i class="fa-solid fa-expand"></i></button>
         </div>
         <div id="timer-container">
             <span class="timer_display tabular"><span class="timer-text">00:00</span></span>
@@ -112,5 +110,8 @@
         }
     </script>
     <script type="module" src="/static/js/main.js"></script>
+
+    <!-- Keyboard shortcuts help button -->
+    <button id="shortcuts-btn" title="Keyboard shortcuts (?)"><i class="fa-solid fa-keyboard"></i></button>
 </body>
 </html>

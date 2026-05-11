@@ -5,6 +5,7 @@
 #main-content {
     display: flex;
     margin-left: var(--nav-width);
+    padding-right: var(--nav-width);
     height: 100vh;
     position: relative;
     background: var(--surface-stage);
@@ -41,6 +42,7 @@
 body.split-view-active #main-content {
     margin-left: 0;
     margin-right: 0;
+    padding-right: 0;
     height: calc(100vh - 88px);
     padding-top: var(--sp-4);
     box-sizing: border-box;
@@ -137,16 +139,28 @@ model-viewer { pointer-events: auto !important; }
    ============================================================ */
 .slide-loading-overlay {
     position: absolute;
-    inset: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 95%;
+    aspect-ratio: 4 / 3;
+    max-width: 95%;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 50;
+    z-index: 10;
     background: var(--surface-paper);
+    border-radius: var(--r-md);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.1s ease;
-    border-radius: var(--r-md);
+}
+body.split-view-active .slide-loading-overlay,
+body.viewer-split-active .slide-loading-overlay {
+    width: 95%;
+    height: auto;
+    max-height: 95%;
+    max-width: none;
 }
 .slide-loading-overlay.visible { opacity: 1; }
 .slide-squiggle { width: 96px; height: 32px; display: block; }

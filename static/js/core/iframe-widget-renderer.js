@@ -90,23 +90,50 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             
             const htmlContent = await widgetFile.async("string");
 
+            // Pre-load notebook from zip if widget config specifies one
+            let notebookContent = null;
+            if (w.notebook && typeof w.notebook === 'string' && w.notebook.trim()) {
+                const nbPath = w.notebook.trim().replace(/^\/+/, '');
+                const nbFile = zipFile.file(nbPath)
+                    || zipFile.filter((p, f) => !f.dir && p.toLowerCase() === nbPath.toLowerCase())[0];
+                if (nbFile) {
+                    try {
+                        notebookContent = JSON.parse(await nbFile.async('string'));
+                    } catch (e) {
+                        console.warn(`Failed to parse notebook ${nbPath}:`, e);
+                    }
+                } else {
+                    console.warn(`Notebook file not found in zip: ${nbPath}`);
+                }
+            }
+
+            // Build the config payload and inject it as window.WIDGET_CONFIG so
+            // widgets that read it synchronously at parse time get the right values.
+            // Also send a postMessage after load for widgets that use the event.
+            const _configPayload = {
+                ...w,
+                role: viewerMode ? 'viewer' : 'presenter',
+                socketUrl: window.location.origin,
+                ...(notebookContent !== null ? { notebookContent } : {}),
+            };
+            const _configJson = JSON.stringify(_configPayload).replace(/<\/script>/gi, '<\\/script>');
+            const _configScript = `<script>window.WIDGET_CONFIG=${_configJson};<\/script>`;
+            const _injectedHtml = htmlContent.replace(/(<head[^>]*>)/i, `$1${_configScript}`);
+
             // Resolve when the iframe fires 'load', with a 6 s safety fallback.
             await new Promise((resolve) => {
                 let settled = false;
                 const finish = () => { if (!settled) { settled = true; resolve(); } };
                 iframe.addEventListener('load', () => {
+                    // postMessage for widgets that use the event-based pattern
                     iframe.contentWindow.postMessage({
                         type: 'widget-config',
-                        config: {
-                            ...w,
-                            role: viewerMode ? 'viewer' : 'presenter',
-                            socketUrl: window.location.origin,
-                        },
+                        config: _configPayload,
                     }, '*');
                     finish();
                 }, { once: true });
                 setTimeout(finish, 6000);
-                iframe.srcdoc = htmlContent;
+                iframe.srcdoc = _injectedHtml;
             });
             
         } catch (error) {

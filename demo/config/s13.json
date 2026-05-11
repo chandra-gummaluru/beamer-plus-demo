@@ -1,4 +1,0 @@
-{
-  "onEnter": { "split": 14, "splitRatio": 30 },
-  "onLeave": { "closeSplit": true, "goToSlide": 15 }
-}
