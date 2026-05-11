@@ -482,11 +482,12 @@ if __name__ == '__main__':
         except ImportError:
             return False
 
+    """
     if args.http or not _can_use_adhoc_ssl():
         if not args.http:
             print("[WARN] Could not start HTTPS (cryptography library not found). Falling back to HTTP.")
             print("[WARN] Camera widget requires HTTPS on LAN addresses.")
         socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
     else:
-        socketio.run(app, host='0.0.0.0', port=args.port, debug=False,
-                     ssl_context='adhoc', allow_unsafe_werkzeug=True)
+    """
+    socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
