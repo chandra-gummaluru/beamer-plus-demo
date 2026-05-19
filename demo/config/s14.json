@@ -1,0 +1,17 @@
+{
+  "widgets": [
+    {
+      "id": "internet_browser_1",
+      "type": "internet_browser",
+      "src": "widgets/internet_browser.html",
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
+      "zIndex": 10,
+      "interactive": true,
+      "url": "https://www.desmos.com/calculator?lang=zh-CN",
+      "showToolbar": false
+    }
+  ]
+}

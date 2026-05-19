@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Internet Browser Widget</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Computer Modern Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #ffffff;
+    }
+
+    #widget-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+    }
+
+    #toolbar {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: #eeeeee;
+    }
+
+    body.toolbar-hidden #toolbar {
+      display: none;
+    }
+
+    #address {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      color: #333;
+      font-size: 0.9rem;
+    }
+
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #666;
+      border-radius: 4px;
+      background: #ffffff;
+      color: #333;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .icon-btn:hover { background: #dddddd; }
+
+    #browser-frame {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      border: none;
+      background: #ffffff;
+    }
+
+    #message {
+      position: absolute;
+      inset: 42px 0 0 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      text-align: center;
+      color: #555;
+      background: #ffffff;
+      line-height: 1.45;
+      z-index: 2;
+    }
+
+    body.toolbar-hidden #message {
+      inset: 0;
+    }
+
+    #message.visible { display: flex; }
+  </style>
+</head>
+<body>
+  <div id="widget-container">
+    <div id="toolbar">
+      <button id="reload-btn" class="icon-btn" type="button" title="Reload">&#8635;</button>
+      <div id="address">about:blank</div>
+      <button id="open-btn" class="icon-btn" type="button" title="Open in new tab">&#8599;</button>
+    </div>
+    <iframe
+      id="browser-frame"
+      title="Internet browser content"
+      referrerpolicy="no-referrer-when-downgrade"
+      allow="autoplay; clipboard-read; clipboard-write; fullscreen; geolocation; microphone; camera"
+    ></iframe>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    class InternetBrowserWidget {
+      constructor() {
+        this.frame = document.getElementById('browser-frame');
+        this.address = document.getElementById('address');
+        this.message = document.getElementById('message');
+        this.reloadBtn = document.getElementById('reload-btn');
+        this.openBtn = document.getElementById('open-btn');
+        this.currentUrl = '';
+
+        this.config = {
+          url: 'https://example.com',
+          showToolbar: true
+        };
+
+        this.setupEvents();
+      }
+
+      setupEvents() {
+        this.reloadBtn.addEventListener('click', () => {
+          if (this.currentUrl) {
+            this.frame.src = this.currentUrl;
+          }
+        });
+
+        this.openBtn.addEventListener('click', () => {
+          if (this.currentUrl) {
+            window.open(this.currentUrl, '_blank', 'noopener,noreferrer');
+          }
+        });
+      }
+
+      updateConfig(newConfig) {
+        Object.assign(this.config, newConfig);
+
+        document.body.classList.toggle('toolbar-hidden', this.config.showToolbar === false);
+        this.setUrl(this.config.url);
+      }
+
+      setUrl(rawUrl) {
+        const normalized = this.normalizeUrl(rawUrl);
+        if (!normalized) {
+          this.showMessage('The browser widget needs a valid http or https URL.');
+          return;
+        }
+
+        if (normalized === this.currentUrl) {
+          return;
+        }
+
+        this.currentUrl = normalized;
+        this.address.textContent = normalized;
+        this.address.title = normalized;
+        this.hideMessage();
+        this.frame.src = normalized;
+      }
+
+      normalizeUrl(rawUrl) {
+        if (typeof rawUrl !== 'string') {
+          return '';
+        }
+
+        const trimmed = rawUrl.trim();
+        if (!trimmed) {
+          return '';
+        }
+
+        const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed)
+          ? trimmed
+          : `https://${trimmed}`;
+
+        try {
+          const url = new URL(withProtocol);
+          if (url.protocol === 'http:' || url.protocol === 'https:') {
+            return this.toEmbeddableUrl(url).href;
+          }
+        } catch (e) {
+          return '';
+        }
+
+        return '';
+      }
+
+      toEmbeddableUrl(url) {
+        const hostname = url.hostname.replace(/^www\./, '').toLowerCase();
+        let videoId = '';
+
+        if (hostname === 'youtu.be') {
+          videoId = url.pathname.replace(/^\/+/, '').split('/')[0];
+        } else if (hostname === 'youtube.com' || hostname === 'm.youtube.com') {
+          if (url.pathname === '/watch') {
+            videoId = url.searchParams.get('v') || '';
+          } else if (url.pathname.startsWith('/shorts/')) {
+            videoId = url.pathname.split('/')[2] || '';
+          } else if (url.pathname.startsWith('/embed/')) {
+            return url;
+          }
+        }
+
+        if (!videoId) {
+          return url;
+        }
+
+        const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
+        const start = url.searchParams.get('t');
+        const playlist = url.searchParams.get('list');
+        if (start) {
+          embedUrl.searchParams.set('start', start.replace(/s$/, ''));
+        }
+        if (playlist) {
+          embedUrl.searchParams.set('list', playlist);
+        }
+        return embedUrl;
+      }
+
+      showMessage(text) {
+        this.message.textContent = text;
+        this.message.classList.add('visible');
+      }
+
+      hideMessage() {
+        this.message.classList.remove('visible');
+      }
+
+      destroy() {
+        this.frame.removeAttribute('src');
+      }
+    }
+
+    const widget = new InternetBrowserWidget();
+
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'widget-config') {
+        widget.updateConfig(event.data.config);
+      } else if (event.data.type === 'widget-cleanup') {
+        widget.destroy();
+      }
+    });
+
+    widget.updateConfig({});
+  </script>
+</body>
+</html>
