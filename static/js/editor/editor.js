@@ -366,6 +366,12 @@ function buildPropsHTML(arrKey, item) {
             </div>
         `;
     } else if (arrKey === 'widgets') {
+        const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin']);
+        const extraProps = {};
+        for (const [k, v] of Object.entries(item)) {
+            if (!_WIDGET_RESERVED.has(k)) extraProps[k] = v;
+        }
+        const extraJson = JSON.stringify(extraProps, null, 2);
         html += `
             <div class="editor-prop-row">
                 <div class="editor-prop-label">Widget ID</div>
@@ -373,17 +379,14 @@ function buildPropsHTML(arrKey, item) {
             </div>
             <div class="editor-prop-row">
                 <div class="editor-prop-label">Type</div>
-                <input class="editor-prop-input" type="text" id="prop-widgetType" value="${item.type ?? 'browser'}" placeholder="browser, ipynb_widget…">
+                <input class="editor-prop-input" type="text" id="prop-widgetType" value="${item.type ?? ''}" readonly>
             </div>
             <div class="editor-prop-row">
-                <div class="editor-prop-label">URL / Path</div>
-                <input class="editor-prop-input" type="text" id="prop-widgetSrc" value="${item.src ?? item.notebook ?? ''}" placeholder="https://… or path/to/file">
-            </div>
-            <div class="editor-prop-row">
-                <label class="editor-prop-checkbox-row">
-                    <input type="checkbox" id="prop-interactive" ${item.interactive !== false ? 'checked' : ''}>
-                    Interactive
-                </label>
+                <div class="editor-prop-label">
+                    Config
+                    <span class="editor-prop-label-note editor-prop-json-status" id="prop-widget-config-status"></span>
+                </div>
+                <textarea class="editor-prop-input editor-prop-json" id="prop-widget-config" rows="6" spellcheck="false">${extraJson}</textarea>
             </div>
         `;
     }
@@ -436,11 +439,27 @@ function applyPropertiesQuiet() {
         item.animate       = get('prop-animate')?.checked ?? true;
         item.animationName = get('prop-animName')?.value || undefined;
     } else if (arrKey === 'widgets') {
-        item.id          = get('prop-widgetId')?.value  || item.id;
-        item.type        = get('prop-widgetType')?.value || item.type;
-        const src        = get('prop-widgetSrc')?.value || '';
-        if (src) { if (item.type === 'ipynb_widget') item.notebook = src; else item.src = src; }
-        item.interactive = get('prop-interactive')?.checked ?? true;
+        item.id   = get('prop-widgetId')?.value  || item.id;
+
+        const jsonEl   = get('prop-widget-config');
+        const statusEl = get('prop-widget-config-status');
+        if (jsonEl) {
+            try {
+                const parsed = JSON.parse(jsonEl.value || '{}');
+                const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin']);
+                // Remove all current non-reserved props
+                for (const k of Object.keys(item)) {
+                    if (!_WIDGET_RESERVED.has(k)) delete item[k];
+                }
+                // Apply parsed props (skip reserved so JSON can't override position/type)
+                for (const [k, v] of Object.entries(parsed)) {
+                    if (!_WIDGET_RESERVED.has(k)) item[k] = v;
+                }
+                if (statusEl) { statusEl.textContent = ''; statusEl.classList.remove('is-error'); }
+            } catch {
+                if (statusEl) { statusEl.textContent = 'invalid JSON'; statusEl.classList.add('is-error'); }
+            }
+        }
     }
 
     const container = getSlideEl();

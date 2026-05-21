@@ -2,7 +2,7 @@
 // Public API: BeamerModal.show({ kind, title, message, buttons, body })
 const Modal = {
     open: null,
-    show({ kind = 'info', title = '', message = '', body = null, buttons = [{ label: 'OK', kind: 'ok' }] } = {}) {
+    show({ kind = 'info', title = '', message = '', body = null, buttons = [{ label: 'OK', kind: 'ok' }], canClose = null } = {}) {
         this.close();
         const overlay = document.createElement('div');
         overlay.className = `custom-modal-overlay modal-${kind}`;
@@ -36,13 +36,13 @@ const Modal = {
                 const btn = document.createElement('button');
                 btn.className = `custom-modal-btn custom-modal-btn-${b.kind || 'cancel'}`;
                 btn.textContent = b.label;
-                btn.addEventListener('click', () => { b.onClick?.(); this.close(); });
+                btn.addEventListener('click', () => { if (b.guard && !b.guard()) return; b.onClick?.(); this.close(); });
                 btnRow.appendChild(btn);
             });
         }
 
         overlay.appendChild(content);
-        overlay.addEventListener('click', (e) => { if (e.target === overlay && kind !== 'loading') this.close(); });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay && kind !== 'loading') { if (canClose && !canClose()) return; this.close(); } });
         document.body.appendChild(overlay);
         this.open = overlay;
     },

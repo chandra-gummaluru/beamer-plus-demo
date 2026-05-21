@@ -177,6 +177,20 @@ body.split-view-active #bottom-controls {
     color: var(--ink-3);
 }
 
+.shortcut-capture.is-error {
+    border-color: oklch(55% 0.18 25);
+    background: oklch(97% 0.04 25);
+    color: oklch(38% 0.18 25);
+    box-shadow: 0 0 0 2px oklch(55% 0.18 25 / 0.18);
+}
+.shortcut-capture.is-error:hover {
+    border-color: oklch(48% 0.20 25);
+}
+
+.settings-shortcut-hint.is-error {
+    color: oklch(50% 0.18 25);
+}
+
 .settings-shortcuts-reset {
     display: flex;
     justify-content: flex-end;

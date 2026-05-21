@@ -412,6 +412,32 @@ const NON_BINDABLE = new Set([
     'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
 ]);
 
+function _hasShortcutConflicts(sc) {
+    const vals = Object.values(sc).filter(v => v);
+    return vals.length !== new Set(vals).size;
+}
+
+function _updateShortcutConflicts(scGrid, sc, hintEl) {
+    const counts = {};
+    for (const key of Object.values(sc)) {
+        if (key) counts[key] = (counts[key] || 0) + 1;
+    }
+    const hasConflicts = Object.values(counts).some(c => c > 1);
+    scGrid.querySelectorAll('.shortcut-capture').forEach(inp => {
+        const key = sc[inp.dataset.action];
+        inp.classList.toggle('is-error', !!(key && counts[key] > 1));
+    });
+    if (hintEl) {
+        if (hasConflicts) {
+            hintEl.textContent = '⚠ Duplicate keys — resolve conflicts before closing.';
+            hintEl.classList.add('is-error');
+        } else {
+            hintEl.textContent = 'Click a key to rebind it.';
+            hintEl.classList.remove('is-error');
+        }
+    }
+}
+
 function showSettingsModal() {
     const currentTheme = localStorage.getItem('beamer-theme') || 'system';
     const sc = loadShortcuts();
@@ -467,6 +493,7 @@ function showSettingsModal() {
         input.type = 'text';
         input.readOnly = true;
         input.className = 'shortcut-capture';
+        input.dataset.action = action;
         input.value = sc[action] ?? DEFAULT_SHORTCUTS[action] ?? '';
         input.title = 'Click to rebind';
 
@@ -484,7 +511,7 @@ function showSettingsModal() {
             if (NON_BINDABLE.has(e.key)) { input.blur(); return; }
             input.value = e.key;
             sc[action] = e.key;
-            saveShortcuts(sc);
+            _updateShortcutConflicts(scGrid, sc, scHint);
             input.blur();
         });
         input.addEventListener('blur', () => {
@@ -508,6 +535,7 @@ function showSettingsModal() {
         scGrid.querySelectorAll('.shortcut-capture').forEach((inp, i) => {
             inp.value = DEFAULT_SHORTCUTS[Object.keys(SHORTCUT_LABELS)[i]] ?? '';
         });
+        _updateShortcutConflicts(scGrid, sc, scHint);
     });
     resetRow.appendChild(resetBtn);
     scSection.appendChild(resetRow);
@@ -517,7 +545,13 @@ function showSettingsModal() {
         kind: 'info',
         title: 'Settings',
         body,
-        buttons: [{ label: 'Close', kind: 'cancel' }],
+        canClose: () => !_hasShortcutConflicts(sc),
+        buttons: [{
+            label: 'Close',
+            kind: 'cancel',
+            guard: () => !_hasShortcutConflicts(sc),
+            onClick: () => saveShortcuts(sc),
+        }],
     });
 }
 

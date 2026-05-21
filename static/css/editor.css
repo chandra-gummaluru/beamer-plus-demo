@@ -65,9 +65,10 @@ body.edit-mode #pdf-canvas .widget-iframe { display: none !important; }
 
 body.edit-mode #editor-panel { display: flex; }
 
-/* Panel header — acts as top dividing line aligned with slide nav */
+/* Panel header — height 58px puts the 1px hairline at y=57,
+   matching the centre of the nav's 2px border at y=56–58 */
 #editor-panel-header {
-    height: 56px;
+    height: 58px;
     flex-shrink: 0;
     border-bottom: var(--line-hairline);
     background: var(--surface-cream);
@@ -157,6 +158,20 @@ body.edit-mode #editor-panel { display: flex; }
     opacity: 0.5;
     cursor: default;
 }
+
+/* JSON config textarea */
+.editor-prop-json {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 80px;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.editor-prop-json-status { font-style: normal; }
+.editor-prop-json-status.is-error { color: oklch(50% 0.18 25) !important; }
 
 .editor-prop-checkbox-row {
     display: flex;
