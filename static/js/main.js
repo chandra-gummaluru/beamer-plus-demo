@@ -4,7 +4,6 @@
  */
 import { bus, initEvents, addHoldListener } from './core/events.js';
 import { initButtons } from './core/button.js';
-import { initTimer } from './core/timer.js';
 import { initToggle } from './core/toggle.js';
 import { initModal } from './core/modal.js';
 import { Canvas } from './core/canvas.js';
@@ -20,6 +19,7 @@ import { initBookmarks } from './slides/bookmarks.js';
 
 import { initUploader } from './upload/uploader.js';
 import { initSurveyBridge } from './surveys/survey-bridge.js';
+import { initEditor } from './editor/editor.js';
 
 /* ─── shared state ────────────────────────────────────────────── */
 const state = {
@@ -73,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initModal(state);
     initButtons(state);
     initToggle(state);
-    initTimer(state);
 
     // canvases
     const annContainer  = document.getElementById('ann-canvas');
@@ -95,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initShapeTools(state);
     initUploader(state);
     initSurveyBridge(state);
+    initEditor(state);
 
     // pen + hand defaults
     applyDefaultPen();
@@ -109,7 +109,6 @@ document.addEventListener('DOMContentLoaded', () => {
     wireKeyboardNav();
     wireResizeAndFullscreen();
     wireSocketEvents();
-    wireShortcutsBtn();
     wireSettingsBtn();
     initSpotlight();
 
@@ -190,6 +189,46 @@ const PEN_SLOT_DEFAULTS = [
 ];
 const PEN_SWATCHES = ['#eeeeee','#e74c3c','#f1c40f','#2ecc71','#3498db','#9b59b6','#333333'];
 state.penProfiles = PEN_SLOT_DEFAULTS.map(p => ({ ...p }));
+
+/* ─── keyboard shortcut bindings ──────────────────────────────── */
+const DEFAULT_SHORTCUTS = {
+    hand:             'h',
+    eraser:           'e',
+    spotlight:        's',
+    bookmark:         'b',
+    clearAnnotations: 'c',
+    splitView:        'v',
+    focusMode:        'f',
+    pen1:             '1',
+    pen2:             '2',
+    pen3:             '3',
+    pen4:             '4',
+    pen5:             '5',
+};
+
+const SHORTCUT_LABELS = {
+    hand:             'Hand / pointer',
+    eraser:           'Eraser',
+    spotlight:        'Spotlight',
+    bookmark:         'Bookmark slide',
+    clearAnnotations: 'Clear annotations',
+    splitView:        'Split view',
+    focusMode:        'Focus mode',
+    pen1:             'Pen slot 1',
+    pen2:             'Pen slot 2',
+    pen3:             'Pen slot 3',
+    pen4:             'Pen slot 4',
+    pen5:             'Pen slot 5',
+};
+
+function loadShortcuts() {
+    try { return { ...DEFAULT_SHORTCUTS, ...JSON.parse(localStorage.getItem('beamer-shortcuts') || '{}') }; }
+    catch { return { ...DEFAULT_SHORTCUTS }; }
+}
+
+function saveShortcuts(sc) {
+    localStorage.setItem('beamer-shortcuts', JSON.stringify(sc));
+}
 
 function applyDefaultPen() {
     const handBtn = document.querySelector('[data-tool="hand"], #hand-btn');
@@ -317,128 +356,41 @@ function wireAnnotationClear() {
 function wireKeyboardNav() {
     document.addEventListener('keydown', (e) => {
         if (e.target.matches('input,textarea,[contenteditable]')) return;
-        if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   goToSlide(state.currentSlide - 1, 'back');
-        if (e.key === 'ArrowRight' || e.key === 'PageDown')  goToSlide(state.currentSlide + 1, 'forward');
-        if (e.key === 'Escape') { bus.emit('ui:escape'); BeamerModal?.close(); }
-        if (e.key === 'b') toggleBookmark(state.currentSlide);
 
-        // Tool shortcuts
-        if (e.key === 'h') document.querySelector('[data-tool="hand"], #hand-btn')?.click();
-        if (e.key === 'e') document.querySelector('[data-tool="eraser"]')?.click();
-        if (e.key === 's') document.querySelector('[data-tool="spotlight"], #spotlight-btn')?.click();
-
-        // Pen slot shortcuts (1–5)
-        if (e.key >= '1' && e.key <= '5') {
-            const idx = parseInt(e.key) - 1;
-            document.querySelectorAll('#pen-slots .pen-slot-btn')[idx]?.click();
-        }
-
-        // Undo / Redo
+        // Fixed: undo / redo
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
             e.preventDefault();
             document.getElementById('annotation-undo')?.click();
+            return;
         }
         if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
             e.preventDefault();
             document.getElementById('annotation-redo')?.click();
+            return;
         }
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-        // Clear annotations
-        if (e.key === 'c' && !e.ctrlKey && !e.metaKey) document.getElementById('annotation-clear-btn')?.click();
+        // Fixed: navigation & escape
+        if (e.key === 'ArrowLeft'  || e.key === 'PageUp')  goToSlide(state.currentSlide - 1, 'back');
+        if (e.key === 'ArrowRight' || e.key === 'PageDown') goToSlide(state.currentSlide + 1, 'forward');
+        if (e.key === 'Escape') { bus.emit('ui:escape'); BeamerModal?.close(); }
 
-        // Split view toggle
-        if (e.key === 'v') document.getElementById('split-toggle')?.click();
-
-        // Focus mode toggle
-        if (e.key === 'f') document.getElementById('focus-mode-btn')?.click();
-
-        // Shortcuts help
-        if (e.key === '?') showShortcutsModal();
-    });
-}
-
-/* ─── keyboard shortcuts modal ────────────────────────────────── */
-function showShortcutsModal() {
-    const sections = [
-        {
-            heading: 'Navigation',
-            rows: [
-                ['→ / Page Down', 'Next slide'],
-                ['← / Page Up',   'Previous slide'],
-            ],
-        },
-        {
-            heading: 'Tools',
-            rows: [
-                ['H', 'Hand / pointer'],
-                ['E', 'Eraser'],
-                ['S', 'Spotlight'],
-                ['1 – 5', 'Select pen / highlighter slot'],
-            ],
-        },
-        {
-            heading: 'Annotations',
-            rows: [
-                ['Ctrl Z', 'Undo'],
-                ['Ctrl Y / Ctrl Shift Z', 'Redo'],
-                ['C', 'Clear all annotations'],
-            ],
-        },
-        {
-            heading: 'View',
-            rows: [
-                ['V', 'Toggle split view'],
-                ['F', 'Toggle focus mode'],
-                ['B', 'Bookmark current slide'],
-            ],
-        },
-        {
-            heading: 'General',
-            rows: [
-                ['?', 'Show this help'],
-                ['Esc', 'Close dialogs / exit focus mode'],
-            ],
-        },
-    ];
-
-    const body = document.createElement('div');
-    body.className = 'shortcuts-grid';
-    sections.forEach(sec => {
-        const heading = document.createElement('div');
-        heading.className = 'shortcuts-section-heading';
-        heading.textContent = sec.heading;
-        body.appendChild(heading);
-
-        sec.rows.forEach(([key, desc]) => {
-            const keyEl = document.createElement('div');
-            keyEl.className = 'shortcuts-key';
-            // each segment of the key separated by spaces → wrap in <kbd>
-            keyEl.innerHTML = key.split(' / ').map(part =>
-                part.split(' ').map(k => `<kbd>${k}</kbd>`).join(' ')
-            ).join('<span class="shortcuts-or">or</span>');
-
-            const descEl = document.createElement('div');
-            descEl.className = 'shortcuts-desc';
-            descEl.textContent = desc;
-
-            body.appendChild(keyEl);
-            body.appendChild(descEl);
+        // Configurable shortcuts
+        const sc = loadShortcuts();
+        if (e.key === sc.hand)             document.querySelector('[data-tool="hand"], #hand-btn')?.click();
+        if (e.key === sc.eraser)           document.querySelector('[data-tool="eraser"]')?.click();
+        if (e.key === sc.spotlight)        document.querySelector('[data-tool="spotlight"], #spotlight-btn')?.click();
+        if (e.key === sc.bookmark)         toggleBookmark(state.currentSlide);
+        if (e.key === sc.clearAnnotations) document.getElementById('annotation-clear-btn')?.click();
+        if (e.key === sc.splitView)        document.getElementById('split-toggle')?.click();
+        if (e.key === sc.focusMode)        document.getElementById('focus-mode-btn')?.click();
+        [sc.pen1, sc.pen2, sc.pen3, sc.pen4, sc.pen5].forEach((key, i) => {
+            if (key && e.key === key) document.querySelectorAll('#pen-slots .pen-slot-btn')[i]?.click();
         });
     });
-
-    window.BeamerModal?.show({
-        kind: 'info',
-        title: 'Keyboard shortcuts',
-        body,
-        buttons: [{ label: 'Close', kind: 'cancel' }],
-    });
 }
 
-function wireShortcutsBtn() {
-    document.getElementById('shortcuts-btn')?.addEventListener('click', showShortcutsModal);
-}
-
-/* ─── settings modal ──────────────────────────────────────── */
+/* ─── settings modal (theme + editable shortcuts) ─────────────── */
 function applyTheme(theme) {
     localStorage.setItem('beamer-theme', theme);
     const html = document.documentElement;
@@ -446,39 +398,120 @@ function applyTheme(theme) {
         html.setAttribute('data-theme', 'dark');
     } else if (theme === 'light') {
         html.removeAttribute('data-theme');
-    } else { // 'system'
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) html.setAttribute('data-theme', 'dark');
+    } else {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches)
+            html.setAttribute('data-theme', 'dark');
         else html.removeAttribute('data-theme');
     }
 }
 
+const NON_BINDABLE = new Set([
+    'Tab','Enter','Backspace','Delete','Escape',
+    'ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageUp','PageDown','Home','End',
+    'Control','Meta','Alt','Shift','CapsLock',
+    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+]);
+
 function showSettingsModal() {
-    const current = localStorage.getItem('beamer-theme') || 'system';
+    const currentTheme = localStorage.getItem('beamer-theme') || 'system';
+    const sc = loadShortcuts();
 
     const body = document.createElement('div');
     body.className = 'settings-grid';
 
-    const label = document.createElement('div');
-    label.className = 'settings-label';
-    label.textContent = 'Theme';
-    body.appendChild(label);
+    // ── Theme ──────────────────────────────────────────────────
+    const themeLabel = document.createElement('div');
+    themeLabel.className = 'settings-label';
+    themeLabel.textContent = 'Theme';
+    body.appendChild(themeLabel);
 
-    const row = document.createElement('div');
-    row.className = 'settings-theme-row';
-
+    const themeRow = document.createElement('div');
+    themeRow.className = 'settings-theme-row';
     ['Light', 'Dark', 'System'].forEach(t => {
         const btn = document.createElement('button');
-        btn.className = 'btn' + (current === t.toLowerCase() ? ' btn_selected' : '');
+        btn.className = 'btn' + (currentTheme === t.toLowerCase() ? ' btn_selected' : '');
         btn.textContent = t;
         btn.addEventListener('click', () => {
             applyTheme(t.toLowerCase());
-            row.querySelectorAll('.btn').forEach(b => b.classList.remove('btn_selected'));
+            themeRow.querySelectorAll('.btn').forEach(b => b.classList.remove('btn_selected'));
             btn.classList.add('btn_selected');
         });
-        row.appendChild(btn);
+        themeRow.appendChild(btn);
     });
-    body.appendChild(row);
+    body.appendChild(themeRow);
+
+    // ── Keyboard Shortcuts ─────────────────────────────────────
+    const scSection = document.createElement('div');
+    scSection.className = 'settings-section';
+
+    const scLabel = document.createElement('div');
+    scLabel.className = 'settings-label';
+    scLabel.textContent = 'Keyboard Shortcuts';
+    scSection.appendChild(scLabel);
+
+    const scHint = document.createElement('p');
+    scHint.className = 'settings-shortcut-hint';
+    scHint.textContent = 'Click a key to rebind it.';
+    scSection.appendChild(scHint);
+
+    const scGrid = document.createElement('div');
+    scGrid.className = 'settings-shortcuts-grid';
+
+    Object.entries(SHORTCUT_LABELS).forEach(([action, labelText]) => {
+        const labelEl = document.createElement('span');
+        labelEl.className = 'settings-shortcut-label';
+        labelEl.textContent = labelText;
+        scGrid.appendChild(labelEl);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.readOnly = true;
+        input.className = 'shortcut-capture';
+        input.value = sc[action] ?? DEFAULT_SHORTCUTS[action] ?? '';
+        input.title = 'Click to rebind';
+
+        input.addEventListener('focus', () => {
+            input.dataset.prev = input.value;
+            input.value = '';
+            input.placeholder = '…';
+            input.classList.add('capturing');
+        });
+        input.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.key === 'Escape') { input.value = input.dataset.prev ?? ''; input.blur(); return; }
+            if (e.ctrlKey || e.metaKey || e.altKey) { input.blur(); return; }
+            if (NON_BINDABLE.has(e.key)) { input.blur(); return; }
+            input.value = e.key;
+            sc[action] = e.key;
+            saveShortcuts(sc);
+            input.blur();
+        });
+        input.addEventListener('blur', () => {
+            input.classList.remove('capturing');
+            input.placeholder = '';
+            if (!input.value) input.value = input.dataset.prev ?? '';
+        });
+
+        scGrid.appendChild(input);
+    });
+    scSection.appendChild(scGrid);
+
+    const resetRow = document.createElement('div');
+    resetRow.className = 'settings-shortcuts-reset';
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn';
+    resetBtn.textContent = 'Reset defaults';
+    resetBtn.addEventListener('click', () => {
+        Object.assign(sc, DEFAULT_SHORTCUTS);
+        saveShortcuts(sc);
+        scGrid.querySelectorAll('.shortcut-capture').forEach((inp, i) => {
+            inp.value = DEFAULT_SHORTCUTS[Object.keys(SHORTCUT_LABELS)[i]] ?? '';
+        });
+    });
+    resetRow.appendChild(resetBtn);
+    scSection.appendChild(resetRow);
+    body.appendChild(scSection);
 
     window.BeamerModal?.show({
         kind: 'info',
@@ -964,6 +997,27 @@ async function renderMedia(config, container, rect, isRight) {
             container.appendChild(video);
         }
     }
+    if (config.audios) {
+        for (const a of config.audios) {
+            const url = await loadMedia(a.path);
+            if (!url) continue;
+            const audio = document.createElement('audio');
+            audio.src = url;
+            audio.className = 'slide-audio';
+            if (a.playMode === 'auto')  { audio.autoplay = true; }
+            if (a.playMode === 'loop')  { audio.autoplay = true; audio.loop = true; }
+            audio.controls = (a.playMode !== 'auto' && a.playMode !== 'loop');
+            Object.assign(audio.style, {
+                position: 'absolute',
+                left:   `${(a.x ?? 0.1) * rect.width}px`,
+                top:    `${(a.y ?? 0.1) * rect.height}px`,
+                width:  `${(a.width ?? 0.4) * rect.width}px`,
+                height: '40px',
+                zIndex: a.zIndex ?? 5,
+            });
+            container.appendChild(audio);
+        }
+    }
     if (config.models) {
         for (const m of config.models) {
             const url = await loadMedia(m.path);
@@ -1063,7 +1117,7 @@ function populateSlideNavigator() {
         kind: obj.type,
         label: labels[i],
         title: obj.type === 'blank' ? labels[i] : `Slide ${labels[i]}`,
-        thumbUrl: state.slideThumbnailCache[i] || null,
+        thumbUrl: obj.type === 'pdf' ? (state.slideThumbnailCache[obj.pdfIndex] ?? null) : null,
     })));
     updateSlideNavigator();
 }
@@ -1317,6 +1371,15 @@ function wireSocketEvents() {
     });
 }
 
+/* ─── editor: slide reorder ───────────────────────────────────── */
+bus.on('slides:reordered', async () => {
+    populateSlideNavigator();
+    await renderLogicalSlide(state.currentSlide);
+    updateSlideNavigator();
+    updateBlankSlideButtons();
+    emitSlideState();
+});
+
 /* ─── thumbnail generation ────────────────────────────────────── */
 async function generateThumbnails() {
     if (!state.zipFile) return;
@@ -1352,13 +1415,24 @@ export async function loadZipPresentation(file) {
         const pdfDoc  = await pdfjsLib.getDocument({ data: pdfData }).promise;
         const total   = pdfDoc.numPages;
 
-        state.zipFile = zip;
-        state.totalSlides = total;
-        state.slideStructure = Array.from({ length: total }, (_, i) => ({ type: 'pdf', pdfIndex: i }));
+        // Restore saved slide order written by the editor (if present)
+        let slideStructure = Array.from({ length: total }, (_, i) => ({ type: 'pdf', pdfIndex: i }));
+        const orderFile = zip.file('config/slide-order.json');
+        if (orderFile) {
+            try {
+                const saved = JSON.parse(await orderFile.async('string'));
+                if (Array.isArray(saved) && saved.length > 0) slideStructure = saved;
+            } catch (_) {}
+        }
+
+        state.zipFile        = zip;
+        state.totalSlides    = slideStructure.length;
+        state.slideStructure = slideStructure;
         state.currentSlide   = 0;
         state.slideConfigs   = {}; state.mediaCache = {};
         state.annotations    = {}; state.annotationsRight = {};
         state.bookmarks      = {}; state.collapsedParents = new Set();
+        if (state.editorNewFiles) state.editorNewFiles = {};
 
         await renderLogicalSlide(0);
         await generateThumbnails();
@@ -1366,7 +1440,7 @@ export async function loadZipPresentation(file) {
         updateBlankSlideButtons();
         await locateSurveyWidgetSlide();
 
-        state.socket.emit('presentation_loaded', { totalSlides: total, splitView: false, rightSlideIndex: 0, splitRatio: state.splitRatio });
+        state.socket.emit('presentation_loaded', { totalSlides: slideStructure.length, splitView: false, rightSlideIndex: 0, splitRatio: state.splitRatio });
         modal?.close();
         enableControls();
     } catch (err) {

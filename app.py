@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 import time
@@ -44,6 +44,9 @@ presenter_state = {
 
 UPLOAD_FOLDER = os.path.join(BASE_PATH, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+WIDGETS_DIR = os.path.join(BASE_PATH, 'widgets')
+os.makedirs(WIDGETS_DIR, exist_ok=True)
 
 current_presentation = {
     'file': None,
@@ -132,6 +135,22 @@ def service_worker():
 @app.route('/offline.html')
 def offline():
     return send_file(os.path.join(BASE_PATH, 'offline.html'))
+
+
+# ── Built-in widgets ───────────────────────────────────────────────────────────
+
+@app.route('/api/widgets')
+def list_widgets():
+    """Return sorted list of .html filenames from the widgets/ folder."""
+    if not os.path.isdir(WIDGETS_DIR):
+        return jsonify([])
+    names = sorted(f for f in os.listdir(WIDGETS_DIR) if f.lower().endswith('.html'))
+    return jsonify(names)
+
+@app.route('/widgets/<path:filename>')
+def serve_widget(filename):
+    """Serve a widget HTML file from the widgets/ folder."""
+    return send_from_directory(WIDGETS_DIR, filename)
 
 
 # ── Embeddability check ────────────────────────────────────────────────────────

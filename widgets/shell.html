@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shell — Beamer+</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
+
+    :root {
+      --bg:           #ffffff;
+      --bg-subtle:    #f9f9f8;
+      --border:       #e9e9e6;
+      --border-med:   #d4d4cf;
+      --text:         #1a1a18;
+      --text-2:       #6b6b65;
+      --text-3:       #aeaea5;
+      --accent:       #52524e;
+      --radius:       6px;
+      --font-ui:      'DM Sans', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+      /* Terminal semantic colours */
+      --text-err:  #c0392b;
+      --text-ok:   #15803d;
+      --text-dir:  #1d6fa5;
+      --text-user: #15803d;
+      --text-path: #1d6fa5;
+      --selection: #c5e0ff;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.55;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────────── */
+    #toolbar {
+      flex-shrink: 0;
+      height: 42px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 8px;
+      user-select: none;
+    }
+    #toolbar-title {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    #toolbar-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-3);
+    }
+
+    /* ── Output ──────────────────────────────────────────────────────────── */
+    #output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 14px 4px;
+      background: var(--bg-subtle);
+      scroll-behavior: smooth;
+    }
+    #output::-webkit-scrollbar { width: 5px; }
+    #output::-webkit-scrollbar-track { background: transparent; }
+    #output::-webkit-scrollbar-thumb { background: var(--border-med); border-radius: 3px; }
+
+    .out-line {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .err  { color: var(--text-err);  }
+    .ok   { color: var(--text-ok);   }
+    .dim  { color: var(--text-2);    }
+    .dir  { color: var(--text-dir);  font-weight: 500; }
+    .exec { color: var(--text-ok);   }
+
+    .pu { color: var(--text-user); font-weight: 500; }
+    .pp { color: var(--text-path); font-weight: 500; }
+
+    /* ── Input row ───────────────────────────────────────────────────────── */
+    #input-row {
+      display: flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+      gap: 0;
+    }
+    #prompt-prefix { white-space: pre; flex-shrink: 0; }
+    #cmd-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+      caret-color: var(--accent);
+      min-width: 0;
+    }
+    #cmd-input::selection { background: var(--selection); }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span id="toolbar-title">Terminal</span>
+  <span id="toolbar-sub">bash</span>
+</div>
+
+<div id="output"></div>
+
+<div id="input-row">
+  <span id="prompt-prefix"></span>
+  <input id="cmd-input" type="text"
+         autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════════════════
+const S = {
+  user:     'user',
+  hostname: 'beamer',
+  home:     '/home/user',
+  cwd:      '/home/user',
+  env:      {},
+  fs:       {},   // absPath → { type, content, permissions, mtime }
+  hist:     [],
+  histIdx:  -1,
+  histDraft:'',
+  role:     'presenter',
+  widgetId: null,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DOM
+// ═══════════════════════════════════════════════════════════════════════════
+const $output  = document.getElementById('output');
+const $input   = document.getElementById('cmd-input');
+const $prompt  = document.getElementById('prompt-prefix');
+const $title   = document.getElementById('toolbar-sub');
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Output primitives
+// ═══════════════════════════════════════════════════════════════════════════
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// _buf: when non-null, print() pushes here instead of DOM (pipe capture)
+let _buf = null;
+
+function print(text = '', cls = '') {
+  if (_buf !== null) { _buf.push(String(text)); return; }
+  const s = document.createElement('span');
+  s.className = 'out-line' + (cls ? ' ' + cls : '');
+  s.textContent = text;
+  $output.appendChild(s);
+  $output.appendChild(document.createTextNode('\n'));
+}
+
+function printHTML(html) {
+  if (_buf !== null) { _buf.push(html.replace(/<[^>]*>/g, '')); return; }
+  const s = document.createElement('span');
+  s.className = 'out-line';
+  s.innerHTML = html;
+  $output.appendChild(s);
+  $output.appendChild(document.createTextNode('\n'));
+}
+
+function printPrompt(cmdText) {
+  const s = document.createElement('span');
+  s.className = 'out-line';
+  s.innerHTML = buildPromptHTML() + esc(cmdText);
+  $output.appendChild(s);
+  $output.appendChild(document.createTextNode('\n'));
+}
+
+function scrollBottom() {
+  $output.scrollTop = $output.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Prompt
+// ═══════════════════════════════════════════════════════════════════════════
+function dirDisplay() {
+  if (S.cwd === S.home) return '~';
+  if (S.cwd.startsWith(S.home + '/')) return '~' + S.cwd.slice(S.home.length);
+  return S.cwd;
+}
+
+function buildPromptHTML() {
+  return `<span class="pu">${esc(S.user)}@${esc(S.hostname)}</span>` +
+         `<span>:</span>` +
+         `<span class="pp">${esc(dirDisplay())}</span>` +
+         `<span>$ </span>`;
+}
+
+function refreshPrompt() {
+  $prompt.innerHTML = buildPromptHTML();
+  $title.textContent = `${S.user}@${S.hostname}:${dirDisplay()}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Filesystem
+// ═══════════════════════════════════════════════════════════════════════════
+function fsInit(userFs = {}) {
+  const now = new Date();
+  const stdDirs = ['/', '/bin', '/etc', '/tmp', '/usr', '/usr/bin', '/usr/local',
+                   '/home', S.home, '/var', '/var/log', '/proc', '/dev'];
+  for (const p of stdDirs) {
+    if (!S.fs[p]) S.fs[p] = { type: 'dir', permissions: 'drwxr-xr-x', content: null, mtime: now };
+  }
+  for (const [raw, node] of Object.entries(userFs)) {
+    const p = absPath(raw);
+    S.fs[p] = {
+      type:        node.type || 'file',
+      content:     node.content ?? (node.type === 'dir' ? null : ''),
+      permissions: node.permissions || (node.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--'),
+      mtime:       node.mtime ? new Date(node.mtime) : now,
+    };
+  }
+}
+
+/** Resolve a raw path (absolute or relative) to an absolute, normalised path. */
+function absPath(raw) {
+  if (!raw || raw === '~') return S.home;
+  if (raw.startsWith('~/')) raw = S.home + raw.slice(1);
+  let p = raw.startsWith('/') ? raw : S.cwd + '/' + raw;
+  const parts = p.split('/').filter(Boolean);
+  const out = [];
+  for (const part of parts) {
+    if (part === '.') continue;
+    if (part === '..') { out.pop(); }
+    else out.push(part);
+  }
+  return '/' + out.join('/');
+}
+
+function exists(p)  { return p in S.fs; }
+function isDir(p)   { return S.fs[p]?.type === 'dir'; }
+function isFile(p)  { return S.fs[p]?.type === 'file'; }
+function bname(p)   { return p.split('/').filter(Boolean).pop() || '/'; }
+
+function children(dir) {
+  const prefix = dir === '/' ? '/' : dir + '/';
+  return Object.keys(S.fs).filter(p => {
+    if (p === dir) return false;
+    if (!p.startsWith(prefix)) return false;
+    return !p.slice(prefix.length).includes('/');
+  });
+}
+
+function parentExists(p) {
+  const par = p.lastIndexOf('/') > 0 ? p.slice(0, p.lastIndexOf('/')) : '/';
+  return exists(par) && isDir(par);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Arg parsing
+// ═══════════════════════════════════════════════════════════════════════════
+function tokenise(raw) {
+  const tokens = [];
+  let cur = '', inS = false, inD = false;
+  for (const c of raw) {
+    if (c === "'" && !inD) { inS = !inS; continue; }
+    if (c === '"' && !inS) { inD = !inD; continue; }
+    if (c === ' ' && !inS && !inD) { if (cur) { tokens.push(cur); cur = ''; } }
+    else cur += c;
+  }
+  if (cur) tokens.push(cur);
+  return tokens;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(d) {
+  const D = d || new Date();
+  return `${MONTHS[D.getMonth()]} ${String(D.getDate()).padStart(2)} ${String(D.getHours()).padStart(2,'0')}:${String(D.getMinutes()).padStart(2,'0')}`;
+}
+function pad(s, n, right = false) {
+  return right ? String(s).padEnd(n) : String(s).padStart(n);
+}
+function longLine(p, node, displayName) {
+  if (!node) return '';
+  const name = displayName !== undefined ? displayName : bname(p);
+  const perm = node.permissions || (node.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--');
+  const size = isFile(p) ? (node.content || '').length : 4096;
+  return `${perm}  1 ${pad(S.user,8,true)} ${pad(S.user,8,true)} ${pad(size,8)}  ${fmtDate(node.mtime)}  ${name}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Commands
+// ═══════════════════════════════════════════════════════════════════════════
+const CMD = {};
+
+CMD.help = () => {
+  const rows = [
+    ['ls [-la]',          'list directory contents'],
+    ['cd [dir]',          'change directory'],
+    ['pwd',               'print working directory'],
+    ['cat <file...>',     'print file contents'],
+    ['echo [text]',       'print text (supports $VAR)'],
+    ['mkdir [-p] <dir>',  'create directory'],
+    ['touch <file>',      'create / update file'],
+    ['rm [-r] <path>',    'remove file or directory'],
+    ['cp [-r] <src> <dst>','copy file or directory'],
+    ['mv <src> <dst>',    'move / rename'],
+    ['grep [-in] <pat> <file>','search with regex'],
+    ['head [-n N] <file>','first N lines (default 10)'],
+    ['tail [-n N] <file>','last N lines (default 10)'],
+    ['wc [-lwc] <file>',  'line, word, byte count'],
+    ['find [dir] [-name pat] [-type f|d]','find entries'],
+    ['env',               'print environment variables'],
+    ['export VAR=val',    'set environment variable'],
+    ['unset VAR',         'unset environment variable'],
+    ['whoami',            'print current user'],
+    ['hostname',          'print hostname'],
+    ['uname [-a]',        'system information'],
+    ['date',              'current date and time'],
+    ['history',           'command history'],
+    ['clear',             'clear terminal (also Ctrl+L)'],
+    ['which <cmd>',       'locate command'],
+    ['man <cmd>',         'brief manual entry'],
+  ];
+  print('Available commands  (use Tab for completion):', 'dim');
+  for (const [cmd, desc] of rows) {
+    printHTML(`  <span class="pp" style="display:inline-block;min-width:28ch">${esc(cmd)}</span>${esc(desc)}`);
+  }
+};
+
+CMD.pwd = () => print(S.cwd);
+
+CMD.cd = (args) => {
+  const target = absPath(args[0] || S.home);
+  if (!exists(target))   return print(`cd: ${args[0]}: No such file or directory`, 'err');
+  if (!isDir(target))    return print(`cd: ${args[0]}: Not a directory`, 'err');
+  S.cwd = target;
+};
+
+CMD.ls = (args) => {
+  const flags  = args.filter(a => a.startsWith('-')).join('');
+  const showAll = flags.includes('a');
+  const long    = flags.includes('l');
+  const targets = args.filter(a => !a.startsWith('-')).map(a => absPath(a));
+  const sources = targets.length ? targets : [S.cwd];
+
+  for (const src of sources) {
+    if (!exists(src))  { print(`ls: cannot access '${bname(src)}': No such file or directory`, 'err'); continue; }
+    if (isFile(src)) {
+      long ? print(longLine(src, S.fs[src])) : print(bname(src));
+      continue;
+    }
+    if (sources.length > 1) print(src + ':');
+    let kids = children(src).sort();
+    if (showAll) kids = [src, ...(src !== '/' ? [src + '/..'] : []), ...kids];
+    if (long) {
+      print(`total ${kids.length}`);
+      for (const k of kids) {
+        const node = S.fs[k];
+        if (!node) continue;
+        const name = k === src ? '.' : (k === src + '/..' ? '..' : bname(k));
+        if (!showAll && name.startsWith('.')) continue;
+        print(longLine(k, node, name));
+      }
+    } else {
+      const entries = kids
+        .map(k => ({ name: k === src ? '.' : (k === src + '/..' ? '..' : bname(k)), dir: isDir(k) }))
+        .filter(e => showAll || !e.name.startsWith('.'))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (!entries.length) continue;
+      const parts = entries.map(e =>
+        e.dir
+          ? `<span class="dir">${esc(e.name)}</span>`
+          : `<span>${esc(e.name)}</span>`
+      );
+      // Up to 5 columns per row
+      for (let i = 0; i < parts.length; i += 5) {
+        printHTML(parts.slice(i, i + 5).join('   '));
+      }
+    }
+  }
+};
+
+CMD.cat = (args) => {
+  if (!args.length) return print('cat: no file specified', 'err');
+  for (const a of args) {
+    const p = absPath(a);
+    if (!exists(p)) { print(`cat: ${a}: No such file or directory`, 'err'); continue; }
+    if (isDir(p))   { print(`cat: ${a}: Is a directory`, 'err'); continue; }
+    for (const line of (S.fs[p].content || '').split('\n')) print(line);
+  }
+};
+
+CMD.echo = (args) => {
+  const out = args.map(a => a.replace(/\$(\w+)/g, (_, k) => S.env[k] ?? '')).join(' ');
+  print(out);
+};
+
+CMD.mkdir = (args) => {
+  const recursive = args.includes('-p');
+  for (const a of args.filter(a => !a.startsWith('-'))) {
+    const p = absPath(a);
+    if (exists(p)) { if (!recursive) print(`mkdir: cannot create directory '${a}': File exists`, 'err'); continue; }
+    if (recursive) {
+      const parts = p.split('/').filter(Boolean);
+      let cur = '';
+      for (const part of parts) {
+        cur += '/' + part;
+        if (!exists(cur)) S.fs[cur] = { type: 'dir', permissions: 'drwxr-xr-x', content: null, mtime: new Date() };
+      }
+    } else {
+      if (!parentExists(p)) { print(`mkdir: cannot create directory '${a}': No such file or directory`, 'err'); continue; }
+      S.fs[p] = { type: 'dir', permissions: 'drwxr-xr-x', content: null, mtime: new Date() };
+    }
+  }
+};
+
+CMD.touch = (args) => {
+  for (const a of args) {
+    const p = absPath(a);
+    if (isDir(p)) { print(`touch: ${a}: Is a directory`, 'err'); continue; }
+    if (!parentExists(p)) { print(`touch: ${a}: No such file or directory`, 'err'); continue; }
+    if (exists(p)) S.fs[p].mtime = new Date();
+    else S.fs[p] = { type: 'file', permissions: '-rw-r--r--', content: '', mtime: new Date() };
+  }
+};
+
+CMD.rm = (args) => {
+  const recursive = args.some(a => /^-[rfR]*r[rfR]*$/.test(a));
+  const force     = args.some(a => /^-[rfR]*f[rfR]*$/.test(a));
+  for (const a of args.filter(a => !a.startsWith('-'))) {
+    const p = absPath(a);
+    if (!exists(p)) { if (!force) print(`rm: cannot remove '${a}': No such file or directory`, 'err'); continue; }
+    if (isDir(p) && !recursive) { print(`rm: cannot remove '${a}': Is a directory`, 'err'); continue; }
+    const prefix = p + '/';
+    for (const k of Object.keys(S.fs)) {
+      if (k === p || k.startsWith(prefix)) delete S.fs[k];
+    }
+  }
+};
+
+CMD.cp = (args) => {
+  const recursive = args.some(a => a === '-r' || a === '-R' || a === '-a');
+  const operands  = args.filter(a => !a.startsWith('-'));
+  if (operands.length < 2) return print('cp: missing destination file operand', 'err');
+  const dst  = absPath(operands[operands.length - 1]);
+  const srcs = operands.slice(0, -1).map(a => absPath(a));
+  for (const src of srcs) {
+    if (!exists(src)) { print(`cp: cannot stat '${bname(src)}': No such file or directory`, 'err'); continue; }
+    if (isDir(src) && !recursive) { print(`cp: -r not specified; omitting directory '${bname(src)}'`, 'err'); continue; }
+    const actualDst = (exists(dst) && isDir(dst)) ? dst + '/' + bname(src) : dst;
+    if (isDir(src)) {
+      const pfx = src + '/';
+      for (const [k, v] of Object.entries(S.fs)) {
+        if (k === src || k.startsWith(pfx)) {
+          S.fs[actualDst + k.slice(src.length)] = { ...v, mtime: new Date() };
+        }
+      }
+    } else {
+      if (!parentExists(actualDst)) { print(`cp: cannot create '${bname(actualDst)}': No such file or directory`, 'err'); continue; }
+      S.fs[actualDst] = { ...S.fs[src], mtime: new Date() };
+    }
+  }
+};
+
+CMD.mv = (args) => {
+  const operands = args.filter(a => !a.startsWith('-'));
+  if (operands.length < 2) return print('mv: missing destination file operand', 'err');
+  const dst  = absPath(operands[operands.length - 1]);
+  const srcs = operands.slice(0, -1).map(a => absPath(a));
+  for (const src of srcs) {
+    if (!exists(src)) { print(`mv: cannot stat '${bname(src)}': No such file or directory`, 'err'); continue; }
+    const actualDst = (exists(dst) && isDir(dst)) ? dst + '/' + bname(src) : dst;
+    if (!parentExists(actualDst)) { print(`mv: target directory '${bname(actualDst)}' does not exist`, 'err'); continue; }
+    const pfx = src + '/';
+    for (const k of Object.keys(S.fs)) {
+      if (k === src || k.startsWith(pfx)) {
+        S.fs[actualDst + k.slice(src.length)] = S.fs[k];
+        delete S.fs[k];
+      }
+    }
+  }
+};
+
+CMD.grep = (args) => {
+  const flags   = args.filter(a => a.startsWith('-')).join('');
+  const operands = args.filter(a => !a.startsWith('-'));
+  if (!operands.length) return print('grep: usage: grep [options] pattern [file...]', 'err');
+  const [pattern, ...files] = operands;
+  if (!files.length) return print('grep: reading from stdin not supported here', 'dim');
+  const ignoreCase  = flags.includes('i');
+  const lineNum     = flags.includes('n');
+  const invertMatch = flags.includes('v');
+  let re;
+  try { re = new RegExp(pattern, ignoreCase ? 'i' : ''); }
+  catch(e) { return print(`grep: invalid regex — ${e.message}`, 'err'); }
+  for (const f of files) {
+    const p = absPath(f);
+    if (!exists(p)) { print(`grep: ${f}: No such file or directory`, 'err'); continue; }
+    if (isDir(p))   { print(`grep: ${f}: Is a directory`, 'err'); continue; }
+    (S.fs[p].content || '').split('\n').forEach((line, i) => {
+      const match = re.test(line);
+      if (invertMatch ? !match : match) {
+        const pfx = files.length > 1 ? f + ':' : '';
+        const num = lineNum ? (i + 1) + ':' : '';
+        print(pfx + num + line);
+      }
+    });
+  }
+};
+
+CMD.head = (args) => {
+  let n = 10;
+  const files = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-n' && args[i + 1]) { n = Math.max(1, parseInt(args[++i]) || 10); }
+    else if (/^-\d+$/.test(args[i]))     { n = Math.max(1, parseInt(args[i].slice(1))); }
+    else files.push(args[i]);
+  }
+  for (const f of files) {
+    const p = absPath(f);
+    if (!exists(p)) { print(`head: ${f}: No such file or directory`, 'err'); continue; }
+    if (isDir(p))   { print(`head: ${f}: Is a directory`, 'err'); continue; }
+    (S.fs[p].content || '').split('\n').slice(0, n).forEach(l => print(l));
+  }
+};
+
+CMD.tail = (args) => {
+  let n = 10;
+  const files = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-n' && args[i + 1]) { n = Math.max(1, parseInt(args[++i]) || 10); }
+    else if (/^-\d+$/.test(args[i]))     { n = Math.max(1, parseInt(args[i].slice(1))); }
+    else files.push(args[i]);
+  }
+  for (const f of files) {
+    const p = absPath(f);
+    if (!exists(p)) { print(`tail: ${f}: No such file or directory`, 'err'); continue; }
+    if (isDir(p))   { print(`tail: ${f}: Is a directory`, 'err'); continue; }
+    (S.fs[p].content || '').split('\n').slice(-n).forEach(l => print(l));
+  }
+};
+
+CMD.wc = (args) => {
+  const flags = args.filter(a => a.startsWith('-')).join('');
+  const doL = flags.includes('l'); const doW = flags.includes('w'); const doC = flags.includes('c');
+  const all = !doL && !doW && !doC;
+  for (const f of args.filter(a => !a.startsWith('-'))) {
+    const p = absPath(f);
+    if (!exists(p)) { print(`wc: ${f}: No such file or directory`, 'err'); continue; }
+    if (isDir(p))   { print(`wc: ${f}: Is a directory`, 'err'); continue; }
+    const content = S.fs[p].content || '';
+    const lc = content.split('\n').length;
+    const wc = content.trim() ? content.trim().split(/\s+/).length : 0;
+    const cc = content.length;
+    let out = '';
+    if (all || doL) out += pad(lc, 7);
+    if (all || doW) out += pad(wc, 8);
+    if (all || doC) out += pad(cc, 8);
+    print(out + '  ' + f);
+  }
+};
+
+CMD.find = (args) => {
+  let startRaw = '.', namePattern = null, typeFilter = null;
+  let i = 0;
+  if (args[0] && !args[0].startsWith('-')) { startRaw = args[0]; i = 1; }
+  for (; i < args.length; i++) {
+    if (args[i] === '-name' && args[i + 1]) { namePattern = args[++i]; }
+    else if (args[i] === '-type' && args[i + 1]) { typeFilter = args[++i]; }
+  }
+  const start = absPath(startRaw);
+  if (!exists(start)) return print(`find: '${startRaw}': No such file or directory`, 'err');
+  const pfx = start === '/' ? '/' : start + '/';
+  Object.keys(S.fs)
+    .filter(k => k === start || k.startsWith(pfx))
+    .filter(k => !typeFilter || (typeFilter === 'd' ? isDir(k) : !isDir(k)))
+    .filter(k => {
+      if (!namePattern) return true;
+      const glob = '^' + namePattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$';
+      return new RegExp(glob).test(bname(k));
+    })
+    .sort()
+    .forEach(k => print(k));
+};
+
+CMD.env = () => {
+  for (const [k, v] of Object.entries(S.env)) print(`${k}=${v}`);
+};
+
+CMD.export = (args) => {
+  for (const a of args) {
+    const eq = a.indexOf('=');
+    if (eq === -1) continue;
+    S.env[a.slice(0, eq)] = a.slice(eq + 1);
+  }
+};
+
+CMD.unset = (args) => {
+  for (const a of args) delete S.env[a];
+};
+
+CMD.whoami  = ()     => print(S.user);
+CMD.hostname= ()     => print(S.hostname);
+CMD.uname   = (args) => {
+  if (args.includes('-a')) print(`Linux ${S.hostname} 6.1.0-beamer #1 SMP x86_64 GNU/Linux`);
+  else print('Linux');
+};
+CMD.date    = ()     => print(new Date().toString());
+CMD.history = ()     => S.hist.forEach((c, i) => print(`  ${pad(i + 1, 4)}  ${c}`));
+CMD.clear   = ()     => { $output.innerHTML = ''; };
+CMD.cls     = CMD.clear;
+CMD.which   = (args) => {
+  for (const c of args) {
+    if (CMD[c]) print(`/usr/bin/${c}`);
+    else print(`which: ${c}: not found`, 'err');
+  }
+};
+CMD.man = (args) => {
+  const c = args[0];
+  if (!c) return print('man: no command specified', 'err');
+  if (!CMD[c]) return print(`man: no manual entry for ${c}`, 'err');
+  print(`${c.toUpperCase()}(1)`, 'dim');
+  print('');
+  print('NAME');
+  print(`    ${c} — run 'help' for a description`);
+};
+CMD.printf = (args) => {
+  if (!args.length) return;
+  print(args[0].replace(/\\n/g, '\n').replace(/\\t/g, '\t'));
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Pipe execution
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Capture all print() output from fn() into an array of strings. */
+function capture(fn) {
+  const buf = [];
+  const prev = _buf;
+  _buf = buf;
+  try { fn(); } finally { _buf = prev; }
+  return buf;
+}
+
+/**
+ * Apply a single right-hand side pipe segment to captured lines.
+ * Supported: grep, head, tail, wc, sort, uniq, cat (passthrough)
+ */
+function applyPipeStage(lines, cmd, args) {
+  const text = lines.join('\n');
+
+  if (cmd === 'grep') {
+    const flags   = args.filter(a => a.startsWith('-')).join('');
+    const operands = args.filter(a => !a.startsWith('-'));
+    const pattern  = operands[0];
+    if (!pattern) { print('grep: no pattern specified', 'err'); return; }
+    const ignoreCase   = flags.includes('i');
+    const lineNum      = flags.includes('n');
+    const invertMatch  = flags.includes('v');
+    let re;
+    try { re = new RegExp(pattern, ignoreCase ? 'i' : ''); }
+    catch(e) { print(`grep: invalid regex — ${e.message}`, 'err'); return; }
+    lines.forEach((line, i) => {
+      const match = re.test(line);
+      if (invertMatch ? !match : match) print((lineNum ? (i + 1) + ':' : '') + line);
+    });
+  } else if (cmd === 'head') {
+    let n = 10;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '-n' && args[i + 1]) n = parseInt(args[++i]) || 10;
+    }
+    lines.slice(0, n).forEach(l => print(l));
+  } else if (cmd === 'tail') {
+    let n = 10;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '-n' && args[i + 1]) n = parseInt(args[++i]) || 10;
+    }
+    lines.slice(-n).forEach(l => print(l));
+  } else if (cmd === 'wc') {
+    const flags = args.join('');
+    const doL = flags.includes('l'); const doW = flags.includes('w'); const doC = flags.includes('c');
+    const all = !doL && !doW && !doC;
+    const lc = lines.length; const wc = text.trim() ? text.trim().split(/\s+/).length : 0; const cc = text.length;
+    let out = '';
+    if (all || doL) out += pad(lc, 7);
+    if (all || doW) out += pad(wc, 8);
+    if (all || doC) out += pad(cc, 8);
+    print(out);
+  } else if (cmd === 'sort') {
+    const reverse = args.includes('-r');
+    const sorted  = [...lines].sort();
+    if (reverse) sorted.reverse();
+    sorted.forEach(l => print(l));
+  } else if (cmd === 'uniq') {
+    let prev = Symbol();
+    lines.forEach(l => { if (l !== prev) { print(l); prev = l; } });
+  } else if (cmd === 'tr') {
+    // basic tr set1 set2
+    if (args.length >= 2) {
+      const [s1, s2] = args;
+      lines.forEach(l => print([...l].map(c => { const i = s1.indexOf(c); return i >= 0 && i < s2.length ? s2[i] : c; }).join('')));
+    } else lines.forEach(l => print(l));
+  } else {
+    // Unknown right-hand command — just pass through
+    lines.forEach(l => print(l));
+  }
+}
+
+/** Execute a full (possibly piped) command line. */
+function execLine(raw) {
+  raw = raw.trim();
+  if (!raw) return;
+
+  const segments = raw.split('|').map(s => s.trim());
+
+  if (segments.length === 1) {
+    const tokens = tokenise(raw);
+    if (!tokens.length) return;
+    const [cmd, ...args] = tokens;
+    if (CMD[cmd]) CMD[cmd](args);
+    else print(`${cmd}: command not found`, 'err');
+    return;
+  }
+
+  // Multi-segment pipe
+  // Capture first segment
+  const [leftRaw, ...rightSegs] = segments;
+  const leftTokens = tokenise(leftRaw);
+  if (!leftTokens.length) return;
+  const [lCmd, ...lArgs] = leftTokens;
+
+  let lines = capture(() => {
+    if (CMD[lCmd]) CMD[lCmd](lArgs);
+    else print(`${lCmd}: command not found`, 'err');
+  });
+
+  for (const seg of rightSegs) {
+    const rTokens = tokenise(seg);
+    if (!rTokens.length) continue;
+    const [rCmd, ...rArgs] = rTokens;
+    lines = capture(() => applyPipeStage(lines, rCmd, rArgs));
+  }
+
+  // Final output to terminal
+  lines.forEach(l => print(l));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Tab completion
+// ═══════════════════════════════════════════════════════════════════════════
+function tabComplete(val) {
+  const beforeCursor = val;
+  const tokens = tokenise(beforeCursor);
+  const isCmd  = tokens.length === 0 || (tokens.length === 1 && !val.endsWith(' '));
+
+  if (isCmd) {
+    const stub    = tokens[0] || '';
+    const matches = Object.keys(CMD).filter(c => c.startsWith(stub)).sort();
+    if (matches.length === 1) return matches[0] + ' ';
+    if (matches.length > 1 && stub) {
+      print('');
+      printPrompt(val);
+      printHTML(matches.map(esc).join('  '));
+    }
+    return val;
+  }
+
+  // Path completion
+  const lastToken = val.endsWith(' ') ? '' : (tokens[tokens.length - 1] || '');
+  const slashIdx  = lastToken.lastIndexOf('/');
+  const dir  = slashIdx >= 0 ? absPath(lastToken.slice(0, slashIdx) || '/') : S.cwd;
+  const stub = slashIdx >= 0 ? lastToken.slice(slashIdx + 1) : lastToken;
+
+  const kids = children(dir).filter(p => bname(p).startsWith(stub)).sort();
+  if (!kids.length) return val;
+  if (kids.length === 1) {
+    const suffix = isDir(kids[0]) ? '/' : ' ';
+    const completed = (slashIdx >= 0 ? lastToken.slice(0, slashIdx + 1) : '') + bname(kids[0]) + suffix;
+    const base = val.slice(0, val.length - lastToken.length);
+    return base + completed;
+  }
+  print('');
+  printPrompt(val);
+  printHTML(kids.map(p =>
+    isDir(p)
+      ? `<span class="dir">${esc(bname(p))}/</span>`
+      : `<span>${esc(bname(p))}</span>`
+  ).join('   '));
+  return val;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Input handling
+// ═══════════════════════════════════════════════════════════════════════════
+$input.addEventListener('keydown', e => {
+  switch (e.key) {
+    case 'Enter': {
+      const line = $input.value;
+      $input.value = '';
+      printPrompt(line);
+      if (line.trim()) {
+        S.hist.push(line);
+        S.histIdx   = S.hist.length;
+        S.histDraft = '';
+      }
+      execLine(line);
+      refreshPrompt();
+      scrollBottom();
+      break;
+    }
+    case 'ArrowUp':
+      e.preventDefault();
+      if (S.histIdx === S.hist.length) S.histDraft = $input.value;
+      if (S.histIdx > 0) {
+        $input.value = S.hist[--S.histIdx];
+        requestAnimationFrame(() => $input.setSelectionRange($input.value.length, $input.value.length));
+      }
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      if (S.histIdx < S.hist.length) {
+        S.histIdx++;
+        $input.value = S.histIdx === S.hist.length ? S.histDraft : S.hist[S.histIdx];
+        requestAnimationFrame(() => $input.setSelectionRange($input.value.length, $input.value.length));
+      }
+      break;
+    case 'Tab':
+      e.preventDefault();
+      $input.value = tabComplete($input.value);
+      break;
+    case 'l':
+      if (e.ctrlKey) { e.preventDefault(); $output.innerHTML = ''; }
+      break;
+    case 'u':
+      if (e.ctrlKey) { e.preventDefault(); $input.value = ''; }
+      break;
+    case 'a':
+      if (e.ctrlKey) { e.preventDefault(); $input.setSelectionRange(0, 0); }
+      break;
+    case 'e':
+      if (e.ctrlKey) { e.preventDefault(); $input.setSelectionRange($input.value.length, $input.value.length); }
+      break;
+  }
+});
+
+$output.addEventListener('click', () => $input.focus());
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Widget config
+// ═══════════════════════════════════════════════════════════════════════════
+function updateConfig(cfg) {
+  S.widgetId = cfg.id    ?? cfg.widgetId ?? S.widgetId;
+  S.role     = cfg.role  ?? S.role;
+
+  if (cfg.user)     { S.user     = cfg.user; S.home = `/home/${cfg.user}`; S.cwd = S.home; }
+  if (cfg.hostname) S.hostname = cfg.hostname;
+  if (cfg.home)     { S.home = cfg.home; }
+  if (cfg.cwd)      S.cwd = absPath(cfg.cwd);
+  if (cfg.env)      Object.assign(S.env, cfg.env);
+
+  if (cfg.filesystem) {
+    S.fs = {};
+    fsInit(cfg.filesystem);
+    if (!exists(S.cwd)) {
+      S.fs[S.cwd] = { type: 'dir', permissions: 'drwxr-xr-x', content: null, mtime: new Date() };
+    }
+  }
+
+  $output.innerHTML = '';
+  if (cfg.motd) {
+    for (const line of cfg.motd.split('\n')) print(line, 'dim');
+  }
+
+  refreshPrompt();
+  $input.focus();
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
+  if (e.data?.type === 'widget-cleanup') { /* nothing persistent */ }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Boot
+// ═══════════════════════════════════════════════════════════════════════════
+fsInit({});
+refreshPrompt();
+$input.focus();
+</script>
+</body>
+</html>

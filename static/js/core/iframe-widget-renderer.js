@@ -77,18 +77,29 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
         _widgetRegistry.set(w.id, { iframe, container, savedStyle: null });
         _ensureExpandListener();
 
-        // Load widget HTML from zip
+        // Load widget HTML — from server (builtin) or from zip
         try {
-            const widgetPath = resolveWidgetPath(w);
-            const widgetFile = findWidgetFile(zipFile, widgetPath);
-            
-            if (!widgetFile) {
-                console.error(`Widget file not found in zip: ${widgetPath}`);
-                iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#666;">Widget not found: ${widgetPath}</div>`;
-                return;
+            let htmlContent;
+
+            if (w.builtin) {
+                const res = await fetch(`/widgets/${encodeURIComponent(w.type)}.html`);
+                if (!res.ok) throw new Error(`Built-in widget not found: ${w.type} (${res.status})`);
+                htmlContent = await res.text();
+            } else if (w.src && /^blob:/i.test(w.src)) {
+                // Custom widget uploaded this session — load from blob URL
+                const res = await fetch(w.src);
+                if (!res.ok) throw new Error(`Could not load custom widget blob`);
+                htmlContent = await res.text();
+            } else {
+                const widgetPath = resolveWidgetPath(w);
+                const widgetFile = findWidgetFile(zipFile, widgetPath);
+                if (!widgetFile) {
+                    console.error(`Widget file not found in zip: ${widgetPath}`);
+                    iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#666;">Widget not found: ${widgetPath}</div>`;
+                    return;
+                }
+                htmlContent = await widgetFile.async("string");
             }
-            
-            const htmlContent = await widgetFile.async("string");
 
             // Pre-load notebook from zip if widget config specifies one
             let notebookContent = null;
@@ -158,7 +169,7 @@ function resolveWidgetPath(widget) {
     for (const raw of candidates) {
         if (!raw || typeof raw !== 'string') continue;
         const trimmed = raw.trim();
-        if (/^(https?:)?\/\//i.test(trimmed)) continue;
+        if (/^(https?:|blob:)/i.test(trimmed)) continue;
         const clean = raw.split('?')[0].trim().replace(/\\/g, '/').replace(/^\/+/, '');
         if (!clean) continue;
 

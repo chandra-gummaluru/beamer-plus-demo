@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Map — Beamer+</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <style>
+    :root {
+      --bg:        oklch(99% 0.003 80);
+      --bg-2:      oklch(97% 0.005 80);
+      --bg-3:      oklch(94% 0.007 80);
+      --bg-4:      oklch(90% 0.008 80);
+      --ink-1:     oklch(22% 0.012 260);
+      --ink-2:     oklch(38% 0.010 260);
+      --ink-3:     oklch(55% 0.008 260);
+      --ink-4:     oklch(72% 0.006 260);
+      --accent:    oklch(45% 0.005 260);
+      --accent-hi: oklch(32% 0.006 260);
+      --accent-lo: oklch(92% 0.004 260);
+      --ok:        oklch(52% 0.14 160);
+      --err:       oklch(58% 0.18 25);
+      --line:      1px solid oklch(85% 0.005 260);
+      --r:         6px;
+      --font:      "EB Garamond", Georgia, serif;
+      --mono:      ui-monospace, "SF Mono", Menlo, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: var(--font);
+      color: var(--ink-1);
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Override Leaflet zoom controls ── */
+    .leaflet-control-zoom {
+      border: var(--line) !important;
+      border-radius: var(--r) !important;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;
+    }
+
+    .leaflet-control-zoom a {
+      background: var(--bg) !important;
+      color: var(--ink-2) !important;
+      border-bottom: var(--line) !important;
+      font-family: var(--font) !important;
+      font-size: 16px !important;
+      line-height: 26px !important;
+      width: 28px !important;
+      height: 28px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      text-decoration: none !important;
+      transition: background 0.15s, color 0.15s !important;
+    }
+
+    .leaflet-control-zoom a:last-child {
+      border-bottom: none !important;
+    }
+
+    .leaflet-control-zoom a:hover {
+      background: var(--bg-3) !important;
+      color: var(--ink-1) !important;
+    }
+
+    .leaflet-control-zoom-in,
+    .leaflet-control-zoom-out {
+      font-weight: 400 !important;
+    }
+
+    /* ── Custom popup styling ── */
+    .leaflet-popup-content-wrapper {
+      background: var(--bg) !important;
+      border: var(--line) !important;
+      border-radius: var(--r) !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      font-family: var(--font) !important;
+      color: var(--ink-1) !important;
+    }
+
+    .leaflet-popup-content {
+      font-family: var(--font) !important;
+      font-size: 14px !important;
+      color: var(--ink-1) !important;
+      margin: 8px 12px !important;
+    }
+
+    .leaflet-popup-tip {
+      background: var(--bg) !important;
+    }
+
+    .leaflet-popup-close-button {
+      color: var(--ink-3) !important;
+      font-size: 16px !important;
+    }
+
+    .leaflet-popup-close-button:hover {
+      color: var(--ink-1) !important;
+    }
+
+    /* ── Attribution ── */
+    .leaflet-control-attribution {
+      background: rgba(255,255,255,0.75) !important;
+      font-family: var(--mono) !important;
+      font-size: 10px !important;
+      color: var(--ink-3) !important;
+      backdrop-filter: blur(4px);
+    }
+
+    .leaflet-control-attribution a {
+      color: var(--ink-2) !important;
+    }
+
+    /* ── Dot marker ── */
+    .dot-marker {
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.85);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    let map          = null;
+    let socket       = null;
+    let markerLayers = [];
+    let overlayLayers = [];
+    let cfg          = {};
+    let emitTimer    = null;
+    let isViewer     = false;
+
+    const DEFAULT_CENTER = [51.505, -0.09];
+    const DEFAULT_ZOOM   = 13;
+
+    // ── Map initialisation ───────────────────────────────────────────────────
+
+    function initMap(center, zoom, tileUrl) {
+      if (map) return; // already initialised
+
+      map = L.map('map', {
+        center:         center,
+        zoom:           zoom,
+        zoomControl:    true,
+        attributionControl: true,
+      });
+
+      const tile = tileUrl || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      L.tileLayer(tile, {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      // Presenter: emit state on move (debounced 300 ms)
+      map.on('moveend', () => {
+        if (isViewer) return;
+        clearTimeout(emitTimer);
+        emitTimer = setTimeout(() => {
+          if (!socket) return;
+          const c = map.getCenter();
+          socket.emit('widget_state', {
+            widgetId: cfg.widgetId,
+            state: {
+              center: [c.lat, c.lng],
+              zoom: map.getZoom(),
+            },
+          });
+        }, 300);
+      });
+    }
+
+    // ── Markers ───────────────────────────────────────────────────────────────
+
+    function makeDotIcon(color) {
+      const c = color || '#666';
+      return L.divIcon({
+        className: '',
+        html: `<div class="dot-marker" style="width:10px;height:10px;background:${c};"></div>`,
+        iconSize:   [10, 10],
+        iconAnchor: [5, 5],
+        popupAnchor: [0, -8],
+      });
+    }
+
+    function clearMarkers() {
+      markerLayers.forEach(l => map.removeLayer(l));
+      markerLayers = [];
+    }
+
+    function renderMarkers(markers) {
+      if (!map || !markers) return;
+      clearMarkers();
+      markers.forEach(m => {
+        if (m.lat == null || m.lng == null) return;
+        const icon   = makeDotIcon(m.color);
+        const marker = L.marker([m.lat, m.lng], { icon });
+        if (m.label) marker.bindPopup(String(m.label));
+        marker.addTo(map);
+        markerLayers.push(marker);
+      });
+    }
+
+    // ── Overlays ──────────────────────────────────────────────────────────────
+
+    function clearOverlays() {
+      overlayLayers.forEach(l => map.removeLayer(l));
+      overlayLayers = [];
+    }
+
+    function renderOverlays(overlays) {
+      if (!map || !overlays) return;
+      clearOverlays();
+      overlays.forEach(o => {
+        const fillColor   = o.color   || '#3388ff';
+        const fillOpacity = o.opacity != null ? o.opacity : 0.25;
+        const strokeColor = o.color   || '#3388ff';
+
+        let layer = null;
+
+        if (o.type === 'circle' && o.coords) {
+          // coords: { lat, lng, radius } (radius in metres)
+          layer = L.circle([o.coords.lat, o.coords.lng], {
+            radius:      o.coords.radius || 500,
+            color:       strokeColor,
+            fillColor,
+            fillOpacity,
+            weight:      1.5,
+          });
+        } else if (o.type === 'rect' && o.coords) {
+          // coords: [[lat1,lng1],[lat2,lng2]]
+          layer = L.rectangle(o.coords, {
+            color: strokeColor,
+            fillColor,
+            fillOpacity,
+            weight: 1.5,
+          });
+        } else if (o.type === 'polygon' && o.coords) {
+          // coords: [[lat,lng], ...]
+          layer = L.polygon(o.coords, {
+            color: strokeColor,
+            fillColor,
+            fillOpacity,
+            weight: 1.5,
+          });
+        }
+
+        if (layer) {
+          if (o.label) layer.bindPopup(String(o.label));
+          layer.addTo(map);
+          overlayLayers.push(layer);
+        }
+      });
+    }
+
+    // ── Socket ────────────────────────────────────────────────────────────────
+
+    function connectSocket(url, widgetId, role) {
+      if (socket) {
+        socket.disconnect();
+        socket = null;
+      }
+      if (!url) return;
+
+      socket = io(url, { transports: ['websocket', 'polling'] });
+
+      socket.on('connect', () => {
+        socket.emit('join_widget', { widgetId });
+      });
+
+      // Viewer: receive and apply map state
+      socket.on('widget_state', data => {
+        if (!map || !data) return;
+        if (data.widgetId !== widgetId) return;
+        const state = data.state || {};
+        if (state.center && state.zoom != null) {
+          map.setView(state.center, state.zoom, { animate: true });
+        }
+      });
+
+      socket.on('connect_error', () => { /* silent */ });
+    }
+
+    // ── Viewer mode ───────────────────────────────────────────────────────────
+
+    function applyViewerMode() {
+      if (!map) return;
+      if (isViewer) {
+        map.dragging.disable();
+        map.touchZoom.disable();
+        map.doubleClickZoom.disable();
+        map.scrollWheelZoom.disable();
+        map.boxZoom.disable();
+        map.keyboard.disable();
+        if (map.tap) map.tap.disable();
+        // Hide zoom control for viewers
+        map.zoomControl.remove();
+      }
+    }
+
+    // ── Config ────────────────────────────────────────────────────────────────
+
+    function updateConfig(newCfg) {
+      const prev = cfg;
+      cfg = { ...cfg, ...newCfg };
+      cfg.widgetId = cfg.id || cfg.widgetId || 'map-default';
+
+      const center   = cfg.center || DEFAULT_CENTER;
+      const zoom     = cfg.zoom   != null ? cfg.zoom : DEFAULT_ZOOM;
+      const tileUrl  = cfg.tileUrl || null;
+
+      isViewer = (cfg.role === 'viewer');
+
+      if (!map) {
+        initMap(center, zoom, tileUrl);
+        applyViewerMode();
+      } else {
+        // Update tile layer if tileUrl changed
+        if (tileUrl && tileUrl !== prev.tileUrl) {
+          map.eachLayer(l => { if (l instanceof L.TileLayer) map.removeLayer(l); });
+          L.tileLayer(tileUrl, {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19,
+          }).addTo(map);
+        }
+
+        // Fly to new center/zoom if changed
+        const centerChanged = JSON.stringify(cfg.center) !== JSON.stringify(prev.center);
+        const zoomChanged   = cfg.zoom !== prev.zoom;
+        if (centerChanged || zoomChanged) {
+          map.setView(center, zoom, { animate: true });
+        }
+      }
+
+      // Always (re)render markers and overlays
+      renderMarkers(cfg.markers  || []);
+      renderOverlays(cfg.overlays || []);
+
+      // Socket
+      if (cfg.socketUrl && (cfg.socketUrl !== prev.socketUrl || !socket)) {
+        connectSocket(cfg.socketUrl, cfg.widgetId, cfg.role);
+      }
+
+      // Trigger a size invalidation (iframe resize safety)
+      if (map) setTimeout(() => map.invalidateSize(), 50);
+    }
+
+    // ── postMessage API ───────────────────────────────────────────────────────
+
+    let destroy = null;
+
+    window.addEventListener('message', e => {
+      if (e.data?.type === 'widget-config') updateConfig(e.data.config);
+      if (e.data?.type === 'widget-cleanup') destroy?.();
+    });
+
+    destroy = () => {
+      if (socket) { socket.disconnect(); socket = null; }
+      if (map)    { map.remove(); map = null; }
+    };
+
+    // ── Default initialisation ────────────────────────────────────────────────
+    // Initialise with defaults so the map renders even without a config message.
+    updateConfig({
+      center: DEFAULT_CENTER,
+      zoom:   DEFAULT_ZOOM,
+    });
+  </script>
+</body>
+</html>

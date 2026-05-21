@@ -14,6 +14,7 @@
 
 @import url('./features/slides.css');
 @import url('./features/annotations.css');
+@import url('./editor.css');
 @import url('./features/top-bar.css');
 @import url('./features/splash.css');
 @import url('./features/shortcuts.css');

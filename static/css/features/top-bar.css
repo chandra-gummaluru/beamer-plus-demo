@@ -1,29 +1,21 @@
 /* ============================================================
-    Top-right controls — Upload, Screen Share, Timer
-   Glass pill cluster at top-right
+    Top-right controls — Upload, Save, Focus
    ============================================================ */
 
 #top-right-controls {
     position: fixed;
     top: var(--sp-3);
-    right: var(--sp-3);
+    right: calc(var(--sp-3) + var(--hit-min) + var(--sp-2));
     z-index: 230;
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: var(--sp-2);
-    padding: var(--sp-1);
-    background: var(--glass-bg);
-    backdrop-filter: blur(12px) saturate(1.4);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    border: var(--line-hairline);
-    border-radius: var(--r-pill);
-    box-shadow: var(--shadow-2);
 }
 
 #top-right-controls #upload-container,
-#top-right-controls #screen-share-container,
-#top-right-controls #timer-container {
+#top-right-controls #save-container,
+#top-right-controls #screen-share-container {
     display: flex;
     align-items: center;
 }
@@ -31,21 +23,9 @@
 #top-right-controls .btn {
     width: var(--hit-min);
     min-width: var(--hit-min);
-    height: var(--hit-min);
+    height: 34px;
     padding: 0;
-    font-size: var(--fs-base);
-    line-height: 1;
-    background: transparent;
-    border-color: transparent;
-    border-radius: var(--r-pill);
 }
-
-#top-right-controls .btn:hover {
-    background: var(--surface-cream-2);
-    border-color: oklch(82% 0.005 260);
-}
-
-#top-right-controls .btn i { font-size: 16px; }
 
 /* Screen-sharing active */
 #top-right-controls .btn.is-sharing {
@@ -64,9 +44,10 @@ body.split-view-active #top-right-controls {
 /* ── Focus mode — hide all chrome, show only the slide stage ── */
 body.focus-mode #slide-navigator,
 body.focus-mode #floating-annotation-toolbar,
+body.focus-mode #edit-mode-container,
 body.focus-mode #top-right-controls #upload-container,
-body.focus-mode #top-right-controls #screen-share-container,
-body.focus-mode #top-right-controls #timer-container {
+body.focus-mode #top-right-controls #save-container,
+body.focus-mode #top-right-controls #screen-share-container {
     display: none !important;
 }
 
@@ -80,17 +61,14 @@ body.focus-mode #main-content {
     width: 100vw !important;
 }
 
-body.focus-mode #top-right-controls {
-    /* keep only the exit button visible */
-    background: transparent;
-    border-color: transparent;
-    box-shadow: none;
-    padding: 0;
-}
 
 @media (max-width: 1024px) {
-    #top-right-controls {
+    #edit-mode-container {
         top: var(--sp-2);
         right: var(--sp-2);
+    }
+    #top-right-controls {
+        top: var(--sp-2);
+        right: calc(var(--sp-2) + var(--hit-min) + var(--sp-2));
     }
 }

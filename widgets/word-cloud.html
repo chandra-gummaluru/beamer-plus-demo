@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Cloud — Beamer+</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+<script>
+  (function () {
+    var s = document.createElement('script');
+    s.src = '/socket.io/socket.io.js';
+    s.onerror = function () { window.__noSocketIO = true; };
+    document.head.appendChild(s);
+  })();
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
+
+:root {
+  --bg:         #ffffff;
+  --bg-subtle:  #f9f9f8;
+  --border:     #e9e9e6;
+  --border-med: #d4d4cf;
+  --text:       #1a1a18;
+  --text-2:     #6b6b65;
+  --text-3:     #aeaea5;
+  --accent:     #52524e;
+  --accent-bg:  #f0f0ee;
+  --green:      #15803d;
+  --radius:     6px;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+  --font-ui:    'DM Sans', system-ui, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); background: var(--bg); color: var(--text); font-size: 13px; }
+#shell { display: flex; flex-direction: column; height: 100%; }
+
+/* ── Toolbar ─────────────────────────────────────────── */
+#toolbar {
+  flex-shrink: 0; height: 42px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 14px; gap: 6px;
+}
+.toolbar-title { font-size: 13px; font-weight: 500; flex-shrink: 0; }
+.sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+#resp-count { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); flex-shrink: 0; }
+#resp-count strong { color: var(--text-2); font-weight: 500; }
+.spacer { flex: 1; }
+#close-btn {
+  height: 28px; padding: 0 12px;
+  border: 1px solid var(--text); border-radius: var(--radius);
+  background: var(--text); color: #fff;
+  font-family: var(--font-ui); font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; display: none;
+  transition: background 0.1s;
+}
+#close-btn:hover { background: #2d2d2a; }
+
+/* ── Collect view ────────────────────────────────────── */
+#collect-view { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+
+#question-area {
+  flex-shrink: 0; padding: 22px 32px 16px;
+  border-bottom: 1px solid var(--border); text-align: center;
+}
+#question-text {
+  font-size: clamp(16px, 3vw, 24px);
+  font-weight: 500; line-height: 1.35; color: var(--text);
+}
+
+#qr-area {
+  flex: 1; display: flex;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 12px 24px 10%;
+}
+.scan-hint {
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); user-select: none;
+}
+#qrcode-wrap {
+  padding: 10px; background: white;
+  border: 1px solid var(--border); border-radius: var(--radius); line-height: 0;
+}
+#join-url {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  text-align: center; max-width: 420px; word-break: break-all;
+  cursor: pointer; padding: 3px 8px; border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+#join-url:hover { background: var(--bg-subtle); color: var(--text-2); }
+
+/* ── Cloud view ──────────────────────────────────────── */
+#cloud-view {
+  flex: 1; display: none; position: relative; overflow: hidden;
+}
+#cloud-canvas { display: block; width: 100%; height: 100%; }
+#cloud-label {
+  position: absolute; bottom: 10px; left: 0; right: 0;
+  text-align: center; font-size: 12px; color: var(--text-3);
+  font-weight: 500; pointer-events: none;
+}
+#cloud-placeholder {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--text-3); font-style: italic; pointer-events: none;
+}
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <div id="toolbar">
+    <span class="toolbar-title">Word Cloud</span>
+    <div class="sep"></div>
+    <span id="resp-count"><strong id="resp-n">0</strong> responses</span>
+    <div class="spacer"></div>
+    <button id="close-btn" onclick="showCloud()">Close &amp; Review →</button>
+  </div>
+
+  <div id="collect-view">
+    <div id="question-area"><div id="question-text"></div></div>
+    <div id="qr-area">
+      <div class="scan-hint">Scan to respond</div>
+      <div id="qrcode-wrap"><div id="qrcode"></div></div>
+      <div id="join-url" onclick="copyUrl()" title="Click to copy"></div>
+    </div>
+  </div>
+
+  <div id="cloud-view">
+    <canvas id="cloud-canvas"></canvas>
+    <div id="cloud-label"></div>
+    <div id="cloud-placeholder">Waiting for responses…</div>
+  </div>
+
+</div>
+<script>
+// No IIFE — onclick handlers need global scope
+
+if (performance.getEntriesByType('navigation')[0]?.type === 'reload') sessionStorage.clear();
+
+const PALETTE = ['#1a1a18','#2d2d2a','#3d3d3a','#52524e','#6b6b65','#4a4a46'];
+const STOP = new Set([
+  'the','a','an','is','are','was','were','be','been','being','it','in','on',
+  'at','to','of','and','or','but','for','with','this','that','these','those',
+  'i','we','you','he','she','they','my','your','our','its','not','so','if',
+  'as','by','do','did','has','have','had','will','would','can','could',
+  'should','may','might','shall','very','just','also','up','out','about',
+  'than','then','there','here','what','which','who','how','when','where',
+]);
+
+let _cfg = {}, _socket = null, _role = 'presenter';
+let _widgetId = 'word-cloud', _server = '', _pubBase = '';
+let _phase = 'idle', _syncTimer = null, _renderPending = false;
+
+let _surveyId = sessionStorage.getItem('wc_id')    || null;
+let _freq     = JSON.parse(sessionStorage.getItem('wc_freq')  || '{}');
+let _color    = JSON.parse(sessionStorage.getItem('wc_color') || '{}');
+let _question = sessionStorage.getItem('wc_q')     || '';
+let _cloudUrl = sessionStorage.getItem('wc_url')   || '';
+let _mode     = parseInt(sessionStorage.getItem('wc_mode')  || '1');
+let _total    = parseInt(sessionStorage.getItem('wc_total') || '0');
+let _lastSync = parseInt(sessionStorage.getItem('wc_sync')  || '0');
+
+function _save() {
+  sessionStorage.setItem('wc_freq',  JSON.stringify(_freq));
+  sessionStorage.setItem('wc_color', JSON.stringify(_color));
+  sessionStorage.setItem('wc_total', String(_total));
+  sessionStorage.setItem('wc_sync',  String(_lastSync));
+}
+
+function _setTotal(n) {
+  _total = n;
+  document.getElementById('resp-n').textContent = n;
+}
+
+function _showPhase(p) {
+  _phase = p;
+  document.getElementById('collect-view').style.display = p === 'collect' ? 'flex'  : 'none';
+  document.getElementById('cloud-view').style.display   = p === 'cloud'   ? 'block' : 'none';
+  const btn = document.getElementById('close-btn');
+  btn.style.display = (p === 'collect' && _role === 'presenter') ? 'block' : 'none';
+  if (p === 'cloud') _scheduleRender();
+}
+
+function _initSocket() {
+  if (window.__noSocketIO || typeof io === 'undefined') return;
+  if (_socket) return;
+  const url = _cfg.socketUrl || _cfg.serverUrl || _server;
+  if (!url) return;
+  try {
+    _socket = io(url);
+    _socket.on('connect', () => { if (_role === 'presenter') _socket.emit('join_presenter'); });
+    _socket.on('widget_event', ({ id, type, payload }) => {
+      if (id !== _widgetId) return;
+      if (type === 'state') _applyRemoteState(payload);
+    });
+    _socket.on('survey_response', data => {
+      if (_role !== 'presenter' || data.survey_id !== _surveyId) return;
+      _ingestText(data.response?.text || data.text || '');
+      _setTotal(data.total); _lastSync = _total; _save(); _emitState();
+    });
+  } catch (e) { console.warn('Socket init failed:', e); }
+}
+
+function _emitState() {
+  if (!_socket || _role !== 'presenter') return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    _socket.emit('widget_event', {
+      id: _widgetId, type: 'state',
+      payload: { phase: _phase, question: _question, cloudUrl: _cloudUrl,
+        inputMode: _mode, totalResp: _total, wordFreq: _freq, wordColor: _color, surveyId: _surveyId },
+    });
+  }, 100);
+}
+
+function _applyRemoteState(s) {
+  if (!s || s.phase === 'setup') return;
+  _question = s.question  || _question;
+  _cloudUrl = s.cloudUrl  || _cloudUrl;
+  _mode     = s.inputMode || _mode;
+  _freq     = s.wordFreq  || {};
+  _color    = s.wordColor || {};
+  _surveyId = s.surveyId  || _surveyId;
+  _setTotal(s.totalResp || 0); _save();
+  document.getElementById('question-text').textContent = _question;
+  document.getElementById('cloud-label').textContent   = _question;
+  if (s.phase === 'cloud') { _showPhase('cloud'); }
+  else { _buildQR(_absUrl(_cloudUrl)); _showPhase('collect'); }
+}
+
+function _absUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  return (_pubBase || _server) + (path.startsWith('/') ? path : '/' + path);
+}
+
+function _buildQR(url) {
+  document.getElementById('join-url').textContent = url || '';
+  const el = document.getElementById('qrcode'); el.innerHTML = '';
+  if (url) new QRCode(el, { text: url, width: 180, height: 180, colorDark: '#1a1a18', colorLight: '#ffffff' });
+}
+
+function copyUrl() {
+  navigator.clipboard?.writeText(document.getElementById('join-url').textContent).catch(() => {});
+}
+
+async function doLaunch() {
+  if (!_question) return;
+  try {
+    const res  = await fetch(`${_server}/api/survey/create`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: _question, model: null, num_summaries: 0, is_wordcloud: true }),
+    });
+    const data = await res.json();
+    _surveyId = data.survey_id; _cloudUrl = data.url;
+    sessionStorage.setItem('wc_id', _surveyId);
+    sessionStorage.setItem('wc_url', _cloudUrl);
+    _freq = {}; _color = {}; _setTotal(0); _save();
+    _buildQR(_absUrl(_cloudUrl));
+    _showPhase('collect'); _initSocket(); _emitState();
+  } catch (e) { console.error('doLaunch:', e); }
+}
+
+function showCloud() {
+  _showPhase('cloud'); _emitState();
+  window.addEventListener('resize', _scheduleRender);
+}
+
+function _ingestText(text) {
+  if (!text) return;
+  const tokens = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/)
+    .filter(t => t.length > 1 && !STOP.has(t));
+  const phrase = tokens.slice(0, _mode).join(' ');
+  if (!phrase) return;
+  _freq[phrase]  = (_freq[phrase]  || 0) + 1;
+  _color[phrase] = _color[phrase] || PALETTE[Math.floor(Math.random() * PALETTE.length)];
+  if (_phase === 'cloud') _scheduleRender();
+}
+
+function _scheduleRender() {
+  if (_renderPending) return;
+  _renderPending = true;
+  requestAnimationFrame(() => {
+    _renderPending = false;
+    const c = document.getElementById('cloud-view');
+    if (c.offsetWidth === 0 || c.offsetHeight === 0) { _scheduleRender(); return; }
+    _renderCloud();
+  });
+}
+
+function _renderCloud() {
+  const entries = Object.entries(_freq);
+  const c       = document.getElementById('cloud-view');
+  const canvas  = document.getElementById('cloud-canvas');
+  canvas.width  = c.clientWidth; canvas.height = c.clientHeight;
+  const holder  = document.getElementById('cloud-placeholder');
+  if (!entries.length) { holder.style.display = 'flex'; return; }
+  holder.style.display = 'none';
+  const maxF = Math.max(...entries.map(([, n]) => n));
+  WordCloud(canvas, {
+    list: entries.sort((a, b) => b[1] - a[1])
+      .map(([w, n]) => [w, Math.round(22 + (n / maxF) * Math.min(canvas.height * 0.18, 90))]),
+    fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: '600',
+    color: w => _color[w] || PALETTE[0], rotateRatio: 0,
+    gridSize: Math.max(4, Math.round(8 * canvas.width / 1024)),
+    drawOutOfBound: false, shrinkToFit: true, backgroundColor: '#ffffff',
+  });
+}
+
+async function _catchUp() {
+  if (!_surveyId) return;
+  try {
+    const res  = await fetch(`${_server}/api/survey/${_surveyId}/responses?after=${_lastSync}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    _setTotal(data.total ?? _total);
+    (data.responses || []).forEach(r => _ingestText(r.text || ''));
+    _lastSync = _total; _save();
+  } catch (e) { console.warn('catchUp:', e); }
+}
+
+function _deriveServer() {
+  try { return window.parent.location.origin; } catch (_) { return window.location.origin; }
+}
+
+async function _applyConfig(c) {
+  _cfg = c || {}; _role = _cfg.role || 'presenter';
+  _widgetId = _cfg.id || _cfg.widgetId || _widgetId;
+  _server   = _cfg.socketUrl || _cfg.serverUrl || _deriveServer();
+  _pubBase  = _cfg.publicBaseUrl || _server;
+  _mode     = parseInt(_cfg.mode || '1');
+
+  if (_role === 'viewer') { _showPhase('collect'); _initSocket(); return; }
+
+  if (_cfg.question) {
+    _question = _question || _cfg.question;
+    document.getElementById('question-text').textContent = _question;
+    document.getElementById('cloud-label').textContent   = _question;
+    sessionStorage.setItem('wc_q', _question);
+  }
+  _initSocket();
+  if (_surveyId) { _buildQR(_absUrl(_cloudUrl)); _showPhase('collect'); await _catchUp(); _emitState(); }
+  else if (_cfg.question && _cfg.autoStart !== false) { await doLaunch(); }
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'widget-config')  _applyConfig(e.data.config);
+  if (e.data?.type === 'widget-cleanup') { _socket?.disconnect(); _socket = null; }
+});
+
+window.showCloud = showCloud;
+window.copyUrl   = copyUrl;
+
+if (window.WIDGET_CONFIG) {
+  _applyConfig(window.WIDGET_CONFIG);
+} else if (_surveyId) {
+  _server = _deriveServer();
+  document.getElementById('question-text').textContent = _question;
+  document.getElementById('cloud-label').textContent   = _question;
+  _buildQR(_absUrl(_cloudUrl)); _showPhase('collect');
+  setTimeout(() => { _initSocket(); _catchUp(); }, 60);
+}
+</script>
+</body>
+</html>
