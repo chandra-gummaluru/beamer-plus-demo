@@ -1272,6 +1272,16 @@ addExpression('sin(x)', null, false);
 addExpression('', null, false);
 
 applyConfig(CFG);
+
+// ── Beamer+ state persistence protocol ──────────────────────────────────────
+window.addEventListener('message', function(e) {
+  if (!e.data) return;
+  if (e.data.type === 'widget-get-state') {
+    window.parent.postMessage({ type: 'widget-state', widgetId: WIDGET_ID, state: getState() }, '*');
+  } else if (e.data.type === 'widget-set-state' && e.data.state != null) {
+    applyState(e.data.state);
+  }
+});
 </script>
 </body>
 </html>

@@ -104,6 +104,31 @@
 
 .custom-modal-btn-cancel { color: var(--ink-2); }
 
+/* ---------- Top-right X close button ---------- */
+.custom-modal-x-btn {
+    position: absolute;
+    top: var(--sp-3);
+    right: var(--sp-3);
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    color: var(--ink-3);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+}
+.custom-modal-x-btn:hover {
+    background: var(--surface-cream-2);
+    border-color: oklch(82% 0.005 260);
+    color: var(--ink-1);
+}
+
 /* ---------- Pen settings inside modal ---------- */
 .custom-modal-pen-settings {
     display: flex;

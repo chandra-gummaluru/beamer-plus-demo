@@ -7,7 +7,8 @@ import { initButtons } from './core/button.js';
 import { initToggle } from './core/toggle.js';
 import { initModal } from './core/modal.js';
 import { Canvas } from './core/canvas.js';
-import { renderWidgets, cleanupWidgets, updateWidgetPositions } from './core/iframe-widget-renderer.js';
+import { renderWidgets, cleanupWidgets, updateWidgetPositions,
+         parkWidgets, discardParkedWidgets, clearAllParked, setWidgetStates } from './core/iframe-widget-renderer.js';
 
 import { initToolbar } from './annotations/toolbar.js';
 import { initPenSlots } from './annotations/pen-slots.js';
@@ -396,12 +397,9 @@ function applyTheme(theme) {
     const html = document.documentElement;
     if (theme === 'dark') {
         html.setAttribute('data-theme', 'dark');
-    } else if (theme === 'light') {
-        html.removeAttribute('data-theme');
     } else {
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches)
-            html.setAttribute('data-theme', 'dark');
-        else html.removeAttribute('data-theme');
+        // 'light' or any legacy value (e.g. 'system') → light
+        html.removeAttribute('data-theme');
     }
 }
 
@@ -429,7 +427,7 @@ function _updateShortcutConflicts(scGrid, sc, hintEl) {
     });
     if (hintEl) {
         if (hasConflicts) {
-            hintEl.textContent = '⚠ Duplicate keys — resolve conflicts before closing.';
+            hintEl.textContent = 'Duplicate keys: resolve all conflicts to close.';
             hintEl.classList.add('is-error');
         } else {
             hintEl.textContent = 'Click a key to rebind it.';
@@ -438,8 +436,13 @@ function _updateShortcutConflicts(scGrid, sc, hintEl) {
     }
 }
 
+const _SUN_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>`;
+const _MOON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+
 function showSettingsModal() {
-    const currentTheme = localStorage.getItem('beamer-theme') || 'system';
+    const rawTheme = localStorage.getItem('beamer-theme') || 'light';
+    // Treat legacy 'system' as 'light'
+    const savedTheme = (rawTheme === 'dark') ? 'dark' : 'light';
     const sc = loadShortcuts();
 
     const body = document.createElement('div');
@@ -447,18 +450,19 @@ function showSettingsModal() {
 
     // ── Theme ──────────────────────────────────────────────────
     const themeLabel = document.createElement('div');
-    themeLabel.className = 'settings-label';
+    themeLabel.className = 'settings-label settings-label-center';
     themeLabel.textContent = 'Theme';
     body.appendChild(themeLabel);
 
     const themeRow = document.createElement('div');
     themeRow.className = 'settings-theme-row';
-    ['Light', 'Dark', 'System'].forEach(t => {
+    [{ value: 'light', label: 'Light', svg: _SUN_SVG }, { value: 'dark', label: 'Dark', svg: _MOON_SVG }].forEach(({ value, label, svg }) => {
         const btn = document.createElement('button');
-        btn.className = 'btn' + (currentTheme === t.toLowerCase() ? ' btn_selected' : '');
-        btn.textContent = t;
+        btn.className = 'btn settings-theme-btn' + (savedTheme === value ? ' btn_selected' : '');
+        btn.title = label;
+        btn.innerHTML = svg;
         btn.addEventListener('click', () => {
-            applyTheme(t.toLowerCase());
+            applyTheme(value);
             themeRow.querySelectorAll('.btn').forEach(b => b.classList.remove('btn_selected'));
             btn.classList.add('btn_selected');
         });
@@ -471,14 +475,32 @@ function showSettingsModal() {
     scSection.className = 'settings-section';
 
     const scLabel = document.createElement('div');
-    scLabel.className = 'settings-label';
+    scLabel.className = 'settings-label settings-label-center';
     scLabel.textContent = 'Keyboard Shortcuts';
     scSection.appendChild(scLabel);
+
+    // Hint + reset on one line
+    const scHintRow = document.createElement('div');
+    scHintRow.className = 'settings-hint-row';
 
     const scHint = document.createElement('p');
     scHint.className = 'settings-shortcut-hint';
     scHint.textContent = 'Click a key to rebind it.';
-    scSection.appendChild(scHint);
+    scHintRow.appendChild(scHint);
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'settings-shortcuts-reset-btn';
+    resetBtn.textContent = 'Reset defaults';
+    resetBtn.addEventListener('click', () => {
+        Object.assign(sc, DEFAULT_SHORTCUTS);
+        saveShortcuts(sc);
+        scGrid.querySelectorAll('.shortcut-capture').forEach((inp, i) => {
+            inp.value = DEFAULT_SHORTCUTS[Object.keys(SHORTCUT_LABELS)[i]] ?? '';
+        });
+        _updateShortcutConflicts(scGrid, sc, scHint);
+    });
+    scHintRow.appendChild(resetBtn);
+    scSection.appendChild(scHintRow);
 
     const scGrid = document.createElement('div');
     scGrid.className = 'settings-shortcuts-grid';
@@ -524,21 +546,6 @@ function showSettingsModal() {
     });
     scSection.appendChild(scGrid);
 
-    const resetRow = document.createElement('div');
-    resetRow.className = 'settings-shortcuts-reset';
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'btn';
-    resetBtn.textContent = 'Reset defaults';
-    resetBtn.addEventListener('click', () => {
-        Object.assign(sc, DEFAULT_SHORTCUTS);
-        saveShortcuts(sc);
-        scGrid.querySelectorAll('.shortcut-capture').forEach((inp, i) => {
-            inp.value = DEFAULT_SHORTCUTS[Object.keys(SHORTCUT_LABELS)[i]] ?? '';
-        });
-        _updateShortcutConflicts(scGrid, sc, scHint);
-    });
-    resetRow.appendChild(resetBtn);
-    scSection.appendChild(resetRow);
     body.appendChild(scSection);
 
     window.BeamerModal?.show({
@@ -546,18 +553,25 @@ function showSettingsModal() {
         title: 'Settings',
         body,
         canClose: () => !_hasShortcutConflicts(sc),
-        buttons: [{
-            label: 'Close',
-            kind: 'cancel',
-            guard: () => !_hasShortcutConflicts(sc),
-            onClick: () => saveShortcuts(sc),
-        }],
+        buttons: [
+            {
+                label: 'Cancel',
+                kind: 'cancel',
+                onClick: () => applyTheme(savedTheme),
+            },
+            {
+                label: 'Save',
+                kind: 'ok',
+                guard: () => !_hasShortcutConflicts(sc),
+                onClick: () => saveShortcuts(sc),
+            },
+        ],
     });
 }
 
 function wireSettingsBtn() {
     document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
-    applyTheme(localStorage.getItem('beamer-theme') || 'system');
+    applyTheme(localStorage.getItem('beamer-theme') || 'light');
 }
 
 /* ─── nav prev/next buttons ───────────────────────────────────── */
@@ -581,13 +595,16 @@ function toggleBookmark(i) {
 }
 
 /* ─── focus mode ─────────────────────────────────────────────── */
+const _FOCUS_SVG_EXPAND   = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+const _FOCUS_SVG_COMPRESS = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`;
+
 function wireFocusMode() {
     const btn = document.getElementById('focus-mode-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
         const active = document.body.classList.toggle('focus-mode');
         btn.title = active ? 'Exit focus mode' : 'Focus mode (hide UI)';
-        btn.querySelector('i').className = active ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        btn.innerHTML = active ? _FOCUS_SVG_COMPRESS : _FOCUS_SVG_EXPAND;
         // Trigger canvas resize so annotations stay aligned with the new layout
         setTimeout(() => {
             state.annCvs?.resizeOnly?.();
@@ -902,7 +919,9 @@ async function renderSplitSlides(leftIdx, rightIdx) {
     ro?.classList.remove('visible');
 }
 
-async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay = false) {
+// forceRefresh=true discards any parked widgets for this slide so editor
+// changes (add/remove/modify widgets) take effect on re-render.
+async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay = false, forceRefresh = false) {
     const obj = state.slideStructure[logicalIndex];
     if (!obj) return;
 
@@ -918,13 +937,24 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
 
     if (!cvs || !annCvs) return;
 
+    // ── Park widgets from the slide currently in this container ───────────
+    const newSlideKey = (isRight ? 'R' : 'L') + logicalIndex;
+    const prevSlideKey = slideContainer?.dataset?.slideKey;
+    if (slideContainer && prevSlideKey != null) {
+        parkWidgets(slideContainer, prevSlideKey);
+        // Remove non-widget media from the old slide
+        slideContainer.querySelectorAll('video,audio,model-viewer').forEach(el => el.remove());
+    }
+    // After editor changes, kill parked widgets so fresh iframes are created
+    if (forceRefresh) discardParkedWidgets(newSlideKey);
+
     const loading = suppressOverlay ? null : _slideOverlay(isRight);
     if (loading) loading.classList.add('visible');
 
     if (obj.type === 'pdf') {
         if (cvs.canvas) cvs.canvas.style.visibility = 'visible';
         if (annContainer) annContainer.style.background = '';
-        await renderPdfSlide(obj.pdfIndex, logicalIndex, isRight);
+        await renderPdfSlide(obj.pdfIndex, logicalIndex, isRight, newSlideKey);
     } else if (obj.type === 'blank') {
         if (cvs.canvas) cvs.canvas.style.visibility = 'hidden';
         annCvs.clear();
@@ -933,14 +963,24 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
         } else {
             annCvs.resetHistory?.();
         }
-        if (annContainer) annContainer.style.background = 'white';
+        if (annContainer) annContainer.style.background = '';
+        if (obj.blankId) {
+            const blankCfg = await loadBlankConfig(obj.blankId);
+            if (blankCfg && slideContainer) {
+                const rect = slideContainer.getBoundingClientRect();
+                await renderMedia(blankCfg, slideContainer, rect, isRight, newSlideKey);
+            }
+        }
     }
+
+    // Record which slide this container is now showing
+    if (slideContainer) slideContainer.dataset.slideKey = newSlideKey;
 
     if (loading) loading.classList.remove('visible');
     updateHistoryBtns();
 }
 
-async function renderPdfSlide(pdfIndex, logicalIndex, isRight = false) {
+async function renderPdfSlide(pdfIndex, logicalIndex, isRight = false, slideKey = null) {
     if (!state.zipFile) return;
 
     const pdfFile = state.zipFile.file('slides.pdf');
@@ -971,18 +1011,14 @@ async function renderPdfSlide(pdfIndex, logicalIndex, isRight = false) {
         annCvs.resetHistory?.();
     }
 
-    // Remove old media
-    container?.querySelectorAll('video,audio,model-viewer').forEach(el => el.remove());
-    cleanupWidgets(container);
-
     const config = await loadSlideConfig(pdfIndex);
     if (!config) return;
 
     const rect = container.getBoundingClientRect();
-    await renderMedia(config, container, rect, isRight);
+    await renderMedia(config, container, rect, isRight, slideKey);
 }
 
-async function renderMedia(config, container, rect, isRight) {
+async function renderMedia(config, container, rect, isRight, slideKey = null) {
     if (config.videos) {
         for (const [videoIndex, v] of config.videos.entries()) {
             const url = await loadMedia(v.path);
@@ -1085,7 +1121,7 @@ async function renderMedia(config, container, rect, isRight) {
         }
     }
     if (config.widgets) {
-        await renderWidgets(config, container, state.zipFile);
+        await renderWidgets(config, container, state.zipFile, false, slideKey);
         setWidgetInteractivityForSpotlight(state.annotationTool === 'spotlight');
     }
 }
@@ -1109,6 +1145,19 @@ async function loadSlideConfig(pdfIndex) {
         state.slideConfigs[pdfIndex] = JSON.parse(await f.async('string'));
     } catch (e) { state.slideConfigs[pdfIndex] = null; }
     return state.slideConfigs[pdfIndex];
+}
+
+// Load config for a blank slide (keyed by blankId string).
+// In-session the config lives in state.slideConfigs[blankId]; after save+reload
+// it is read from config/s<blankId>.json inside the ZIP.
+async function loadBlankConfig(blankId) {
+    if (state.slideConfigs[blankId] !== undefined) return state.slideConfigs[blankId] || null;
+    try {
+        const f = state.zipFile?.file(`config/s${blankId}.json`);
+        if (!f) { state.slideConfigs[blankId] = null; return null; }
+        state.slideConfigs[blankId] = JSON.parse(await f.async('string'));
+    } catch { state.slideConfigs[blankId] = null; }
+    return state.slideConfigs[blankId];
 }
 
 async function loadMedia(path) {
@@ -1209,16 +1258,11 @@ document.getElementById('delete-blank-btn')?.addEventListener('click', () => del
 
 function insertBlankAfterCurrent() {
     const ins = state.currentSlide + 1;
-    state.slideStructure.splice(ins, 0, { type: 'blank', parent: null });
-
-    // Shift thumbnail cache entries above insertion point up by one so they
-    // stay aligned with the new logical slide indices.
-    const lastIdx = state.slideStructure.length - 1; // new length after splice
-    for (let i = lastIdx; i > ins; i--) {
-        state.slideThumbnailCache[i] = state.slideThumbnailCache[i - 1];
-    }
-    delete state.slideThumbnailCache[ins]; // blank has no thumbnail
-
+    // blankId is a stable string key used to store this slide's media/widget config.
+    const blankId = `b${Date.now()}`;
+    state.slideStructure.splice(ins, 0, { type: 'blank', blankId, parent: null });
+    // slideThumbnailCache is keyed by pdfIndex (stable PDF page numbers),
+    // not by logical position, so it needs no adjustment when blanks are inserted.
     goToSlide(ins);
     populateSlideNavigator();
 }
@@ -1229,13 +1273,8 @@ function deleteCurrentBlank() {
     const del = state.currentSlide;
     state.slideStructure.splice(del, 1);
     state.totalSlides = state.slideStructure.length;
-
-    // Shift thumbnail cache entries above the deleted position down by one.
-    for (let i = del; i < state.slideStructure.length; i++) {
-        state.slideThumbnailCache[i] = state.slideThumbnailCache[i + 1];
-    }
-    delete state.slideThumbnailCache[state.slideStructure.length];
-
+    // slideThumbnailCache is keyed by pdfIndex (stable PDF page numbers),
+    // not by logical position, so it needs no adjustment when blanks are removed.
     const next = Math.min(del, state.slideStructure.length - 1);
     state.currentSlide = next;
     goToSlide(next);
@@ -1405,8 +1444,17 @@ function wireSocketEvents() {
     });
 }
 
+/* ─── editor: exit → re-render so added media appears immediately */
+bus.on('editor:exited', () => renderLogicalSlide(state.currentSlide, false, false, true));
+
 /* ─── editor: slide reorder ───────────────────────────────────── */
 bus.on('slides:reordered', async () => {
+    // Slide indices changed — parked widgets are keyed by old indices, so discard them
+    clearAllParked();
+    const leftCvs = document.getElementById('pdf-canvas');
+    const rightCvs = document.getElementById('pdf-canvas-2');
+    if (leftCvs)  delete leftCvs.dataset.slideKey;
+    if (rightCvs) delete rightCvs.dataset.slideKey;
     populateSlideNavigator();
     await renderLogicalSlide(state.currentSlide);
     updateSlideNavigator();
@@ -1459,6 +1507,13 @@ export async function loadZipPresentation(file) {
             } catch (_) {}
         }
 
+        // Destroy all pooled widgets from any previous presentation
+        clearAllParked();
+        const leftCvs = document.getElementById('pdf-canvas');
+        const rightCvs = document.getElementById('pdf-canvas-2');
+        if (leftCvs)  delete leftCvs.dataset.slideKey;
+        if (rightCvs) delete rightCvs.dataset.slideKey;
+
         state.zipFile        = zip;
         state.totalSlides    = slideStructure.length;
         state.slideStructure = slideStructure;
@@ -1467,6 +1522,24 @@ export async function loadZipPresentation(file) {
         state.annotations    = {}; state.annotationsRight = {};
         state.bookmarks      = {}; state.collapsedParents = new Set();
         if (state.editorNewFiles) state.editorNewFiles = {};
+
+        // Restore saved annotations (persistent pen strokes across re-uploads).
+        const annotFile = zip.file('config/annotations.json');
+        if (annotFile) {
+            try {
+                const saved = JSON.parse(await annotFile.async('string'));
+                if (saved && typeof saved === 'object') state.annotations = saved;
+            } catch (_) {}
+        }
+
+        // Restore saved widget states (so widgets resume where they left off).
+        const wsFile = zip.file('config/widget-states.json');
+        if (wsFile) {
+            try {
+                const saved = JSON.parse(await wsFile.async('string'));
+                if (saved && typeof saved === 'object') setWidgetStates(saved);
+            } catch (_) {}
+        }
 
         await renderLogicalSlide(0);
         await generateThumbnails();

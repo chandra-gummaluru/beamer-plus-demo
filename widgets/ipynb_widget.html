@@ -1118,6 +1118,79 @@ if (IS_VIEWER) {
     console.error(e);
   });
 }
+
+// ── Beamer+ state persistence protocol ──────────────────────────────────────
+function _nbGetState() {
+  const cells = [];
+  document.querySelectorAll('.cell-block').forEach(block => {
+    const id       = block.dataset.id;
+    const cellType = block.dataset.cellType;
+    const ta       = document.getElementById('ta-' + id);
+    const source   = ta ? ta.value : '';
+    if (cellType === 'code') {
+      // Capture rendered outputs
+      const outputs = [];
+      const outEl = document.getElementById('out-' + id);
+      if (outEl) {
+        outEl.querySelectorAll('.out-item').forEach(item => {
+          if (item.querySelector('img')) {
+            const src = item.querySelector('img').src;
+            if (src.startsWith('data:')) outputs.push({ type: 'image', data: src.split(',')[1] });
+          } else {
+            const txt = item.textContent;
+            const isErr = item.classList.contains('out-error') || item.classList.contains('out-stderr');
+            outputs.push({ type: isErr ? 'error' : 'result', text: txt });
+          }
+        });
+      }
+      const enumEl = document.getElementById('enum-' + id);
+      const execCount = enumEl ? (parseInt(enumEl.textContent.replace(/\[|\]/g, '')) || null) : null;
+      cells.push({ cell_type: 'code', source, outputs, execution_count: execCount });
+    } else {
+      cells.push({ cell_type: 'markdown', source });
+    }
+  });
+  return { cells, title: document.getElementById('notebook-title')?.textContent || '' };
+}
+
+function _nbSetState(s) {
+  if (!s || !Array.isArray(s.cells)) return;
+  // Clear existing cells
+  document.querySelectorAll('.cell-block').forEach(el => el.remove());
+  document.querySelectorAll('.add-row').forEach(el => el.remove());
+  // Re-build from saved state
+  if (s.title) document.getElementById('notebook-title').textContent = s.title;
+  for (const cell of s.cells) {
+    const src = cell.source || '';
+    if (cell.cell_type === 'markdown') {
+      addMarkdownCell(src);
+    } else {
+      const id = addCodeCell(src);
+      if (cell.outputs?.length) {
+        const parsed = parseIpynbOutputs(cell.outputs.map(o => {
+          if (o.type === 'image') return { output_type: 'display_data', data: { 'image/png': o.data } };
+          if (o.type === 'error') return { output_type: 'stream', name: 'stderr', text: o.text };
+          return { output_type: 'execute_result', data: { 'text/plain': o.text }, execution_count: cell.execution_count };
+        }));
+        renderOutputs(id, parsed, cell.execution_count);
+        if (cell.execution_count != null) {
+          const en = document.getElementById('enum-' + id);
+          if (en) { en.textContent = '[' + cell.execution_count + ']'; en.classList.add('ran'); }
+        }
+      }
+    }
+  }
+  refreshAddRows?.();
+}
+
+window.addEventListener('message', function(e) {
+  if (!e.data) return;
+  if (e.data.type === 'widget-get-state') {
+    window.parent.postMessage({ type: 'widget-state', widgetId: WIDGET_ID, state: _nbGetState() }, '*');
+  } else if (e.data.type === 'widget-set-state' && e.data.state != null) {
+    _nbSetState(e.data.state);
+  }
+});
 </script>
 </body>
 </html>

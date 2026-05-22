@@ -27,6 +27,14 @@ const Modal = {
                 <div class="custom-modal-body"></div>
                 <div class="custom-modal-buttons"></div>
             `;
+            // Top-right X close button (matches widget-modal-close style)
+            const xBtn = document.createElement('button');
+            xBtn.className = 'custom-modal-x-btn';
+            xBtn.title = 'Close';
+            xBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+            xBtn.addEventListener('click', () => { if (canClose && !canClose()) return; this.close(); });
+            content.appendChild(xBtn);
+
             const bodySlot = content.querySelector('.custom-modal-body');
             if (body instanceof Node) bodySlot.appendChild(body);
             else if (typeof body === 'string') bodySlot.innerHTML = body;

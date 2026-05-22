@@ -490,6 +490,14 @@ function updateConfig(newCfg) {
 window.addEventListener('message', e => {
   if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
   if (e.data?.type === 'widget-cleanup') destroy?.();
+  // Beamer+ state persistence protocol
+  if (e.data?.type === 'widget-get-state') {
+    window.parent.postMessage({ type: 'widget-state', widgetId,
+      state: { url: history[historyIndex] || '', history: history.slice(), historyIndex } }, '*');
+  }
+  if (e.data?.type === 'widget-set-state' && e.data.state) {
+    applyRemoteState(e.data.state);
+  }
 });
 
 // ── destroy ───────────────────────────────────────────────────────────────────

@@ -12,8 +12,21 @@ const DEFAULT_PROFILES = [
 
 const PEN_SWATCHES = ['#eeeeee','#e74c3c','#f1c40f','#2ecc71','#3498db','#9b59b6','#333333'];
 
+function _savePenProfiles(profiles) {
+    try { localStorage.setItem('beamer-pen-profiles', JSON.stringify(profiles)); } catch {}
+}
+
+function _loadPenProfiles() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('beamer-pen-profiles') || 'null');
+        if (Array.isArray(saved) && saved.length > 0) return saved;
+    } catch {}
+    return null;
+}
+
 export function initPenSlots(state) {
-    if (!state.penProfiles) state.penProfiles = DEFAULT_PROFILES.map(p => ({ ...p }));
+    // Load saved profiles (or fall back to defaults) — overrides whatever main.js seeded.
+    state.penProfiles = _loadPenProfiles() ?? DEFAULT_PROFILES.map(p => ({ ...p }));
 
     const container = document.getElementById('pen-slots');
     if (!container) return;
@@ -21,7 +34,7 @@ export function initPenSlots(state) {
     state.penProfiles.forEach((pen, i) => {
         const btn = document.createElement('button');
         btn.className = 'btn pen-slot-btn tool-btn';
-        btn.title = `${pen.label}: ${pen.mode} (${pen.size}px)`;
+        btn.title = `Pen ${i + 1}`;
         applyPenStyle(btn, pen, false);
 
         let holdFired = false;
@@ -53,9 +66,11 @@ export function initPenSlots(state) {
     container.firstElementChild?.click();
 }
 
+const _PEN_SVG      = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`;
+const _HIGHLIGHT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11-6 6v3h3l6-6"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>`;
+
 function applyPenStyle(btn, pen, selected) {
-    const iconClass = pen.mode === 'highlight' ? 'fa-highlighter' : 'fa-pen';
-    btn.innerHTML = `<i class="fa-solid ${iconClass}"></i>`;
+    btn.innerHTML = pen.mode === 'highlight' ? _HIGHLIGHT_SVG : _PEN_SVG;
     // Always keep the pen's color on the icon so it's visible selected or not
     btn.style.color = pen.color;
 }
@@ -82,8 +97,8 @@ function openPenSettings(index, state, container) {
         <div class="custom-modal-setting-group">
             <div class="custom-modal-setting-label">Style</div>
             <div class="custom-modal-button-group" data-setting="style">
-                <button class="custom-modal-btn custom-modal-tool-btn${profile.mode === 'draw' ? ' is-selected' : ''}" type="button" data-mode="draw"><i class="fa-solid fa-pen"></i></button>
-                <button class="custom-modal-btn custom-modal-tool-btn${profile.mode === 'highlight' ? ' is-selected' : ''}" type="button" data-mode="highlight"><i class="fa-solid fa-highlighter"></i></button>
+                <button class="custom-modal-btn custom-modal-tool-btn${profile.mode === 'draw' ? ' is-selected' : ''}" type="button" data-mode="draw">${_PEN_SVG}</button>
+                <button class="custom-modal-btn custom-modal-tool-btn${profile.mode === 'highlight' ? ' is-selected' : ''}" type="button" data-mode="highlight">${_HIGHLIGHT_SVG}</button>
             </div>
         </div>
         <div class="custom-modal-setting-group">
@@ -127,9 +142,10 @@ function openPenSettings(index, state, container) {
                     profile.mode  = selMode;
                     profile.color = selColor;
                     profile.size  = selSize;
+                    _savePenProfiles(state.penProfiles);
                     const btn = container.children[index];
                     if (btn) {
-                        btn.title = `${profile.label}: ${profile.mode} (${profile.size}px)`;
+                        btn.title = `Pen ${index + 1}`;
                         applyPenStyle(btn, profile, btn.classList.contains('btn_selected'));
                     }
                     if (state.activePenSlot === index) {

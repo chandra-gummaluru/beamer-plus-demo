@@ -412,6 +412,19 @@ body.flash { background: var(--red-bg); }
   window.addEventListener('message', e => {
     if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
     if (e.data?.type === 'widget-cleanup') { stopTimer(); socket?.disconnect(); if (flashTimer) clearTimeout(flashTimer); }
+    // Beamer+ state persistence protocol
+    if (e.data?.type === 'widget-get-state') {
+      window.parent.postMessage({ type: 'widget-state', widgetId,
+        state: { mode: state.mode, running: state.running, elapsed: state.elapsed, duration: state.duration } }, '*');
+    }
+    if (e.data?.type === 'widget-set-state' && e.data.state) {
+      const s = e.data.state;
+      state.mode     = s.mode     ?? state.mode;
+      state.elapsed  = s.elapsed  ?? state.elapsed;
+      state.duration = s.duration ?? state.duration;
+      state.running  = false; // always start paused after restore
+      render();
+    }
   });
 
   render();

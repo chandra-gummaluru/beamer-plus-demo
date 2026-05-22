@@ -803,6 +803,22 @@ function App(){
     r=requestAnimationFrame(l);return()=>cancelAnimationFrame(r);
   },[delayMs]);
 
+  // Beamer+ state persistence protocol
+  useEffect(()=>{
+    const cfg = window.WIDGET_CONFIG || {};
+    const wid = cfg.id || 'circuit-sim';
+    const handler=(e)=>{
+      if(!e.data) return;
+      if(e.data.type==='widget-get-state'){
+        window.parent.postMessage({type:'widget-state',widgetId:wid,state:circuit.serialize()},'*');
+      } else if(e.data.type==='widget-set-state' && e.data.state){
+        circuit.load(e.data.state);refresh();
+      }
+    };
+    window.addEventListener('message',handler);
+    return()=>window.removeEventListener('message',handler);
+  },[]);
+
   // Keyboard delete
   useEffect(()=>{
     const fn=(e)=>{

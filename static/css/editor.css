@@ -25,7 +25,19 @@
     padding: 0;
 }
 
-/* Edit pill stays visible in edit mode — acts as the exit/toggle button */
+/* When edit mode is active the button shows an X — reset to a light close-button look */
+#edit-mode-btn.is-close,
+#edit-mode-btn.is-close:focus {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--ink-2);
+    box-shadow: none !important;
+}
+#edit-mode-btn.is-close:hover {
+    background: var(--surface-cream-2) !important;
+    border-color: oklch(82% 0.005 260) !important;
+    color: var(--ink-1);
+}
 
 /* ─── Hide other UI when edit mode is active ─────────────────── */
 
@@ -66,12 +78,23 @@ body.edit-mode #pdf-canvas .widget-iframe { display: none !important; }
 body.edit-mode #editor-panel { display: flex; }
 
 /* Panel header — height 58px puts the 1px hairline at y=57,
-   matching the centre of the nav's 2px border at y=56–58 */
+   matching the centre of the nav's 2px border at y=56-58 */
 #editor-panel-header {
     height: 58px;
     flex-shrink: 0;
     border-bottom: var(--line-hairline);
     background: var(--surface-cream);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--sp-4);
+}
+
+#editor-panel-title {
+    font-family: var(--font-serif);
+    font-size: var(--fs-lg);
+    font-weight: 500;
+    color: var(--ink-1);
+    letter-spacing: -0.01em;
 }
 
 /* Panel body — scrollable properties area */
@@ -340,7 +363,7 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
     border: 1px solid oklch(82% 0.005 260);
     border-radius: 12px;
     box-shadow: var(--shadow-2), 0 20px 60px oklch(20% 0.01 260 / 0.18);
-    width: min(580px, 92vw);
+    width: min(620px, 92vw);
     max-height: 80vh;
     display: flex;
     flex-direction: column;
@@ -381,6 +404,48 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
     color: var(--ink-1);
 }
 
+/* ─── Widget category filter row ─────────────────────────────── */
+
+.widget-modal-cats {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 5px;
+    padding: var(--sp-3) var(--sp-3);
+    border-bottom: var(--line-hairline);
+    flex-shrink: 0;
+    scrollbar-width: none;
+}
+.widget-modal-cats::-webkit-scrollbar { display: none; }
+
+.widget-cat-btn {
+    padding: 2px 11px;
+    font-size: 12.5px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    border: 1px solid oklch(85% 0.005 260);
+    border-radius: 20px;
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    line-height: 1.35;
+    transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+}
+
+.widget-cat-btn:hover {
+    background: var(--surface-cream-2);
+    border-color: oklch(70% 0.005 260);
+    color: var(--ink-1);
+}
+
+.widget-cat-btn.is-active {
+    background: oklch(22% 0.005 260);
+    border-color: oklch(22% 0.005 260);
+    color: oklch(98% 0 0);
+}
+
 .widget-modal-search-row {
     padding: var(--sp-3) var(--sp-4);
     border-bottom: var(--line-hairline);
@@ -394,9 +459,9 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
 
 .widget-modal-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
     gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+    padding: var(--sp-3) var(--sp-3) var(--sp-4);
     overflow-y: auto;
     flex: 1;
 }
@@ -405,8 +470,8 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-2) var(--sp-2);
+    gap: 6px;
+    padding: var(--sp-3) var(--sp-2) var(--sp-3);
     border: 1px solid oklch(87% 0.005 260);
     border-radius: var(--r-md);
     background: var(--surface-cream);
@@ -414,20 +479,20 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
     text-align: center;
     width: 100%;
     min-width: 0;
-    min-height: 0;
+    min-height: 84px;
     height: auto;
     transition: background var(--dur-fast), border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 
 .widget-card:hover {
-    background: oklch(96% 0.01 260);
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px oklch(45% 0.005 260 / 0.12);
+    background: oklch(93% 0.005 260);
+    border-color: oklch(68% 0.005 260);
+    box-shadow: 0 0 0 2px oklch(45% 0.005 260 / 0.10);
 }
 
 .widget-card-icon {
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
     color: var(--ink-2);
     display: flex;
     align-items: center;
@@ -438,14 +503,17 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
 .widget-card-icon svg {
     width: 100%;
     height: 100%;
+    stroke-width: 1.5px;
 }
 
 .widget-card-label {
-    font-size: 11px;
+    font-size: 12px;
     font-family: var(--font-sans);
     color: var(--ink-2);
-    line-height: 1.3;
+    line-height: 1.35;
     word-break: break-word;
+    overflow-wrap: break-word;
+    width: 100%;
 }
 
 /* Custom upload card */

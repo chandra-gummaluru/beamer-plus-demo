@@ -1,5 +1,6 @@
 // Edit mode for Beamer+ — slide reorder, media overlays, properties, save.
 import { bus } from '../core/events.js';
+import { collectWidgetStates } from '../core/iframe-widget-renderer.js';
 
 /* ─── built-in widget icon / label maps ─────────────────────── */
 
@@ -25,12 +26,41 @@ const WIDGET_ICONS = {
 };
 
 const WIDGET_LABELS = {
-    'll-delete':        'Linked List',
-    'ipynb_widget':     'Jupyter Notebook',
-    'circuit_widget':   'Circuit Sim',
+    'ipynb_widget':     'Coding Notebook',
+    'circuit_widget':   'Digital Circuit Sim',
     'function-plotter': 'Function Plotter',
-    'python-repl':      'Python REPL',
+    'mcq':              'Choice',
     'word-cloud':       'Word Cloud',
+};
+
+// Widgets that exist on the server but should not appear in the picker UI.
+const WIDGET_HIDDEN = new Set(['python-repl', 'll-delete']);
+
+const WIDGET_CATEGORY_ORDER = [
+    'Mathematics',
+    'Computer Science',
+    'Biology',
+    'Engineering',
+    'Audience Response',
+    'Tools',
+    'Other',
+];
+
+const WIDGET_CATEGORIES = {
+    'calculator':       'Mathematics',
+    'function-plotter': 'Mathematics',
+    'browser':          'Tools',
+    'ipynb_widget':     'Computer Science',
+    'shell':            'Computer Science',
+    'circuit_widget':   'Engineering',
+    'mcq':              'Audience Response',
+    'survey':           'Audience Response',
+    'word-cloud':       'Audience Response',
+    'camera':           'Tools',
+    'map':              'Tools',
+    'textbook':         'Tools',
+    'timer':            'Tools',
+    'youtube':          'Tools',
 };
 
 let _state = null;
@@ -77,8 +107,12 @@ function enterEditMode() {
     _state.editMode = true;
     document.body.classList.add('edit-mode');
     const btn = document.getElementById('edit-mode-btn');
-    btn?.classList.add('btn_selected');
-    if (btn) btn.title = 'Exit edit mode';
+    if (btn) {
+        btn.classList.add('is-close');
+        btn.title = 'Exit edit mode';
+        btn.dataset.originalHtml = btn.innerHTML;
+        btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    }
     if (_state.annCvs?.canvas) _state.annCvs.canvas.style.pointerEvents = 'none';
     applySlideReorder();
     setTimeout(() => { renderEditOverlays(); }, 60);
@@ -88,13 +122,17 @@ function exitEditMode() {
     _state.editMode = false;
     document.body.classList.remove('edit-mode');
     const btn = document.getElementById('edit-mode-btn');
-    btn?.classList.remove('btn_selected');
-    if (btn) btn.title = 'Edit mode';
+    if (btn) {
+        btn.classList.remove('is-close');
+        btn.title = 'Edit mode';
+        if (btn.dataset.originalHtml) btn.innerHTML = btn.dataset.originalHtml;
+    }
     if (_state.annCvs?.canvas) _state.annCvs.canvas.style.pointerEvents = '';
     cleanupEditOverlays();
     removeSlideReorder();
     _selectedOverlay = null;
     updatePropertiesPanel();
+    bus.emit('editor:exited');
 }
 
 /* ─── helpers ───────────────────────────────────────────────── */
@@ -107,10 +145,15 @@ function getCurrentPdfIndex() {
 }
 
 function getOrCreateConfig() {
-    const pi = getCurrentPdfIndex();
-    if (pi === null) return null;
-    if (!_state.slideConfigs[pi]) _state.slideConfigs[pi] = {};
-    return _state.slideConfigs[pi];
+    const obj = _state.slideStructure[_state.currentSlide];
+    if (!obj) return null;
+    // PDF slides use their stable pdfIndex; blank slides use their stable blankId.
+    const key = obj.type === 'pdf' ? obj.pdfIndex
+              : obj.type === 'blank' ? obj.blankId
+              : null;
+    if (key === null || key === undefined) return null;
+    if (!_state.slideConfigs[key]) _state.slideConfigs[key] = {};
+    return _state.slideConfigs[key];
 }
 
 function arrKeyForType(type) {
@@ -366,7 +409,7 @@ function buildPropsHTML(arrKey, item) {
             </div>
         `;
     } else if (arrKey === 'widgets') {
-        const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin']);
+        const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin', 'interactive']);
         const extraProps = {};
         for (const [k, v] of Object.entries(item)) {
             if (!_WIDGET_RESERVED.has(k)) extraProps[k] = v;
@@ -446,7 +489,7 @@ function applyPropertiesQuiet() {
         if (jsonEl) {
             try {
                 const parsed = JSON.parse(jsonEl.value || '{}');
-                const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin']);
+                const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin', 'interactive']);
                 // Remove all current non-reserved props
                 for (const k of Object.keys(item)) {
                     if (!_WIDGET_RESERVED.has(k)) delete item[k];
@@ -540,6 +583,14 @@ async function addWidget() {
 function _showWidgetModal(widgets) {
     document.getElementById('widget-modal-overlay')?.remove();
 
+    // Determine which categories actually have widgets (so we don't show empty tabs).
+    const usedCats = new Set(widgets.flatMap(f => {
+        const type = f.replace(/\.html$/i, '');
+        if (WIDGET_HIDDEN.has(type)) return [];
+        return [WIDGET_CATEGORIES[type] || 'Other'];
+    }));
+    const visibleCats = WIDGET_CATEGORY_ORDER.filter(c => usedCats.has(c));
+
     const overlay = document.createElement('div');
     overlay.id = 'widget-modal-overlay';
     overlay.className = 'widget-modal-overlay';
@@ -548,8 +599,12 @@ function _showWidgetModal(widgets) {
             <div class="widget-modal-header">
                 <h2 class="widget-modal-title">Add Widget</h2>
                 <button class="btn widget-modal-close" id="widget-modal-close" title="Close">
-                    <i class="fa-solid fa-xmark"></i>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
+            </div>
+            <div class="widget-modal-cats" id="widget-modal-cats">
+                <button class="widget-cat-btn is-active" data-cat="all">All</button>
+                ${visibleCats.map(c => `<button class="widget-cat-btn" data-cat="${c}">${c}</button>`).join('')}
             </div>
             <div class="widget-modal-search-row">
                 <input class="editor-prop-input widget-modal-search" type="search"
@@ -560,12 +615,23 @@ function _showWidgetModal(widgets) {
     `;
     document.body.appendChild(overlay);
 
-    const grid = document.getElementById('widget-modal-grid');
-    _populateWidgetGrid(grid, widgets, '');
+    const grid   = document.getElementById('widget-modal-grid');
+    const search = document.getElementById('widget-modal-search');
+    let activeCat = 'all';
 
-    document.getElementById('widget-modal-search')?.addEventListener('input', e => {
-        _populateWidgetGrid(grid, widgets, e.target.value);
+    const refresh = () => _populateWidgetGrid(grid, widgets, search?.value ?? '', activeCat);
+    refresh();
+
+    document.getElementById('widget-modal-cats')?.addEventListener('click', e => {
+        const btn = e.target.closest('.widget-cat-btn');
+        if (!btn) return;
+        activeCat = btn.dataset.cat;
+        document.querySelectorAll('#widget-modal-cats .widget-cat-btn').forEach(b =>
+            b.classList.toggle('is-active', b === btn));
+        refresh();
     });
+
+    search?.addEventListener('input', refresh);
 
     const close = () => overlay.remove();
     document.getElementById('widget-modal-close')?.addEventListener('click', close);
@@ -573,20 +639,25 @@ function _showWidgetModal(widgets) {
     const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
     document.addEventListener('keydown', onKey);
 
-    setTimeout(() => document.getElementById('widget-modal-search')?.focus(), 40);
+    setTimeout(() => search?.focus(), 40);
 }
 
-function _populateWidgetGrid(grid, widgets, filter) {
+function _populateWidgetGrid(grid, widgets, filter, category = 'all') {
     grid.innerHTML = '';
     const q = filter.trim().toLowerCase();
 
-    // Custom upload card — always first
-    if (!q || 'custom upload html file'.includes(q)) {
+    // Custom upload card — shown in All and Other only (no category)
+    const showCustom = (category === 'all' || category === 'Other')
+        && (!q || 'custom upload html file'.includes(q));
+    if (showCustom) {
         grid.appendChild(_makeWidgetCard('__custom__', 'Custom', WIDGET_ICONS.__custom__, true));
     }
 
     widgets.forEach(filename => {
-        const type = filename.replace(/\.html$/i, '');
+        const type  = filename.replace(/\.html$/i, '');
+        if (WIDGET_HIDDEN.has(type)) return;
+        const cat   = WIDGET_CATEGORIES[type] || 'Other';
+        if (category !== 'all' && cat !== category) return;
         const label = WIDGET_LABELS[type] || type.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         if (q && !label.toLowerCase().includes(q) && !type.toLowerCase().includes(q)) return;
         grid.appendChild(_makeWidgetCard(type, label, WIDGET_ICONS[type] || WIDGET_ICONS.__default__));
@@ -627,7 +698,6 @@ function _pickCustomWidget() {
             x: 0.1, y: 0.1,
             width: 0.8, height: 0.8,
             zIndex: 10,
-            interactive: true,
         });
         const newIndex = cfg.widgets.length - 1;
         cleanupEditOverlays();
@@ -649,7 +719,6 @@ function _doAddWidget(type) {
         x: 0.1, y: 0.1,
         width: 0.8, height: 0.8,
         zIndex: 10,
-        interactive: true,
         builtin: true,
     });
     const newIndex = cfg.widgets.length - 1;
@@ -756,6 +825,11 @@ async function savePresentation() {
     const modal = window.BeamerModal;
     modal?.show({ kind: 'loading', title: 'Saving…', message: 'Building ZIP…' });
     try {
+        // Flush the current canvas so the latest strokes are captured.
+        if (_state.annCvs?.canvas) {
+            _state.annotations[_state.currentSlide] = _state.annCvs.canvas.toDataURL('image/png');
+        }
+
         const newZip = new JSZip();
 
         for (const path of Object.keys(_state.zipFile.files)) {
@@ -763,6 +837,8 @@ async function savePresentation() {
             if (!f || f.dir) continue;
             if (path.startsWith('config/s') && path.endsWith('.json')) continue;
             if (path === 'config/slide-order.json') continue;
+            if (path === 'config/annotations.json') continue;
+            if (path === 'config/widget-states.json') continue;
             newZip.file(path, await f.async('uint8array'));
         }
 
@@ -772,6 +848,20 @@ async function savePresentation() {
 
         const isDefault = _state.slideStructure.every((obj, i) => obj.type === 'pdf' && obj.pdfIndex === i);
         if (!isDefault) newZip.file('config/slide-order.json', JSON.stringify(_state.slideStructure));
+
+        // Save annotations so pen strokes persist across re-uploads.
+        const nonEmptyAnnotations = Object.fromEntries(
+            Object.entries(_state.annotations).filter(([, v]) => v && v.length > 100)
+        );
+        if (Object.keys(nonEmptyAnnotations).length > 0) {
+            newZip.file('config/annotations.json', JSON.stringify(nonEmptyAnnotations));
+        }
+
+        // Save widget states so interactive widgets resume where they left off.
+        const widgetStates = await collectWidgetStates(1500);
+        if (Object.keys(widgetStates).length > 0) {
+            newZip.file('config/widget-states.json', JSON.stringify(widgetStates));
+        }
 
         for (const [path, buffer] of Object.entries(_state.editorNewFiles)) {
             newZip.file(path, buffer);

@@ -701,6 +701,17 @@ body {
   window.addEventListener('message', e => {
     if (e.data?.type === 'widget-config')  applyConfig(e.data.config);
     if (e.data?.type === 'widget-cleanup') { if (socket) socket.disconnect?.(); }
+    // Beamer+ state persistence protocol
+    if (e.data?.type === 'widget-get-state') {
+      window.parent.postMessage({ type: 'widget-state', widgetId: WIDGET_ID,
+        state: { expression: exprEl.value, result: resultEl.textContent,
+                 resultOk: resultEl.classList.contains('ok'), history, lastAnswer } }, '*');
+    }
+    if (e.data?.type === 'widget-set-state' && e.data.state) {
+      applyState(e.data.state);
+      if (e.data.state.lastAnswer != null) lastAnswer = e.data.state.lastAnswer;
+      renderHistory();
+    }
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────────

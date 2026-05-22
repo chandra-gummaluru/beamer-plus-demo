@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <title>Survey</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="/static/css/shared.css">
   <link rel="stylesheet" href="/static/css/survey.css">
   <link rel="stylesheet" href="/static/css/button.css">
@@ -86,7 +85,7 @@
         ></textarea>
         <div style="display:flex; justify-content:flex-end; margin-top:0.75rem;">
           <button id="submit-btn" class="btn">
-            <i class="fa-solid fa-paper-plane"></i>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
       </div>
@@ -222,7 +221,7 @@
         loadingModal.close();
         Modal.error('Submission Failed', 'Error submitting response. Please try again.');
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i>';
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
       }
     }
 

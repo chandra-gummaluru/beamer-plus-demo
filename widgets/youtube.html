@@ -561,6 +561,21 @@ function destroy() {
 window.addEventListener('message', e => {
   if (e.data?.type === 'widget-config')  updateConfig(e.data.config);
   if (e.data?.type === 'widget-cleanup') destroy?.();
+  // Beamer+ state persistence protocol
+  if (e.data?.type === 'widget-get-state') {
+    const currentTime = player?.getCurrentTime?.() || 0;
+    window.parent.postMessage({ type: 'widget-state', widgetId: cfg.widgetId,
+      state: { videoId: cfg.videoId, time: currentTime } }, '*');
+  }
+  if (e.data?.type === 'widget-set-state' && e.data.state) {
+    const s = e.data.state;
+    if (s.videoId && s.videoId !== cfg.videoId) {
+      cfg.videoId = s.videoId;
+      player?.loadVideoById?.({ videoId: s.videoId, startSeconds: s.time || 0 });
+    } else if (s.time != null && player?.seekTo) {
+      player.seekTo(s.time, true);
+    }
+  }
 });
 
 // ── Control interactions ──────────────────────────────────────────────────────
