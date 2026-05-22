@@ -1,0 +1,13 @@
+<svg width="120" height="120" viewBox="0 0 120 120" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Beamer+ icon</title>
+  <defs>
+    <pattern id="hatch" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="5" stroke="white" stroke-width="1.2"/>
+    </pattern>
+  </defs>
+  <rect x="0" y="0" width="120" height="120" fill="#2e2e2e"/>
+  <g transform="translate(50, 96) rotate(25) scale(1.08)">
+    <polygon points="0,0 -18,-54 -38,-54" fill="url(#hatch)" stroke="white" stroke-width="1.85" stroke-linejoin="round" stroke-linecap="round"/>
+    <polygon points="0,0 5,-40 19,-40" fill="none" stroke="white" stroke-width="1.85" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+</svg>

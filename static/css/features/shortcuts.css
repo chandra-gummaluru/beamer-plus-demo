@@ -237,3 +237,22 @@ body.split-view-active #bottom-controls {
 .settings-shortcuts-reset-btn:hover {
     color: var(--ink-2);
 }
+
+/* ── Install button ──────────────────────────────────────────── */
+.settings-install-btn {
+    width: 100%;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+    font-family: var(--font-sans);
+    font-weight: 500;
+}
+
+.settings-install-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    font-size: var(--fs-xs);
+}

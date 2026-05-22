@@ -22,6 +22,14 @@ import { initUploader } from './upload/uploader.js';
 import { initSurveyBridge } from './surveys/survey-bridge.js';
 import { initEditor } from './editor/editor.js';
 
+/* ─── PWA install prompt ──────────────────────────────────────── */
+let _pwaInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _pwaInstallPrompt = e;
+});
+window.addEventListener('appinstalled', () => { _pwaInstallPrompt = null; });
+
 /* ─── shared state ────────────────────────────────────────────── */
 const state = {
     currentSlide: 0,
@@ -547,6 +555,40 @@ function showSettingsModal() {
     scSection.appendChild(scGrid);
 
     body.appendChild(scSection);
+
+    // ── Install App ────────────────────────────────────────────────
+    const _isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+    if (!_isStandalone) {
+        const installSection = document.createElement('div');
+        installSection.className = 'settings-section';
+
+        const installLabel = document.createElement('div');
+        installLabel.className = 'settings-label settings-label-center';
+        installLabel.textContent = 'Install App';
+        installSection.appendChild(installLabel);
+
+        const installBtn = document.createElement('button');
+        installBtn.className = 'btn settings-install-btn';
+
+        const _DL_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+
+        if (_pwaInstallPrompt) {
+            installBtn.innerHTML = `${_DL_ICON} Install as App`;
+            installBtn.addEventListener('click', async () => {
+                _pwaInstallPrompt.prompt();
+                const { outcome } = await _pwaInstallPrompt.userChoice;
+                if (outcome === 'accepted') _pwaInstallPrompt = null;
+                window.BeamerModal?.close();
+            });
+        } else {
+            installBtn.innerHTML = `${_DL_ICON} Add to home screen from your browser menu`;
+            installBtn.disabled = true;
+        }
+
+        installSection.appendChild(installBtn);
+        body.appendChild(installSection);
+    }
 
     window.BeamerModal?.show({
         kind: 'info',
