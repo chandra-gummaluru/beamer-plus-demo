@@ -31,6 +31,13 @@ body.split-view-active #bottom-controls {
     right: auto;
 }
 
+@media (max-width: 1024px) {
+    #bottom-controls {
+        /* Sit above the annotation toolbar, which is above the 100px bottom nav */
+        bottom: calc(100px + var(--sp-3) + var(--hit-min) + var(--sp-3));
+    }
+}
+
 /* ── Shortcuts modal grid ─────────────────────────────────── */
 .shortcuts-grid {
     display: grid;

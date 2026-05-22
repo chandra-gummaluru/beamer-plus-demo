@@ -210,7 +210,12 @@ body.split-view-active #annotation-undo-redo {
         transform: translateX(50%);
         flex-direction: row;
         align-items: center;
+        max-width: calc(100vw - var(--sp-6));
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
     }
+    #floating-annotation-toolbar::-webkit-scrollbar { display: none; }
     #floating-annotation-toolbar #tool-container,
     #floating-annotation-toolbar #annotation-undo-redo {
         flex-direction: row;

@@ -601,6 +601,7 @@ body.split-view-active #bookmark-pins {
     }
     #main-content {
         margin-left: 0;
+        padding-right: 0;
         height: calc(100vh - 100px);
     }
 }
