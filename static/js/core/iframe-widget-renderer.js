@@ -61,12 +61,31 @@ const _slideIframes = new Map();
 // States loaded from ZIP to restore into freshly-created iframes
 let _savedWidgetStates = {};
 
+// In-session states captured whenever widgets are parked (survive slide
+// transitions; cleared when a new presentation is loaded).
+let _sessionWidgetStates = {};
+
+// Passive listener — captures every widget-state reply into _sessionWidgetStates
+// so we always have the freshest snapshot regardless of who asked for it.
+let _stateListenerAttached = false;
+function _ensureStateListener() {
+    if (_stateListenerAttached) return;
+    _stateListenerAttached = true;
+    window.addEventListener('message', e => {
+        if (e.data?.type === 'widget-state' && e.data.widgetId && e.data.state !== undefined) {
+            _sessionWidgetStates[e.data.widgetId] = e.data.state;
+        }
+    });
+}
+
 /**
  * Store widget states to be injected after each widget iframe first loads.
  * Called when a ZIP is loaded that contains config/widget-states.json.
  */
 export function setWidgetStates(states) {
     _savedWidgetStates = (states && typeof states === 'object') ? states : {};
+    // A new ZIP was loaded — in-session snapshots are stale, start fresh.
+    _sessionWidgetStates = {};
 }
 
 /**
@@ -75,6 +94,7 @@ export function setWidgetStates(states) {
  * same container so widgets can be recovered when the slide is revisited.
  */
 export function parkWidgets(container, slideKey) {
+    _ensureStateListener();
     const iframes = Array.from(container.querySelectorAll('.widget-iframe'));
     if (iframes.length === 0) return;
     const pool = _getPool();
@@ -85,6 +105,20 @@ export function parkWidgets(container, slideKey) {
     iframes.forEach(iframe => {
         const wid = iframe.dataset.widgetId;
         if (wid) {
+            // Ask the widget for its current state before we move it.
+            // The reply is caught by _ensureStateListener and stored in
+            // _sessionWidgetStates — no await needed here.
+            try { iframe.contentWindow?.postMessage({ type: 'widget-get-state' }, '*'); } catch {}
+
+            // If the iframe reloads while sitting in the pool, immediately
+            // push the last-known session state back into it.
+            iframe.addEventListener('load', () => {
+                const st = _sessionWidgetStates[wid];
+                if (st !== undefined) {
+                    try { iframe.contentWindow?.postMessage({ type: 'widget-set-state', state: st }, '*'); } catch {}
+                }
+            }, { once: true });
+
             widgetMap.set(wid, iframe);
             _widgetRegistry.delete(wid);
         }
@@ -121,6 +155,7 @@ export function clearAllParked() {
     });
     _slideIframes.clear();
     _savedWidgetStates = {};
+    _sessionWidgetStates = {};
 }
 
 /**
@@ -199,6 +234,7 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             container.appendChild(parked);
             _widgetRegistry.set(w.id, { iframe: parked, container, savedStyle: null });
             _ensureExpandListener();
+            _ensureStateListener();
 
             // Re-apply position/size in case the container was resized
             const rect = container.getBoundingClientRect();
@@ -208,6 +244,15 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             parked.style.height        = `${w.height * rect.height}px`;
             parked.style.zIndex        = w.zIndex || 10;
             parked.style.pointerEvents = w.interactive !== false ? 'auto' : 'none';
+
+            // If the browser reloads the iframe when it's moved back into the
+            // live DOM, restore the last-known session state on the load event.
+            const _sessionSt = _sessionWidgetStates[w.id];
+            if (_sessionSt !== undefined) {
+                parked.addEventListener('load', () => {
+                    try { parked.contentWindow?.postMessage({ type: 'widget-set-state', state: _sessionSt }, '*'); } catch {}
+                }, { once: true });
+            }
 
             parkedMap.delete(w.id);
             return;
@@ -297,8 +342,9 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
                 iframe.addEventListener('load', () => {
                     // Send config via postMessage (for event-based widgets)
                     iframe.contentWindow.postMessage({ type: 'widget-config', config: _configPayload }, '*');
-                    // Restore ZIP-persisted state if available
-                    const savedState = _savedWidgetStates[w.id];
+                    // Restore state: prefer in-session snapshot (captured when
+                    // the user last left this slide) over the ZIP-persisted state.
+                    const savedState = _sessionWidgetStates[w.id] ?? _savedWidgetStates[w.id];
                     if (savedState !== undefined) {
                         iframe.contentWindow.postMessage({ type: 'widget-set-state', state: savedState }, '*');
                     }

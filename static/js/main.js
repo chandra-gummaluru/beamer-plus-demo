@@ -22,6 +22,13 @@ import { initUploader } from './upload/uploader.js';
 import { initSurveyBridge } from './surveys/survey-bridge.js';
 import { initEditor } from './editor/editor.js';
 
+/* ─── Render generation counters ─────────────────────────────── */
+// Incremented each time a new render starts for each pane.
+// Used to detect when a slow earlier render finishes after a faster later
+// one has already taken over, so we don't let the stale render overwrite
+// the slideKey that the fresh render already committed.
+const _renderGen = { L: 0, R: 0 };
+
 /* ─── PWA install prompt ──────────────────────────────────────── */
 let _pwaInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -967,6 +974,11 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
     const obj = state.slideStructure[logicalIndex];
     if (!obj) return;
 
+    // Stamp a generation token so we can detect if a newer render supersedes
+    // this one before we finish (fast tab-switching race condition).
+    const paneKey = isRight ? 'R' : 'L';
+    const myGen = ++_renderGen[paneKey];
+
     const slideContainer = isRight
         ? document.getElementById('pdf-canvas-2')
         : document.getElementById('pdf-canvas');
@@ -1015,8 +1027,12 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
         }
     }
 
-    // Record which slide this container is now showing
-    if (slideContainer) slideContainer.dataset.slideKey = newSlideKey;
+    // Only record which slide this container is showing if this render is
+    // still the latest one for this pane — a faster later render may have
+    // already written a newer key, and we must not overwrite it.
+    if (myGen === _renderGen[paneKey] && slideContainer) {
+        slideContainer.dataset.slideKey = newSlideKey;
+    }
 
     if (loading) loading.classList.remove('visible');
     updateHistoryBtns();
