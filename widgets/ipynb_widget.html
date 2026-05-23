@@ -1128,23 +1128,30 @@ function _nbGetState() {
     const ta       = document.getElementById('ta-' + id);
     const source   = ta ? ta.value : '';
     if (cellType === 'code') {
-      // Capture rendered outputs
+      // Capture rendered outputs — outputs are .out-row elements inside #out-{id}
       const outputs = [];
       const outEl = document.getElementById('out-' + id);
-      if (outEl) {
-        outEl.querySelectorAll('.out-item').forEach(item => {
-          if (item.querySelector('img')) {
-            const src = item.querySelector('img').src;
-            if (src.startsWith('data:')) outputs.push({ type: 'image', data: src.split(',')[1] });
+      if (outEl && outEl.classList.contains('has-output')) {
+        outEl.querySelectorAll('.out-row').forEach(row => {
+          const img = row.querySelector('img');
+          if (img && img.src.startsWith('data:')) {
+            // matplotlib / image output
+            outputs.push({ type: 'image', data: img.src.split(',')[1] });
           } else {
-            const txt = item.textContent;
-            const isErr = item.classList.contains('out-error') || item.classList.contains('out-stderr');
-            outputs.push({ type: isErr ? 'error' : 'result', text: txt });
+            const textEl = row.querySelector('.out-text');
+            if (textEl) {
+              let type = 'stream';
+              if      (textEl.classList.contains('is-error'))  type = 'error';
+              else if (textEl.classList.contains('is-stderr')) type = 'stderr';
+              else if (row.querySelector('.out-num'))          type = 'result';
+              outputs.push({ type, text: textEl.textContent });
+            }
           }
         });
       }
-      const enumEl = document.getElementById('enum-' + id);
-      const execCount = enumEl ? (parseInt(enumEl.textContent.replace(/\[|\]/g, '')) || null) : null;
+      const enumEl  = document.getElementById('enum-' + id);
+      const execRaw = enumEl ? enumEl.textContent.replace(/[\[\]\s]/g, '') : '';
+      const execCount = execRaw && execRaw !== '*' ? (parseInt(execRaw) || null) : null;
       cells.push({ cell_type: 'code', source, outputs, execution_count: execCount });
     } else {
       cells.push({ cell_type: 'markdown', source });
@@ -1155,10 +1162,12 @@ function _nbGetState() {
 
 function _nbSetState(s) {
   if (!s || !Array.isArray(s.cells)) return;
-  // Clear existing cells
-  document.querySelectorAll('.cell-block').forEach(el => el.remove());
-  document.querySelectorAll('.add-row').forEach(el => el.remove());
-  // Re-build from saved state
+  // If cells already exist the iframe is live (opacity-based navigation keeps
+  // iframes in the DOM).  The DOM — including cell outputs — is already intact,
+  // so skip the rebuild entirely to avoid wiping rendered results.
+  if (document.querySelectorAll('.cell-block').length > 0) return;
+  // Fresh iframe (restoring from saved ZIP state) — rebuild from scratch.
+  document.querySelectorAll('.cell-block, .add-row').forEach(el => el.remove());
   if (s.title) document.getElementById('notebook-title').textContent = s.title;
   for (const cell of s.cells) {
     const src = cell.source || '';
@@ -1167,12 +1176,8 @@ function _nbSetState(s) {
     } else {
       const id = addCodeCell(src);
       if (cell.outputs?.length) {
-        const parsed = parseIpynbOutputs(cell.outputs.map(o => {
-          if (o.type === 'image') return { output_type: 'display_data', data: { 'image/png': o.data } };
-          if (o.type === 'error') return { output_type: 'stream', name: 'stderr', text: o.text };
-          return { output_type: 'execute_result', data: { 'text/plain': o.text }, execution_count: cell.execution_count };
-        }));
-        renderOutputs(id, parsed, cell.execution_count);
+        // cell.outputs is already in our internal format — pass directly to renderOutputs
+        renderOutputs(id, cell.outputs, cell.execution_count);
         if (cell.execution_count != null) {
           const en = document.getElementById('enum-' + id);
           if (en) { en.textContent = '[' + cell.execution_count + ']'; en.classList.add('ran'); }
