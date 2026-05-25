@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "PDF Textbook",
+  "category": "Tools",
+  "fields": [
+    { "key": "pdf",   "label": "PDF path in ZIP", "type": "text",   "placeholder": "textbooks/chapter1.pdf" },
+    { "key": "title", "label": "Display title",   "type": "text",   "placeholder": "Optional" },
+    { "key": "page",  "label": "Start page",      "type": "number", "min": 1, "step": 1, "default": 1 }
+  ]
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Textbook — Beamer+</title>

@@ -113,7 +113,7 @@ body.edit-mode #editor-panel { display: flex; }
 #editor-properties {
     display: none;
     flex-direction: column;
-    gap: var(--sp-3);
+    gap: var(--sp-4);
 }
 #editor-properties.visible { display: flex; }
 
@@ -204,6 +204,168 @@ body.edit-mode #editor-panel { display: flex; }
     font-family: var(--font-sans);
     color: var(--ink-2);
     cursor: pointer;
+    user-select: none;
+}
+
+/* ─── Custom checkbox ─────────────────────────────────────────── */
+
+.editor-prop-checkbox-row input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    border: 1.5px solid oklch(72% 0.006 260);
+    border-radius: 4px;
+    background: var(--surface-paper);
+    cursor: pointer;
+    position: relative;
+    transition: background var(--dur-fast), border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+
+.editor-prop-checkbox-row input[type="checkbox"]:hover {
+    border-color: var(--accent);
+}
+
+.editor-prop-checkbox-row input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2.5px oklch(45% 0.005 260 / 0.18);
+}
+
+.editor-prop-checkbox-row input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Checkmark via ::after */
+.editor-prop-checkbox-row input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0px;
+    width: 5px;
+    height: 8px;
+    border: 1.5px solid var(--ink-on-accent);
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg);
+}
+
+[data-theme="dark"] .editor-prop-checkbox-row input[type="checkbox"] {
+    border-color: oklch(40% 0.008 260);
+    background: var(--surface-cream-2);
+}
+[data-theme="dark"] .editor-prop-checkbox-row input[type="checkbox"]:hover {
+    border-color: var(--accent);
+}
+[data-theme="dark"] .editor-prop-checkbox-row input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+/* ─── Widget type badge ───────────────────────────────────────── */
+
+.editor-prop-row--type-header {
+    margin-bottom: var(--sp-2);
+}
+
+.editor-prop-divider {
+    height: 1px;
+    background: oklch(88% 0.004 260);
+    border: none;
+    margin: 0;
+    margin-bottom: var(--sp-2);
+    flex-shrink: 0;
+}
+[data-theme="dark"] .editor-prop-divider {
+    background: oklch(32% 0.006 260);
+}
+
+.editor-prop-type-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    background: var(--surface-cream-2);
+    border: 1px solid oklch(84% 0.005 260);
+    border-radius: 20px;
+    font-size: var(--fs-sm);
+    font-family: var(--font-sans);
+    color: var(--ink-2);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    width: fit-content;
+}
+
+/* ─── Widget config — field-based UI ─────────────────────────── */
+
+.editor-prop-note {
+    font-size: var(--fs-xs);
+    color: var(--ink-4);
+    font-family: var(--font-sans);
+    font-style: italic;
+    margin: 0;
+    padding: 2px 0;
+}
+
+/* Row for a custom field with text/number input + remove button */
+.editor-prop-custom-val-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.editor-prop-custom-val-row .editor-prop-input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Row for a custom boolean field (checkbox + label + remove) */
+.editor-prop-custom-bool-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-1);
+}
+
+/* Remove-field (✕) button */
+.editor-prop-rm-field {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid oklch(84% 0.005 260);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--ink-3);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+}
+.editor-prop-rm-field:hover {
+    background: oklch(93% 0.04 25);
+    border-color: oklch(75% 0.08 25);
+    color: oklch(40% 0.15 25);
+}
+
+/* Add-field block at the bottom of the custom-field list */
+.editor-prop-add-field-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    border-top: var(--line-hairline);
+    padding-top: var(--sp-3);
+    margin-top: var(--sp-1);
+}
+
+.editor-prop-add-field-btn {
+    width: 100%;
+    justify-content: center;
+    font-size: var(--fs-sm);
+    font-family: var(--font-sans);
 }
 
 .editor-delete-btn {

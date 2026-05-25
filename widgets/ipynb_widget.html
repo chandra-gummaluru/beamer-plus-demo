@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Coding Notebook",
+  "category": "Computer Science",
+  "fields": [
+    { "key": "notebook", "label": "Notebook file", "type": "text", "placeholder": "notebooks/demo.ipynb  or  https://…/demo.ipynb" }
+  ]
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Notebook — Beamer+</title>
@@ -462,7 +471,6 @@ const CFG      = window.WIDGET_CONFIG || {};
 const WIDGET_ID      = CFG.id              || 'jupyter-notebook';
 const NOTEBOOK_PATH  = CFG.notebook        || _qs.get('notebook') || null;
 const NOTEBOOK_OBJ   = CFG.notebookContent || null;  // pre-loaded by renderer
-const STARTER_CODE   = CFG.starterCode     || '';
 const IS_VIEWER      = !!(CFG.viewer || _qs.get('viewer') === '1');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -544,7 +552,7 @@ def _bp_capture_figures():
   } else if (NOTEBOOK_PATH) {
     await loadNotebookFile(NOTEBOOK_PATH);
   } else {
-    addCodeCell(STARTER_CODE);
+    addCodeCell('');
   }
 }
 

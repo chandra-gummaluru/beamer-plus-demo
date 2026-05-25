@@ -1,11 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Web Browser",
+  "category": "Tools",
+  "fields": [
+    { "key": "url",     "label": "Starting URL",        "type": "text",     "placeholder": "https://example.com" },
+    { "key": "showNav", "label": "Show navigation bar", "type": "checkbox", "default": true }
+  ]
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Browser Widget</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:         oklch(99% 0.003 80);
@@ -23,7 +31,6 @@
   --err:        oklch(58% 0.18 25);
   --line:       1px solid oklch(85% 0.005 260);
   --r:          6px;
-  --font:       "EB Garamond", Georgia, serif;
   --mono:       ui-monospace, "SF Mono", Menlo, monospace;
 }
 

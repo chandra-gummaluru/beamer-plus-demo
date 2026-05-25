@@ -1,8 +1,13 @@
 // Edit mode for Beamer+ — slide reorder, media overlays, properties, save.
 import { bus } from '../core/events.js';
-import { collectWidgetStates } from '../core/iframe-widget-renderer.js';
+import { collectWidgetStates, loadWidgetSchema } from '../core/iframe-widget-renderer.js';
 
-/* ─── built-in widget icon / label maps ─────────────────────── */
+/* ─── Built-in widget discovery maps ────────────────────────────
+ * These are used ONLY by the "Add Widget" picker to enumerate and
+ * categorise available widgets.  They do NOT control editable fields —
+ * each widget HTML file declares its own schema via:
+ *   <script id="widget-schema" type="application/json"> … </script>
+ * ─────────────────────────────────────────────────────────────── */
 
 const WIDGET_ICONS = {
     browser:            `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
@@ -62,6 +67,187 @@ const WIDGET_CATEGORIES = {
     'timer':            'Tools',
     'youtube':          'Tools',
 };
+
+/* ─── Widget field schema ────────────────────────────────────── */
+
+// Properties managed by the layout system — never shown as user-editable fields.
+const _WIDGET_RESERVED = new Set([
+    'id', 'type', 'x', 'y', 'width', 'height', 'zIndex',
+    'builtin', 'src', 'interactive',
+    'notebookContent', 'role', 'socketUrl',
+]);
+
+// Schema loaded from the currently-selected widget's HTML.
+// Set by updatePropertiesPanel; used by _applyWidgetFieldValues.
+let _currentWidgetSchema = null;
+
+function _escAttr(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function _escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// Safe element-id fragment for a custom field key (avoids CSS.escape dependency)
+function _fieldId(key) {
+    return 'prop-custom-' + key.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+// schemaFields: the .fields array from the widget's own schema declaration,
+// or null if the widget has no schema (→ fall back to custom key-value editor).
+function _buildWidgetFieldsHTML(item, schemaFields) {
+    if (schemaFields === null || schemaFields === undefined) {
+        return _buildCustomWidgetFieldsHTML(item);
+    }
+    let html = '';
+    for (const field of schemaFields) html += _buildOneFieldRow(field, item);
+    return html;
+}
+
+function _buildOneFieldRow(field, item) {
+    const fid = 'prop-widget-' + field.key;
+    const val = item[field.key];
+    const eff = val !== undefined ? val : field.default;
+    const notePart = field.note
+        ? ` <span class="editor-prop-label-note">${_escHtml(field.note)}</span>` : '';
+
+    if (field.type === 'checkbox') {
+        return `
+            <div class="editor-prop-row">
+                <label class="editor-prop-checkbox-row">
+                    <input type="checkbox" id="${fid}" ${eff === true ? 'checked' : ''}>
+                    ${_escHtml(field.label)}
+                </label>
+            </div>`;
+    }
+
+    let control = '';
+    if (field.type === 'text') {
+        control = `<input class="editor-prop-input" type="text" id="${fid}" value="${_escAttr(eff ?? '')}" placeholder="${_escAttr(field.placeholder || '')}">`;
+    } else if (field.type === 'number' || field.type === 'number-nullable') {
+        const numVal = (eff === null || eff === undefined) ? '' : eff;
+        control = `<input class="editor-prop-input" type="number" id="${fid}"
+            value="${_escAttr(numVal)}"
+            ${field.min  !== undefined ? `min="${field.min}"`   : ''}
+            ${field.max  !== undefined ? `max="${field.max}"`   : ''}
+            ${field.step !== undefined ? `step="${field.step}"` : ''}
+            ${field.placeholder        ? `placeholder="${_escAttr(field.placeholder)}"` : ''}>`;
+    } else if (field.type === 'select') {
+        const opts = field.options.map(o =>
+            `<option value="${_escAttr(o.v)}" ${eff === o.v ? 'selected' : ''}>${_escHtml(o.l)}</option>`
+        ).join('');
+        control = `<select class="editor-prop-select" id="${fid}">${opts}</select>`;
+    } else if (field.type === 'textarea') {
+        control = `<textarea class="editor-prop-input" id="${fid}" rows="${field.rows || 3}" spellcheck="false" placeholder="${_escAttr(field.placeholder || '')}">${_escHtml(eff ?? '')}</textarea>`;
+    } else if (field.type === 'textarea-lines') {
+        const text = Array.isArray(eff) ? eff.join('\n') : (eff ?? '');
+        control = `<textarea class="editor-prop-input" id="${fid}" rows="${field.rows || 4}" spellcheck="false" placeholder="${_escAttr(field.placeholder || '')}">${_escHtml(text)}</textarea>`;
+    }
+
+    return `
+        <div class="editor-prop-row">
+            <div class="editor-prop-label">${_escHtml(field.label)}${notePart}</div>
+            ${control}
+        </div>`;
+}
+
+function _buildCustomWidgetFieldsHTML(item) {
+    let html = '';
+    const entries = Object.entries(item).filter(([k]) => !_WIDGET_RESERVED.has(k));
+
+    if (entries.length === 0) {
+        html += `<p class="editor-prop-note">No extra fields yet.</p>`;
+    }
+    for (const [k, v] of entries) {
+        const fid    = _fieldId(k);
+        const isBool = typeof v === 'boolean';
+        const isNum  = typeof v === 'number';
+        if (isBool) {
+            html += `
+                <div class="editor-prop-row editor-prop-custom-row" data-custom-key="${_escAttr(k)}">
+                    <div class="editor-prop-custom-bool-row">
+                        <label class="editor-prop-checkbox-row">
+                            <input type="checkbox" id="${fid}" ${v ? 'checked' : ''}>
+                            <span>${_escHtml(k)}</span>
+                        </label>
+                        <button class="editor-prop-rm-field" data-key="${_escAttr(k)}" title="Remove field">✕</button>
+                    </div>
+                </div>`;
+        } else {
+            html += `
+                <div class="editor-prop-row editor-prop-custom-row" data-custom-key="${_escAttr(k)}">
+                    <div class="editor-prop-label">${_escHtml(k)}</div>
+                    <div class="editor-prop-custom-val-row">
+                        <input class="editor-prop-input" type="${isNum ? 'number' : 'text'}" id="${fid}" value="${_escAttr(String(v))}">
+                        <button class="editor-prop-rm-field" data-key="${_escAttr(k)}" title="Remove field">✕</button>
+                    </div>
+                </div>`;
+        }
+    }
+    // Add-field UI
+    html += `
+        <div class="editor-prop-add-field-block">
+            <div class="editor-prop-label">Add custom field</div>
+            <input class="editor-prop-input" type="text" id="prop-custom-new-key" placeholder="Key" autocomplete="off">
+            <input class="editor-prop-input" type="text" id="prop-custom-new-val" placeholder="Value" autocomplete="off">
+            <button class="btn editor-prop-add-field-btn" id="prop-custom-add-btn">+ Add field</button>
+        </div>`;
+    return html;
+}
+
+function _applyWidgetFieldValues(item) {
+    const schemaFields = _currentWidgetSchema?.fields ?? null;
+    const get          = id => document.getElementById(id);
+
+    if (schemaFields === null) {
+        _applyCustomWidgetFieldValues(item);
+        return;
+    }
+
+    for (const field of schemaFields) {
+        const el = get('prop-widget-' + field.key);
+        if (!el) continue;
+        if (field.type === 'checkbox') {
+            item[field.key] = el.checked;
+        } else if (field.type === 'number' || field.type === 'number-nullable') {
+            const raw = el.value.trim();
+            if (raw !== '') item[field.key] = parseFloat(raw);
+            else delete item[field.key];
+        } else if (field.type === 'textarea-lines') {
+            const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+            if (lines.length > 0) item[field.key] = lines;
+            else delete item[field.key];
+        } else {
+            // text, textarea, select
+            const v = el.value;
+            if (v !== '') item[field.key] = v;
+            else delete item[field.key];
+        }
+    }
+}
+
+function _applyCustomWidgetFieldValues(item) {
+    // Clear existing non-reserved keys, then re-populate from visible rows
+    for (const k of Object.keys(item)) {
+        if (!_WIDGET_RESERVED.has(k)) delete item[k];
+    }
+    document.querySelectorAll('.editor-prop-custom-row').forEach(row => {
+        const k  = row.dataset.customKey;
+        if (!k) return;
+        const el = document.getElementById(_fieldId(k));
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            item[k] = el.checked;
+        } else if (el.type === 'number') {
+            const v = parseFloat(el.value);
+            if (!isNaN(v)) item[k] = v;
+        } else {
+            const v = el.value.trim();
+            if (v !== '') item[k] = v;
+        }
+    });
+}
+
+/* ─── state ─────────────────────────────────────────────────── */
 
 let _state = null;
 let _selectedOverlay = null; // { div, arrKey, index }
@@ -296,7 +482,11 @@ function startResize(e, div, handle, arrKey, index, container) {
 
 /* ─── properties panel (sidebar) ───────────────────────────── */
 
-function updatePropertiesPanel() {
+let _propsPanelGen = 0;
+
+async function updatePropertiesPanel() {
+    const gen = ++_propsPanelGen;
+
     const panel = document.getElementById('editor-properties');
     if (!panel) return;
     if (!_selectedOverlay) { panel.classList.remove('visible'); return; }
@@ -307,16 +497,52 @@ function updatePropertiesPanel() {
     const item = cfg?.[arrKey]?.[index];
     if (!item) return;
 
+    // Load widget schema asynchronously; abort if selection changed while awaiting.
+    let schemaFields = null;
+    if (arrKey === 'widgets') {
+        const schema = await loadWidgetSchema(item.type);
+        if (gen !== _propsPanelGen) return;  // selection changed — discard stale update
+        _currentWidgetSchema = schema;
+        schemaFields = schema?.fields ?? null;
+    } else {
+        _currentWidgetSchema = null;
+    }
+
     const typeLabels = { videos: 'Video', audios: 'Audio', models: '3D Model', widgets: 'Widget' };
     const titleEl = document.getElementById('editor-properties-title');
     if (titleEl) titleEl.textContent = `${typeLabels[arrKey] || arrKey} Properties`;
 
     const body = document.getElementById('editor-properties-body');
     if (!body) return;
-    body.innerHTML = buildPropsHTML(arrKey, item);
+    body.innerHTML = buildPropsHTML(arrKey, item, schemaFields);
 
     // Delete button
     body.querySelector('#prop-delete')?.addEventListener('click', () => deleteItem(arrKey, index));
+
+    // Custom widget (no schema declared): add / remove extra fields
+    if (arrKey === 'widgets' && _currentWidgetSchema === null) {
+        body.querySelectorAll('.editor-prop-rm-field').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const k = btn.dataset.key;
+                if (k) { delete item[k]; updatePropertiesPanel(); }
+            });
+        });
+        document.getElementById('prop-custom-add-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const keyEl = document.getElementById('prop-custom-new-key');
+            const valEl = document.getElementById('prop-custom-new-val');
+            const k = keyEl?.value.trim();
+            const v = valEl?.value.trim() ?? '';
+            if (!k || _WIDGET_RESERVED.has(k)) return;
+            // Auto-detect boolean / number / string
+            if      (v === 'true')                              item[k] = true;
+            else if (v === 'false')                             item[k] = false;
+            else if (v !== '' && !isNaN(Number(v)))             item[k] = Number(v);
+            else                                                item[k] = v;
+            updatePropertiesPanel();
+        });
+    }
 
     // AR lock: W drives H for video/model
     if (arrKey === 'videos' || arrKey === 'models') {
@@ -333,10 +559,26 @@ function updatePropertiesPanel() {
     body.addEventListener('change', () => applyPropertiesQuiet());
 }
 
-function buildPropsHTML(arrKey, item) {
+function buildPropsHTML(arrKey, item, schemaFields = null) {
     const lockAR = arrKey === 'videos' || arrKey === 'models';
 
-    let html = `
+    let html = '';
+
+    // ── Widget type badge (top of panel) ──────────────────────────────────
+    if (arrKey === 'widgets') {
+        const typeLabel = WIDGET_LABELS[item.type]
+            || (item.type || '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            || 'Custom Widget';
+        html += `
+            <div class="editor-prop-row editor-prop-row--type-header">
+                <div class="editor-prop-label">Widget type</div>
+                <div class="editor-prop-type-badge">${_escHtml(typeLabel)}</div>
+            </div>
+            <div class="editor-prop-divider"></div>
+        `;
+    }
+
+    html += `
         <div class="editor-prop-row">
             <div class="editor-prop-label">Position</div>
             <div class="editor-prop-row-2col">
@@ -409,28 +651,9 @@ function buildPropsHTML(arrKey, item) {
             </div>
         `;
     } else if (arrKey === 'widgets') {
-        const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin', 'interactive']);
-        const extraProps = {};
-        for (const [k, v] of Object.entries(item)) {
-            if (!_WIDGET_RESERVED.has(k)) extraProps[k] = v;
-        }
-        const extraJson = JSON.stringify(extraProps, null, 2);
         html += `
-            <div class="editor-prop-row">
-                <div class="editor-prop-label">Widget ID</div>
-                <input class="editor-prop-input" type="text" id="prop-widgetId" value="${item.id ?? ''}">
-            </div>
-            <div class="editor-prop-row">
-                <div class="editor-prop-label">Type</div>
-                <input class="editor-prop-input" type="text" id="prop-widgetType" value="${item.type ?? ''}" readonly>
-            </div>
-            <div class="editor-prop-row">
-                <div class="editor-prop-label">
-                    Config
-                    <span class="editor-prop-label-note editor-prop-json-status" id="prop-widget-config-status"></span>
-                </div>
-                <textarea class="editor-prop-input editor-prop-json" id="prop-widget-config" rows="6" spellcheck="false">${extraJson}</textarea>
-            </div>
+            <div class="editor-prop-divider"></div>
+            ${_buildWidgetFieldsHTML(item, schemaFields)}
         `;
     }
 
@@ -482,27 +705,7 @@ function applyPropertiesQuiet() {
         item.animate       = get('prop-animate')?.checked ?? true;
         item.animationName = get('prop-animName')?.value || undefined;
     } else if (arrKey === 'widgets') {
-        item.id   = get('prop-widgetId')?.value  || item.id;
-
-        const jsonEl   = get('prop-widget-config');
-        const statusEl = get('prop-widget-config-status');
-        if (jsonEl) {
-            try {
-                const parsed = JSON.parse(jsonEl.value || '{}');
-                const _WIDGET_RESERVED = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'builtin', 'interactive']);
-                // Remove all current non-reserved props
-                for (const k of Object.keys(item)) {
-                    if (!_WIDGET_RESERVED.has(k)) delete item[k];
-                }
-                // Apply parsed props (skip reserved so JSON can't override position/type)
-                for (const [k, v] of Object.entries(parsed)) {
-                    if (!_WIDGET_RESERVED.has(k)) item[k] = v;
-                }
-                if (statusEl) { statusEl.textContent = ''; statusEl.classList.remove('is-error'); }
-            } catch {
-                if (statusEl) { statusEl.textContent = 'invalid JSON'; statusEl.classList.add('is-error'); }
-            }
-        }
+        _applyWidgetFieldValues(item);
     }
 
     const container = getSlideEl();

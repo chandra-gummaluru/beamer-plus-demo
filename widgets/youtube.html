@@ -1,11 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "YouTube Video",
+  "category": "Tools",
+  "fields": [
+    { "key": "videoId",        "label": "YouTube URL or Video ID", "type": "text",     "placeholder": "https://youtube.com/watch?v=…" },
+    { "key": "autoplay",       "label": "Autoplay on slide load",  "type": "checkbox", "default": false },
+    { "key": "startTime",      "label": "Start time (seconds)",    "type": "number",   "min": 0, "step": 1, "placeholder": "0" },
+    { "key": "allowManualUrl", "label": "Allow URL input box",     "type": "checkbox", "default": false }
+  ]
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YouTube Widget</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:         oklch(99% 0.003 80);
@@ -23,7 +33,6 @@
   --err:        oklch(58% 0.18 25);
   --line:       1px solid oklch(85% 0.005 260);
   --r:          6px;
-  --font:       "EB Garamond", Georgia, serif;
   --mono:       ui-monospace, "SF Mono", Menlo, monospace;
 }
 

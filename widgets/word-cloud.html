@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Word Cloud",
+  "category": "Audience Response",
+  "fields": [
+    { "key": "question",  "label": "Prompt / question", "type": "textarea", "placeholder": "What word comes to mind…", "rows": 3 },
+    { "key": "autoStart", "label": "Auto-start",        "type": "checkbox", "default": false }
+  ]
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Word Cloud — Beamer+</title>

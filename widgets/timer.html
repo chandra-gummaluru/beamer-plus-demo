@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Timer",
+  "category": "Tools",
+  "fields": [
+    { "key": "mode",      "label": "Mode",               "type": "select", "options": [{"v":"countdown","l":"Countdown"},{"v":"stopwatch","l":"Stopwatch"}], "default": "countdown" },
+    { "key": "duration",  "label": "Duration (seconds)", "type": "number", "min": 1, "step": 1, "placeholder": "60", "note": "countdown only" },
+    { "key": "autoStart", "label": "Auto-start",         "type": "checkbox", "default": false }
+  ]
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Timer — Beamer+</title>

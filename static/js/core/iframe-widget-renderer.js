@@ -9,6 +9,114 @@
 // re-render (resize event + widget-set-state) so canvas content is restored.
 // This guarantees the iframe never reloads and all JS state is preserved.
 
+// ── Shared widget base theme ───────────────────────────────────────────────
+// Injected into every widget iframe before its own <style> so all widgets
+// share the same design tokens and fonts.  Each widget's own :root block
+// wins over these defaults, so individual overrides still work.
+
+const _WIDGET_BASE_INJECT = `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style id="widget-base-theme">
+:root {
+  /* ── Palette – light ── */
+  --bg:         #ffffff;
+  --bg-subtle:  #f9f9f8;
+  --bg-output:  #fafaf9;
+  --border:     #e9e9e6;
+  --border-med: #d4d4cf;
+  --text:       #1a1a18;
+  --text-2:     #6b6b65;
+  --text-3:     #aeaea5;
+  --accent:     #52524e;
+  --accent-bg:  #f0f0ee;
+  --ok:         #15803d;
+  --err:        #c0392b;
+  /* ── Typography ── */
+  --radius:     6px;
+  --font-ui:    'DM Sans', system-ui, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  /* ── Aliases so older widget code using different names still works ── */
+  --font:       var(--font-ui);
+  --mono:       var(--font-mono);
+  --r:          var(--radius);
+  --ink-1:      var(--text);
+  --ink-2:      var(--text-2);
+  --ink-3:      var(--text-3);
+  --ink-4:      var(--text-3);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:         #1a1a18;
+    --bg-subtle:  #222220;
+    --bg-output:  #1e1e1c;
+    --border:     #333330;
+    --border-med: #444440;
+    --text:       #f0f0ed;
+    --text-2:     #a0a09a;
+    --text-3:     #6b6b65;
+    --accent:     #a0a09a;
+    --accent-bg:  #2a2a28;
+  }
+}
+</style>`;
+
+// ── Widget schema protocol ─────────────────────────────────────────────────
+// Each widget HTML file may declare its own editable fields via:
+//
+//   <script id="widget-schema" type="application/json">
+//   { "label": "...", "category": "...", "fields": [ ... ] }
+//   </script>
+//
+// Beamer+ reads this at editor time — no hardcoded field lists needed.
+// The fields array uses the same format as the editor's field builder:
+//   { key, label, type, placeholder?, default?, min?, max?, step?, note?,
+//     options?: [{v, l}], rows? }
+// type ∈ text | number | number-nullable | checkbox | select | textarea | textarea-lines
+
+export function extractWidgetSchema(htmlContent) {
+    // Match both attribute orderings of id / type
+    const m = htmlContent.match(
+        /<script[^>]+id=["']widget-schema["'][^>]*>([\s\S]*?)<\/script>/i
+    );
+    if (!m) return null;
+    try { return JSON.parse(m[1].trim()); } catch { return null; }
+}
+
+const _schemaCache = new Map();
+
+/**
+ * Load and cache the schema for a widget type.
+ * Looks in the ZIP first (for custom widgets), then fetches from /widgets/.
+ * Returns null if the widget has no schema declaration.
+ */
+export async function loadWidgetSchema(type, zipFile = null) {
+    if (_schemaCache.has(type)) return _schemaCache.get(type);
+    try {
+        let html = null;
+        if (zipFile) {
+            const path  = `widgets/${type}.html`;
+            const entry = zipFile.file(path)
+                || zipFile.filter((p, f) => !f.dir && p.toLowerCase() === path.toLowerCase())[0];
+            if (entry) html = await entry.async('string');
+        }
+        if (!html) {
+            const res = await fetch(`/widgets/${encodeURIComponent(type)}.html`);
+            if (res.ok) html = await res.text();
+        }
+        const schema = html ? extractWidgetSchema(html) : null;
+        _schemaCache.set(type, schema);
+        return schema;
+    } catch {
+        _schemaCache.set(type, null);
+        return null;
+    }
+}
+
+/** Wipe the schema cache — call when a new ZIP is loaded. */
+export function clearSchemaCache() {
+    _schemaCache.clear();
+}
+
 // ── Expand/collapse registry ───────────────────────────────────────────────
 // widgetId → { iframe, container, savedStyle }
 const _widgetRegistry = new Map();
@@ -125,6 +233,7 @@ export function clearAllParked() {
     });
     _capturedStates.clear();
     _savedWidgetStates = {};
+    _schemaCache.clear();
 }
 
 /**
@@ -281,17 +390,24 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
                 htmlContent = await widgetFile.async('string');
             }
 
-            // Pre-load notebook from zip if widget config specifies one
+            // Pre-load notebook from zip if widget config specifies a local path.
+            // Remote URLs (http/https) are passed through as-is and fetched by the
+            // widget itself, so we skip the ZIP lookup for those.
             let notebookContent = null;
             if (w.notebook && typeof w.notebook === 'string' && w.notebook.trim()) {
-                const nbPath = w.notebook.trim().replace(/^\/+/, '');
-                const nbFile = zipFile?.file(nbPath)
-                    || zipFile?.filter((p, f) => !f.dir && p.toLowerCase() === nbPath.toLowerCase())[0];
-                if (nbFile) {
-                    try { notebookContent = JSON.parse(await nbFile.async('string')); }
-                    catch (e) { console.warn(`Failed to parse notebook ${nbPath}:`, e); }
+                const nb = w.notebook.trim();
+                if (/^https?:\/\//i.test(nb)) {
+                    // Remote URL — widget handles the fetch; nothing to pre-load here.
                 } else {
-                    console.warn(`Notebook file not found in zip: ${nbPath}`);
+                    const nbPath = nb.replace(/^\/+/, '');
+                    const nbFile = zipFile?.file(nbPath)
+                        || zipFile?.filter((p, f) => !f.dir && p.toLowerCase() === nbPath.toLowerCase())[0];
+                    if (nbFile) {
+                        try { notebookContent = JSON.parse(await nbFile.async('string')); }
+                        catch (e) { console.warn(`Failed to parse notebook ${nbPath}:`, e); }
+                    } else {
+                        console.warn(`Notebook file not found in zip: ${nbPath}`);
+                    }
                 }
             }
 
@@ -303,7 +419,9 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             };
             const _configJson   = JSON.stringify(_configPayload).replace(/<\/script>/gi, '<\\/script>');
             const _configScript = `<script>window.WIDGET_CONFIG=${_configJson};<\/script>`;
-            const _injectedHtml = htmlContent.replace(/(<head[^>]*>)/i, `$1${_configScript}`);
+            // Inject shared base theme + widget config right after <head>.
+            // _WIDGET_BASE_INJECT comes first so each widget's own <style> wins over defaults.
+            const _injectedHtml = htmlContent.replace(/(<head[^>]*>)/i, `$1${_WIDGET_BASE_INJECT}${_configScript}`);
 
             await new Promise(resolve => {
                 let settled = false;

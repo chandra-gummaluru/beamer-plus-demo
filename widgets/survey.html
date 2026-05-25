@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Open Survey",
+  "category": "Audience Response",
+  "fields": [
+    { "key": "question",     "label": "Question",               "type": "textarea", "placeholder": "Enter survey question…", "rows": 3 },
+    { "key": "autoStart",    "label": "Auto-start",             "type": "checkbox", "default": false },
+    { "key": "minResponses", "label": "Min. responses to show", "type": "number",   "min": 1, "step": 1, "default": 1 },
+    { "key": "numSummaries", "label": "AI summary count",       "type": "number",   "min": 0, "step": 1, "default": 3 }
+  ]
+}
+</script>
 <meta charset="utf-8">
 <title>Survey — Beamer+</title>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>

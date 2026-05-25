@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Multiple Choice",
+  "category": "Audience Response",
+  "fields": [
+    { "key": "question",      "label": "Question",                              "type": "textarea",        "placeholder": "Enter the question…", "rows": 3 },
+    { "key": "options",       "label": "Answer options (one per line)",         "type": "textarea-lines",  "placeholder": "Option A\nOption B\nOption C", "rows": 4 },
+    { "key": "correctAnswer", "label": "Correct option (1-based, blank=none)", "type": "number-nullable", "min": 1, "step": 1 }
+  ]
+}
+</script>
 <meta charset="utf-8">
 <title>MCQ — Beamer+</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">

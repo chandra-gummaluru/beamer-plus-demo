@@ -1,10 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Python REPL",
+  "category": "Computer Science",
+  "fields": []
+}
+</script>
   <meta charset="utf-8">
   <title>Python REPL</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
   <style>
@@ -24,7 +29,6 @@
       --danger:  oklch(58% 0.18 25);
       --line:    1px solid oklch(85% 0.005 260);
       --r-sm: 6px; --r-md: 8px;
-      --font-sans: "EB Garamond", system-ui, sans-serif;
       --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
       --shadow-1: 0 1px 3px oklch(20% 0.01 260 / 0.06);
 

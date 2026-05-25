@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "Map",
+  "category": "Tools",
+  "fields": [
+    { "key": "zoom", "label": "Default zoom (1–18)", "type": "number", "min": 1, "max": 18, "step": 1, "default": 12 }
+  ]
+}
+</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Map — Beamer+</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500&display=swap"
-    rel="stylesheet"
-  />
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -30,7 +34,6 @@
       --err:       oklch(58% 0.18 25);
       --line:      1px solid oklch(85% 0.005 260);
       --r:         6px;
-      --font:      "EB Garamond", Georgia, serif;
       --mono:      ui-monospace, "SF Mono", Menlo, monospace;
     }
 
