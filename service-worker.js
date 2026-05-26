@@ -1,6 +1,6 @@
-const CACHE_NAME = 'beamer-plus-v6';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v6';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v6';
+const CACHE_NAME = 'beamer-plus-v7';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v7';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v7';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [
@@ -24,7 +24,7 @@ const STATIC_ASSETS = [
   '/static/js/button.js',
   '/static/js/canvas.js',
   '/static/js/events.js',
-  '/static/js/iframe-widget-renderer.js',
+  '/static/js/core/iframe-widget-renderer.js',
   '/static/js/label.js',
   '/static/js/modal.js',
   '/static/js/selector.js',
