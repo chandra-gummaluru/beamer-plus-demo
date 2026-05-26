@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -3 app.py)",
+      "Bash(py -3 -c \"import urllib.request, json; resp = urllib.request.urlopen\\('http://127.0.0.1:5000/api/widgets', timeout=5\\); print\\(json.loads\\(resp.read\\(\\)\\)\\)\")"
+    ]
+  }
+}

@@ -23,7 +23,7 @@
 #top-right-controls .btn {
     width: var(--hit-min);
     min-width: var(--hit-min);
-    height: 34px;
+    min-height: var(--hit-min);
     padding: 0;
 }
 

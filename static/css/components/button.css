@@ -35,6 +35,7 @@
     text-decoration: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 
     transition:
         background-color var(--dur-fast) var(--ease),

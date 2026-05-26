@@ -60,13 +60,16 @@ body.split-view-active #pdf-container-2 { display: flex; padding: var(--sp-3); f
     cursor: col-resize;
     flex-shrink: 0;
     transition: background 0.2s;
+    touch-action: none;   /* allow pointer capture for touch drag */
 }
 #split-view-divider:hover { background: var(--accent); }
 #split-view-divider.active { background: var(--accent); }
 
 body.split-view-active #split-view-divider { display: block; }
 
-/* Slide canvas — paper with soft shadow */
+/* Slide canvas — paper with soft shadow.
+   Width + height are set to pixel-exact 4:3 values by sizeSlideCanvases()
+   in main.js, so no CSS sizing rules are needed here. */
 #pdf-canvas, #pdf-canvas-2 {
     position: absolute;
     z-index: 1;
@@ -74,17 +77,7 @@ body.split-view-active #split-view-divider { display: block; }
     border-radius: var(--r-md);
     box-shadow: var(--shadow-3);
     box-sizing: border-box;
-    height: 95%;
-    aspect-ratio: 4 / 3;
-    max-width: 95%;
     overflow: hidden;
-}
-
-body.split-view-active #pdf-canvas,
-body.split-view-active #pdf-canvas-2 {
-    width: 95%;
-    height: auto;
-    max-height: 95%;
 }
 
 #pdf-canvas canvas, #pdf-canvas-2 canvas {
@@ -93,27 +86,19 @@ body.split-view-active #pdf-canvas-2 {
     display: block;
 }
 
+/* Annotation canvas — sized to match #pdf-canvas by sizeSlideCanvases(). */
 #ann-canvas, #ann-canvas-2 {
     position: absolute;
     z-index: 2;
     pointer-events: none;
     box-sizing: border-box;
-    height: 95%;
-    aspect-ratio: 4 / 3;
-    max-width: 95%;
-}
-
-body.split-view-active #ann-canvas,
-body.split-view-active #ann-canvas-2 {
-    width: 95%;
-    height: auto;
-    max-height: 95%;
 }
 
 #ann-canvas canvas, #ann-canvas-2 canvas {
     width: 100% !important;
     height: 100% !important;
     display: block;
+    touch-action: none;  /* prevent scroll/zoom interfering with pen drawing */
 }
 
 #pdf-container video, #pdf-container-2 video {
@@ -137,14 +122,12 @@ model-viewer { pointer-events: auto !important; }
 /* ============================================================
    Slide loading overlay
    ============================================================ */
+/* Loading overlay — sized to match #pdf-canvas by sizeSlideCanvases(). */
 .slide-loading-overlay {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    height: 95%;
-    aspect-ratio: 4 / 3;
-    max-width: 95%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -154,13 +137,6 @@ model-viewer { pointer-events: auto !important; }
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.1s ease;
-}
-body.split-view-active .slide-loading-overlay,
-body.viewer-split-active .slide-loading-overlay {
-    width: 95%;
-    height: auto;
-    max-height: 95%;
-    max-width: none;
 }
 .slide-loading-overlay.visible { opacity: 1; }
 .slide-squiggle { width: 96px; height: 32px; display: block; }
@@ -240,7 +216,7 @@ body.viewer-split-active .slide-loading-overlay {
     width: calc(100% - 8px);
     padding: 0 var(--sp-2);
     font-size: var(--fs-sm);
-    min-height: 36px;
+    min-height: var(--hit-min);
 }
 
 /* Slide thumbnail card */

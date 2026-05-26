@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.pdfCvs = new Canvas(pdfContainer, false);
     state.annCvs.setHistoryChangeHandler(updateHistoryBtns);
     updateHistoryBtns();
+    sizeSlideCanvases();   // set pixel-exact 4:3 dimensions before any render
 
     // modules
     initNavigator(state);
@@ -835,6 +836,7 @@ function wireFocusMode() {
         btn.innerHTML = active ? _FOCUS_SVG_COMPRESS : _FOCUS_SVG_EXPAND;
         // Trigger canvas resize so annotations stay aligned with the new layout
         setTimeout(() => {
+            sizeSlideCanvases(); // recompute 4:3 size for the new content area
             state.annCvs?.resizeOnly?.();
             state.pdfCvs?.resizeOnly?.();
             if (state.splitView) {
@@ -901,31 +903,38 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
         });
     }
 
-    // Divider dragging for resizing
+    // Divider dragging for resizing — pointer events so touch works too
     const divider = document.getElementById('split-view-divider');
     let isDragging = false;
+
+    function _onDividerDragEnd() {
+        const wasDragging = isDragging;
+        isDragging = false;
+        divider.classList.remove('active');
+        // Re-render both panes after divider resize — only if we were actually dragging
+        if (wasDragging && state.splitView) {
+            setTimeout(async () => {
+                saveCurrentAnnotations();
+                state.annCvs.resizeOnly?.();
+                state.annCvs2?.resizeOnly?.();
+                updateWidgetPositions(document.getElementById('pdf-canvas'));
+                updateWidgetPositions(document.getElementById('pdf-canvas-2'));
+                await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
+                emitSlideState();
+            }, 50);
+        }
+    }
+
     if (divider) {
-        divider.addEventListener('mousedown', () => { isDragging = true; divider.classList.add('active'); });
-        document.addEventListener('mouseup', () => {
-            const wasDragging = isDragging;
-            isDragging = false;
-            divider.classList.remove('active');
-            // Re-render both panes after divider resize — only if we were actually dragging
-            if (wasDragging && state.splitView) {
-                setTimeout(async () => {
-                    // Save first (canvas still has correct pixels), then resize
-                    // buffers to match new layout so coordinates align with mouse
-                    saveCurrentAnnotations();
-                    state.annCvs.resizeOnly?.();
-                    state.annCvs2?.resizeOnly?.();
-                    updateWidgetPositions(document.getElementById('pdf-canvas'));
-                    updateWidgetPositions(document.getElementById('pdf-canvas-2'));
-                    await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
-                    emitSlideState();
-                }, 50);
-            }
+        divider.addEventListener('pointerdown', (e) => {
+            isDragging = true;
+            divider.classList.add('active');
+            // Capture keeps pointermove/pointerup firing on this element even
+            // after the pointer leaves it, which is essential for touch drag.
+            divider.setPointerCapture(e.pointerId);
         });
-        document.addEventListener('mousemove', (e) => {
+
+        divider.addEventListener('pointermove', (e) => {
             if (!isDragging) return;
             const mainContent = document.getElementById('main-content');
             const leftContainer = document.getElementById('pdf-container');
@@ -937,6 +946,9 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
             applySplitRatio(newLeftPercent);
             emitSlideState();
         });
+
+        divider.addEventListener('pointerup',     _onDividerDragEnd);
+        divider.addEventListener('pointercancel', _onDividerDragEnd);
     }
 
     // Horizontal scroll on wheel in split view
@@ -1086,6 +1098,7 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     }
 
     await new Promise(resolve => setTimeout(resolve, 100));
+    sizeSlideCanvases(); // recompute 4:3 sizes for the new split / single layout
     state.annCvs.resizeOnly?.();
     state.pdfCvs.resizeOnly?.();
     if (state.annCvs2) state.annCvs2.resizeOnly?.();
@@ -1518,9 +1531,46 @@ function deleteCurrentBlank() {
     populateSlideNavigator();
 }
 
+/* ─── slide-canvas sizing ─────────────────────────────────────── */
+/**
+ * Compute a pixel-exact 4:3 size fitting within 95 % of each slide
+ * container and apply it as inline styles to the canvas wrapper divs,
+ * their annotation overlays, and the loading-overlay elements.
+ *
+ * Called on init, window resize, focus-mode toggle, and split-view
+ * toggle so the ratio is always correct on every device / orientation.
+ */
+function sizeSlideCanvases() {
+    const pairs = [
+        ['pdf-container',   'pdf-canvas',   'ann-canvas'],
+        ['pdf-container-2', 'pdf-canvas-2', 'ann-canvas-2'],
+    ];
+    for (const [containerId, cvId, annId] of pairs) {
+        const pane = document.getElementById(containerId);
+        const cv   = document.getElementById(cvId);
+        const ann  = document.getElementById(annId);
+        if (!pane || !cv) continue;
+        const availW = pane.clientWidth  * 0.95;
+        const availH = pane.clientHeight * 0.95;
+        if (!availW || !availH) continue;
+        let w, h;
+        if (availW / availH >= 4 / 3) {
+            h = availH; w = h * 4 / 3;   // height is the binding axis
+        } else {
+            w = availW; h = w * 3 / 4;   // width is the binding axis
+        }
+        cv.style.width  = `${w}px`;
+        cv.style.height = `${h}px`;
+        if (ann) { ann.style.width = `${w}px`; ann.style.height = `${h}px`; }
+        const overlay = pane.querySelector('.slide-loading-overlay');
+        if (overlay) { overlay.style.width = `${w}px`; overlay.style.height = `${h}px`; }
+    }
+}
+
 /* ─── resize / fullscreen ─────────────────────────────────────── */
 function wireResizeAndFullscreen() {
     window.addEventListener('resize', () => {
+        sizeSlideCanvases();
         state.annCvs?.resize?.();
         if (state.splitView) state.annCvs2?.resize?.();
         if (state.splitView) applySplitRatio(state.splitRatio);
@@ -1530,6 +1580,7 @@ function wireResizeAndFullscreen() {
     });
     document.addEventListener('fullscreenchange', () => {
         setTimeout(() => {
+            sizeSlideCanvases();
             state.annCvs?.resize?.();
             if (state.splitView) applySplitRatio(state.splitRatio);
             if (state.zipFile && state.slideConfigs[state.currentSlide]) {

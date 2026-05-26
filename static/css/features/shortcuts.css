@@ -16,7 +16,7 @@
 
 #bottom-controls .btn {
     width: var(--hit-min);
-    height: 34px;
+    min-height: var(--hit-min);
     padding: 0;
 }
 
