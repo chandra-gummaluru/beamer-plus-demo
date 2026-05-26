@@ -6,7 +6,7 @@
   "label": "PDF Textbook",
   "category": "Tools",
   "fields": [
-    { "key": "pdf",   "label": "PDF path in ZIP", "type": "text",   "placeholder": "textbooks/chapter1.pdf" },
+    { "key": "pdf", "label": "PDF file", "type": "file", "accept": ".pdf", "folder": "assets" },
     { "key": "title", "label": "Display title",   "type": "text",   "placeholder": "Optional" },
     { "key": "page",  "label": "Start page",      "type": "number", "min": 1, "step": 1, "default": 1 }
   ]
@@ -514,10 +514,11 @@ body {
 
     if (cfg.socketUrl) initSocket(cfg.socketUrl);
 
-    // Resolve PDF URL — make relative paths absolute using the socket server origin
+    // Resolve PDF URL — serve relative paths through /api/zip-asset/ so Flask
+    // can extract them from _temp_assets (pre-save) or the loaded ZIP (saved).
     let url = cfg.pdf || '';
     if (url && cfg.socketUrl && !/^https?:/i.test(url)) {
-      url = cfg.socketUrl.replace(/\/$/, '') + '/' + url.replace(/^\//, '');
+      url = cfg.socketUrl.replace(/\/$/, '') + '/api/zip-asset/' + url.replace(/^\//, '');
     }
 
     if (url) loadPDF(url);

@@ -1,6 +1,6 @@
-const CACHE_NAME = 'beamer-plus-v7';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v7';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v7';
+const CACHE_NAME = 'beamer-plus-v11';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v11';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v11';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [
@@ -110,6 +110,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // Network-first strategy for HTML navigation requests — ensures the page
+  // markup is always fresh even when a cached copy exists.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.status === 200) {
+            const clone = response.clone();
+            caches.open(STATIC_CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then(r => r || caches.match('/index.html')))
+    );
+    return;
+  }
+
   // Network-first strategy for API calls
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(

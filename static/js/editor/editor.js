@@ -103,12 +103,42 @@ function _buildWidgetFieldsHTML(item, schemaFields) {
     return html;
 }
 
+function _pickFile(accept) {
+    return new Promise(resolve => {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = accept || '*';
+        inp.addEventListener('change', () => resolve(inp.files?.[0] ?? null));
+        inp.addEventListener('cancel',  () => resolve(null));
+        inp.click();
+    });
+}
+
 function _buildOneFieldRow(field, item) {
     const fid = 'prop-widget-' + field.key;
     const val = item[field.key];
     const eff = val !== undefined ? val : field.default;
     const notePart = field.note
         ? ` <span class="editor-prop-label-note">${_escHtml(field.note)}</span>` : '';
+
+    if (field.type === 'file') {
+        const displayName = eff ? String(eff).split('/').pop() : '';
+        return `
+        <div class="editor-prop-row">
+            <div class="editor-prop-label">${_escHtml(field.label)}${notePart}</div>
+            <div class="editor-prop-file-row">
+                <input type="text" class="editor-prop-input" id="${fid}"
+                       value="${_escAttr(eff ?? '')}" readonly
+                       placeholder="No file selected"
+                       title="${_escAttr(eff ?? '')}">
+                <button class="btn editor-prop-file-btn"
+                        data-field-key="${_escAttr(field.key)}"
+                        data-field-id="${fid}"
+                        data-accept="${_escAttr(field.accept || '*')}"
+                        data-folder="${_escAttr(field.folder || 'files')}">Upload</button>
+            </div>
+        </div>`;
+    }
 
     if (field.type === 'checkbox') {
         return `
@@ -553,6 +583,58 @@ async function updatePropertiesPanel() {
             if (!isNaN(w) && hEl) hEl.value = Math.round(w / ar);
         });
     }
+
+    // File-upload buttons (schema type: "file")
+    body.querySelectorAll('.editor-prop-file-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const file = await _pickFile(btn.dataset.accept);
+            if (!file) return;
+            const folder = btn.dataset.folder || 'assets';
+            const path   = `${folder}/${file.name}`;
+
+            // Store buffer for ZIP inclusion on save
+            _state.editorNewFiles[path] = await file.arrayBuffer();
+
+            // POST to server immediately so the widget can stream the file via
+            // /api/zip-asset/ before the ZIP has been saved.
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                fd.append('folder', folder);
+                await fetch('/api/upload-asset', { method: 'POST', body: fd });
+            } catch (e) {
+                console.warn('[editor] upload-asset POST failed (widget preview may not work):', e);
+            }
+
+            // Update in-memory config item
+            const cfg = getOrCreateConfig();
+            const itm = cfg?.[arrKey]?.[index];
+            if (itm) itm[btn.dataset.fieldKey] = path;
+
+            // Update the text input so applyPropertiesQuiet reads the new value
+            const el = document.getElementById(btn.dataset.fieldId);
+            if (el) { el.value = path; el.title = path; }
+
+            applyPropertiesQuiet();
+
+            // applyPropertiesQuiet only updates positions; it never postMessages
+            // the iframe.  Push the full updated config to the widget directly so
+            // it can load the file right now without waiting for a save+reload.
+            if (arrKey === 'widgets' && itm?.id) {
+                const iframe = document.querySelector(
+                    `.widget-iframe[data-widget-id="${CSS.escape(String(itm.id))}"]`
+                );
+                if (iframe?.contentWindow) {
+                    try {
+                        iframe.contentWindow.postMessage({
+                            type: 'widget-config',
+                            config: { ...itm, role: 'presenter', socketUrl: window.location.origin }
+                        }, '*');
+                    } catch (_) {}
+                }
+            }
+        });
+    });
 
     // Auto-apply every change immediately
     body.addEventListener('input',  () => applyPropertiesQuiet());

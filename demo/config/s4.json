@@ -3,10 +3,12 @@
     {
       "path": "models/heart.glb",
       "x": 0.55,
-      "y": 0.27,
+      "y": 0.31,
       "width": 0.4,
-      "height": 0.48,
-      "zIndex": 20
+      "height": 0.4,
+      "zIndex": 5,
+      "autoRotate": true,
+      "animate": true
     }
   ]
 }

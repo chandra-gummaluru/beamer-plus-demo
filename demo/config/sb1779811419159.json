@@ -1,0 +1,15 @@
+{
+  "widgets": [
+    {
+      "id": "widget_1779811424678",
+      "type": "circuit_widget",
+      "src": "",
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
+      "zIndex": 10,
+      "builtin": true
+    }
+  ]
+}

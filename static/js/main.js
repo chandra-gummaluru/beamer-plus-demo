@@ -21,6 +21,7 @@ import { initBookmarks } from './slides/bookmarks.js';
 import { initUploader } from './upload/uploader.js';
 import { initSurveyBridge } from './surveys/survey-bridge.js';
 import { initEditor } from './editor/editor.js';
+import { startTour } from './tour.js';
 
 /* ─── Render generation counters ─────────────────────────────── */
 // Incremented each time a new render starts for each pane.
@@ -621,6 +622,16 @@ function showSettingsModal() {
 function wireSettingsBtn() {
     document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
     document.getElementById('help-btn')?.addEventListener('click', showHelpModal);
+    document.getElementById('tour-btn')?.addEventListener('click', () => {
+        const loader = state.zipFile ? null : async () => {
+            window.BeamerModal?.show({ kind: 'loading', title: 'Loading demo…', message: 'Fetching demo presentation…' });
+            const resp = await fetch('/api/demo-zip');
+            if (!resp.ok) { window.BeamerModal?.close(); return; }
+            const blob = await resp.blob();
+            await loadZipPresentation(new File([blob], 'demo.zip', { type: 'application/zip' }));
+        };
+        startTour(loader);
+    });
     applyTheme(localStorage.getItem('beamer-theme') || 'light');
 }
 

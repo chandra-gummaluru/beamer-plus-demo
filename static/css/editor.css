@@ -182,6 +182,26 @@ body.edit-mode #editor-panel { display: flex; }
     cursor: default;
 }
 
+/* File-upload field row */
+.editor-prop-file-row {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+}
+.editor-prop-file-row .editor-prop-input {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.editor-prop-file-btn {
+    flex-shrink: 0;
+    font-size: var(--fs-xs);
+    padding: 0 var(--sp-3);
+    height: var(--hit-min);
+}
+
 /* JSON config textarea */
 .editor-prop-json {
     font-family: var(--font-mono);

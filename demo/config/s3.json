@@ -2,15 +2,13 @@
   "videos": [
     {
       "path": "video/ballfeather2.mp4",
-      "x": 0.425,
-      "y": 0.25,
-      "width": 0.5,
-      "height": 0.48,
-      "playbackRate": 1.0,
+      "x": 0.42,
+      "y": 0.245,
+      "width": 0.485,
+      "height": 0.49,
       "zIndex": 5,
-      "volume": 1.0,
       "playMode": "click",
-      "expandDelay": 3
+      "volume": 1
     }
   ]
 }

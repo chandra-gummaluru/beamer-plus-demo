@@ -1,4 +1,6 @@
-from flask import Flask, render_template, jsonify, request, send_file, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_file, send_from_directory, Response
+import io
+import mimetypes
 from flask_socketio import SocketIO, emit, join_room
 import uuid
 import time
@@ -53,6 +55,10 @@ current_presentation = {
     'models': {},
     'available_models': [],
 }
+
+# Temporary in-memory store for files uploaded via the editor but not yet
+# saved into the ZIP.  Cleared each time a new presentation is loaded.
+_temp_assets: dict[str, bytes] = {}
 
 survey_server_process = None
 
@@ -189,6 +195,8 @@ def check_embeddable():
 # ── Upload ─────────────────────────────────────────────────────────────────────
 
 def _save_and_load(file):
+    global _temp_assets
+    _temp_assets = {}          # wipe editor temp assets when a new ZIP is loaded
     filepath = os.path.join(UPLOAD_FOLDER, 'current.zip')
     file.save(filepath)
     models, available_models = extract_and_load_models(filepath)
@@ -218,6 +226,25 @@ def get_current_presentation():
     return jsonify({'error': 'No presentation loaded'}), 404
 
 
+# ── Demo ZIP ──────────────────────────────────────────────────────────────────
+# Packages the entire demo/ folder as a ZIP so the tour can auto-load it.
+
+@app.route('/api/demo-zip')
+def serve_demo_zip():
+    demo_dir = os.path.join(BASE_PATH, 'demo')
+    if not os.path.isdir(demo_dir):
+        return jsonify({'error': 'Demo not found'}), 404
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(demo_dir):
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                arcname = os.path.relpath(fpath, demo_dir)
+                zf.write(fpath, arcname)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/zip', download_name='demo.zip')
+
+
 # ── Static demo-folder file serving ───────────────────────────────────────────
 # Serves files from the demo/ directory (e.g. PDFs for the textbook widget).
 # URL: /api/demo/<relative-path-within-demo>
@@ -234,6 +261,43 @@ def serve_demo_file(filename):
     resp = send_file(requested)
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
+
+
+# ── ZIP asset serving ──────────────────────────────────────────────────────────
+
+@app.route('/api/zip-asset/<path:filepath>')
+def serve_zip_asset(filepath):
+    """Serve a file from temp uploads or the current presentation ZIP."""
+    if filepath in _temp_assets:
+        mime = mimetypes.guess_type(filepath)[0] or 'application/octet-stream'
+        resp = Response(_temp_assets[filepath], mimetype=mime)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    if not current_presentation.get('file') or not os.path.exists(current_presentation['file']):
+        return jsonify({'error': 'No presentation loaded'}), 404
+    try:
+        with zipfile.ZipFile(current_presentation['file'], 'r') as z:
+            if filepath not in z.namelist():
+                return jsonify({'error': f'File not found: {filepath}'}), 404
+            data = z.read(filepath)
+            mime = mimetypes.guess_type(filepath)[0] or 'application/octet-stream'
+            resp = Response(data, mimetype=mime)
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/upload-asset', methods=['POST'])
+def upload_asset():
+    """Temporarily store a file so widgets can render it before the ZIP is saved."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+    f = request.files['file']
+    folder = request.form.get('folder', 'assets')
+    path = f'{folder}/{f.filename}'
+    _temp_assets[path] = f.read()
+    return jsonify({'path': path, 'url': f'/api/zip-asset/{path}'})
 
 
 # ── Models ─────────────────────────────────────────────────────────────────────
@@ -506,7 +570,7 @@ if __name__ == '__main__':
         if not args.http:
             print("[WARN] Could not start HTTPS (cryptography library not found). Falling back to HTTP.")
             print("[WARN] Camera widget requires HTTPS on LAN addresses.")
-        socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=True)
     else:
     """
-    socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
+    socketio.run(app, host='0.0.0.0', port=args.port, debug=True)
