@@ -123,9 +123,6 @@
     line-height: 1;
 }
 
-body.split-view-active #top-right-controls {
-    top: 6px;
-}
 
 /* Hide right panel on small screens (mobile toggle handles tools there) */
 @media (max-width: 1300px) {

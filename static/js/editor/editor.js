@@ -319,7 +319,14 @@ function toggleEditMode() {
     if (_state.editMode) exitEditMode(); else enterEditMode();
 }
 
-function enterEditMode() {
+async function enterEditMode() {
+    // Edit mode uses a single-pane layout — exit split view first so the
+    // slide container resizes before we try to render edit overlays.
+    if (_state.splitView) {
+        document.getElementById('split-toggle')?.click();
+        // setSplitActive() has a 100 ms internal delay; wait for it to settle.
+        await new Promise(r => setTimeout(r, 250));
+    }
     _state.editMode = true;
     document.body.classList.add('edit-mode');
     const btn = document.getElementById('edit-mode-btn');

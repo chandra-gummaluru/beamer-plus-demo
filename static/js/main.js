@@ -944,6 +944,8 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
             const rect = mainContent.getBoundingClientRect();
             const newLeftPercent = ((e.clientX - rect.left) / rect.width) * 100;
             applySplitRatio(newLeftPercent);
+            // Recompute 4:3 canvas sizes now that the containers have new widths.
+            sizeSlideCanvases();
             emitSlideState();
         });
 

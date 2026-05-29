@@ -25,10 +25,7 @@ body.focus-mode #bottom-controls {
 }
 
 body.split-view-active #bottom-controls {
-    top: var(--sp-2);
-    left: var(--sp-2);
-    bottom: auto;
-    right: auto;
+    display: none;
 }
 
 @media (max-width: 1024px) {

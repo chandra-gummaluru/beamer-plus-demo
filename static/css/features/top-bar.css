@@ -37,7 +37,8 @@
 /* Top-controls panel (legacy hidden) */
 #top-controls-panel { display: none; }
 
-body.split-view-active #top-right-controls {
+body.split-view-active #top-right-controls,
+body.split-view-active #edit-mode-container {
     top: var(--sp-2);
 }
 
