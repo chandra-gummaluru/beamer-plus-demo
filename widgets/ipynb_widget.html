@@ -18,6 +18,9 @@
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 <!-- Markdown renderer -->
 <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<!-- KaTeX — LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <!-- Socket.IO served by Beamer+ Flask server -->
 <script>
   (function () {
@@ -241,6 +244,8 @@ body {
 
 .code-ta {
   flex: 1;
+  width: 100%;          /* fills parent when parent is not a flex container */
+  box-sizing: border-box;
   border: none;
   outline: none;
   resize: none;
@@ -283,6 +288,9 @@ body {
 .md-view pre { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin: 6px 0; }
 .md-view pre code { border: none; background: none; padding: 0; }
 .md-view ul, .md-view ol { padding-left: 20px; margin-bottom: 5px; }
+/* KaTeX math inside rendered markdown */
+.md-view .katex-display { margin: 8px 0; overflow-x: auto; }
+.md-view .katex { font-size: 1em; }
 .md-gutter-label {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -494,11 +502,48 @@ if (typeof marked !== 'undefined') {
 
 function mdParse(src) {
   if (!src) return '';
-  if (typeof marked === 'undefined') {
-    // fallback: HTML-escape and preserve newlines
-    return '<pre>' + src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+
+  // ── Step 1: protect math expressions from marked's parser ──────────────
+  // We extract $$...$$ and $...$ before passing to marked, then restore them
+  // afterwards rendered by KaTeX.  Using a private sentinel unlikely to appear
+  // in real notebook content.
+  const mathParts = [];
+  let s = src;
+
+  if (typeof katex !== 'undefined') {
+    // Display math  $$...$$  (multi-line OK) — process before inline
+    s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+      const idx = mathParts.push({ math, display: true }) - 1;
+      return `§BMATH§${idx}§`;
+    });
+    // Inline math  $...$  (single line, no nested $)
+    s = s.replace(/\$([^\n$]+?)\$/g, (_, math) => {
+      const idx = mathParts.push({ math, display: false }) - 1;
+      return `§BMATH§${idx}§`;
+    });
   }
-  return marked.parse(src);
+
+  // ── Step 2: render markdown ─────────────────────────────────────────────
+  let html;
+  if (typeof marked === 'undefined') {
+    html = '<pre>' + s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+  } else {
+    html = marked.parse(s);
+  }
+
+  // ── Step 3: restore math as KaTeX HTML ─────────────────────────────────
+  if (mathParts.length) {
+    html = html.replace(/§BMATH§(\d+)§/g, (_, i) => {
+      const { math, display } = mathParts[+i];
+      try {
+        return katex.renderToString(math, { displayMode: display, throwOnError: false });
+      } catch {
+        return display ? `$$${math}$$` : `$${math}$`;
+      }
+    });
+  }
+
+  return html;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
