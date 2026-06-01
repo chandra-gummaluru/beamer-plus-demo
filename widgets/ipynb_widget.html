@@ -483,6 +483,25 @@ let selectedId  = null;
 const cellMeta  = new Map(); // id → { type: 'code'|'markdown' }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MARKDOWN  —  configure marked.js for Jupyter-style rendering
+// ─────────────────────────────────────────────────────────────────────────────
+if (typeof marked !== 'undefined') {
+  marked.use({
+    breaks: true,   // single newlines → <br> (matches Jupyter behaviour)
+    gfm:    true,   // GitHub-flavoured markdown (tables, strikethrough, etc.)
+  });
+}
+
+function mdParse(src) {
+  if (!src) return '';
+  if (typeof marked === 'undefined') {
+    // fallback: HTML-escape and preserve newlines
+    return '<pre>' + src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+  }
+  return marked.parse(src);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SOCKET.IO  —  graceful fallback if not running inside Beamer+
 // ─────────────────────────────────────────────────────────────────────────────
 let socket = null;
@@ -742,7 +761,7 @@ function addMarkdownCell(src = '', insertAfterId = null) {
         </div>
         <!-- render mode -->
         <div class="md-view${isEmpty ? ' placeholder-md' : ''}" id="md-view-${id}">
-          ${isEmpty ? 'Double-click to edit…' : marked.parse(src)}
+          ${isEmpty ? 'Double-click to edit…' : mdParse(src)}
         </div>
       </div>
     </div>`;
@@ -794,7 +813,7 @@ function commitMarkdown(id) {
   const view = document.getElementById(`md-view-${id}`);
   if (!ta || !edit || !view) return;
   const val = ta.value.trim();
-  view.innerHTML = val ? marked.parse(val) : 'Double-click to edit…';
+  view.innerHTML = val ? mdParse(val) : 'Double-click to edit…';
   view.className = 'md-view' + (val ? '' : ' placeholder-md');
   edit.style.display = 'none';
   view.style.display = '';
