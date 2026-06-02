@@ -1031,8 +1031,12 @@ async function goToSlide(i, direction = null) {
         }
     }
 
-    // Guard AFTER onLeave may have redirected i away from the right pane
-    if (state.splitView && i === state.rightSlideIndex) return;
+    // Skip over the right-pane slide when navigating sequentially
+    if (state.splitView && i === state.rightSlideIndex) {
+        if (direction === 'forward' && i + 1 < state.slideStructure.length) i = i + 1;
+        else if (direction === 'back' && i - 1 >= 0) i = i - 1;
+        else return;
+    }
 
     // Load config for slide we're ENTERING to check onEnter directives
     const enteringObj = state.slideStructure[i];
