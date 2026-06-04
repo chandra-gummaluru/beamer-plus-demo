@@ -9,7 +9,9 @@
     { "key": "question",     "label": "Question",               "type": "textarea", "placeholder": "Enter survey question…", "rows": 3 },
     { "key": "autoStart",    "label": "Auto-start",             "type": "checkbox", "default": false },
     { "key": "minResponses", "label": "Min. responses to show", "type": "number",   "min": 1, "step": 1, "default": 1 },
-    { "key": "numSummaries", "label": "AI summary count",       "type": "number",   "min": 0, "step": 1, "default": 3 }
+    { "key": "numSummaries", "label": "AI summary count",       "type": "number",   "min": 0, "step": 1, "default": 3 },
+    { "key": "model",        "label": "AI model",               "type": "ai-model" },
+    { "key": "apiKey",       "label": "API key",                "type": "password", "placeholder": "Paste API key…" }
   ]
 }
 </script>
@@ -302,14 +304,16 @@ function connectSocket() {
   });
 }
 
-async function doLaunch(question, model, n) {
+async function doLaunch(question, model, n, apiKey) {
   minResponses = n || 1;
   document.getElementById('loading-msg').textContent = 'Creating survey…';
   showPhase('loading');
   try {
+    const body = { question, model, num_summaries: n };
+    if (apiKey) body.api_key = apiKey;
     const res  = await fetch(`${serverUrl}/api/survey/create`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, model, num_summaries: n }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -420,7 +424,7 @@ async function updateConfig(c) {
   connectSocket();
   if (role === 'viewer') { showPhase('loading'); return; }
   if (cfg.question && cfg.autoStart !== false) {
-    await doLaunch(cfg.question, cfg.model || null, parseInt(cfg.numSummaries) || 3);
+    await doLaunch(cfg.question, cfg.model || null, parseInt(cfg.numSummaries) || 3, cfg.apiKey || null);
   }
 }
 

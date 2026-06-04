@@ -166,6 +166,12 @@ function _buildOneFieldRow(field, item) {
             `<option value="${_escAttr(o.v)}" ${eff === o.v ? 'selected' : ''}>${_escHtml(o.l)}</option>`
         ).join('');
         control = `<select class="editor-prop-select" id="${fid}">${opts}</select>`;
+    } else if (field.type === 'password') {
+        control = `<input class="editor-prop-input" type="password" id="${fid}" value="${_escAttr(eff ?? '')}" placeholder="${_escAttr(field.placeholder || '')}">`;
+    } else if (field.type === 'ai-model') {
+        control = `<select class="editor-prop-select" id="${fid}" data-ai-model-select="1">
+            <option value="${_escAttr(eff ?? '')}">${eff ? _escHtml(String(eff)) : '— loading… —'}</option>
+        </select>`;
     } else if (field.type === 'textarea') {
         control = `<textarea class="editor-prop-input" id="${fid}" rows="${field.rows || 3}" spellcheck="false" placeholder="${_escAttr(field.placeholder || '')}">${_escHtml(eff ?? '')}</textarea>`;
     } else if (field.type === 'textarea-lines') {
@@ -552,6 +558,20 @@ async function updatePropertiesPanel() {
     const body = document.getElementById('editor-properties-body');
     if (!body) return;
     body.innerHTML = buildPropsHTML(arrKey, item, schemaFields);
+
+    // Populate ai-model selects from the server's loaded model list
+    const aiModelSelects = body.querySelectorAll('[data-ai-model-select]');
+    if (aiModelSelects.length) {
+        fetch('/api/models').then(r => r.json()).then(({ models = [] }) => {
+            if (gen !== _propsPanelGen) return;
+            aiModelSelects.forEach(sel => {
+                const fieldKey = sel.id.replace('prop-widget-', '');
+                const cur = item[fieldKey] ?? '';
+                sel.innerHTML = `<option value="">— no model —</option>` +
+                    models.map(m => `<option value="${_escAttr(m)}" ${cur === m ? 'selected' : ''}>${_escHtml(m)}</option>`).join('');
+            });
+        }).catch(() => {});
+    }
 
     // Delete button
     body.querySelector('#prop-delete')?.addEventListener('click', () => deleteItem(arrKey, index));

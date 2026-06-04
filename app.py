@@ -50,6 +50,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 WIDGETS_DIR = os.path.join(BASE_PATH, 'widgets')
 os.makedirs(WIDGETS_DIR, exist_ok=True)
 
+AI_MODELS_DIR = os.path.join(BASE_PATH, 'ai')
+
 current_presentation = {
     'file': None,
     'models': {},
@@ -61,6 +63,37 @@ current_presentation = {
 _temp_assets: dict[str, bytes] = {}
 
 survey_server_process = None
+
+_builtin_models: dict = {}
+_builtin_available: list = []
+
+def _init_builtin_models():
+    global _builtin_models, _builtin_available
+    _builtin_models, _builtin_available = load_builtin_models()
+    current_presentation['models'] = dict(_builtin_models)
+    current_presentation['available_models'] = list(_builtin_available)
+
+def load_builtin_models():
+    models = {}
+    available_models = []
+    if not os.path.isdir(AI_MODELS_DIR):
+        return models, available_models
+    for filename in sorted(os.listdir(AI_MODELS_DIR)):
+        if not filename.endswith('.py') or filename.startswith('_'):
+            continue
+        model_name = filename[:-3]
+        model_path = os.path.join(AI_MODELS_DIR, filename)
+        try:
+            spec = importlib.util.spec_from_file_location(model_name, model_path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[f'builtin_ai_{model_name}'] = module
+            spec.loader.exec_module(module)
+            if hasattr(module, 'summarize'):
+                models[model_name] = getattr(module, 'summarize')
+                available_models.append(model_name)
+        except Exception as e:
+            print(f'Error loading built-in model {filename}: {e}')
+    return models, available_models
 
 
 def extract_and_load_models(zip_path):
@@ -199,11 +232,15 @@ def _save_and_load(file):
     _temp_assets = {}          # wipe editor temp assets when a new ZIP is loaded
     filepath = os.path.join(UPLOAD_FOLDER, 'current.zip')
     file.save(filepath)
-    models, available_models = extract_and_load_models(filepath)
+    zip_models, zip_available = extract_and_load_models(filepath)
+    # Built-ins are always present; ZIP models supplement them (and can override by name).
+    merged = dict(_builtin_models)
+    merged.update(zip_models)
+    merged_available = list(_builtin_available) + [m for m in zip_available if m not in _builtin_models]
     current_presentation['file'] = filepath
-    current_presentation['models'] = models
-    current_presentation['available_models'] = available_models
-    return filepath, available_models
+    current_presentation['models'] = merged
+    current_presentation['available_models'] = merged_available
+    return filepath, merged_available
 
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -321,6 +358,7 @@ def create_survey():
         'created_at': time.time(),
         'active': True,
         'model': model_name,
+        'api_key': data.get('api_key') or None,
         'num_summaries': data.get('num_summaries', 3),
         'options': data.get('options'),  # list of strings for MCQ
     }
@@ -380,8 +418,11 @@ def analyze_survey(survey_id):
     if not model_func:
         return jsonify({'error': f'Model "{model_name}" not loaded'}), 404
     try:
+        import inspect
         num_summaries = survey.get('num_summaries', 3)
-        summaries = model_func([r['text'] for r in responses], num_summaries)
+        api_key = survey.get('api_key')
+        call_kwargs = {'api_key': api_key} if api_key and 'api_key' in inspect.signature(model_func).parameters else {}
+        summaries = model_func([r['text'] for r in responses], num_summaries, **call_kwargs)
         if not isinstance(summaries, list) or len(summaries) != num_summaries:
             return jsonify({'error': f'Model must return a list of {num_summaries} summaries'}), 500
         for i, item in enumerate(summaries):
@@ -550,6 +591,8 @@ def handle_widget_state(data):
     presenter_state['widget_states'][widget_id] = state
     emit('widget_state', {'widgetId': widget_id, 'state': state}, broadcast=True, include_self=False)
 
+
+_init_builtin_models()
 
 if __name__ == '__main__':
     import argparse
