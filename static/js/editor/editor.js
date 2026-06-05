@@ -323,27 +323,33 @@ export function initEditor(state) {
         if (!_state?.editMode) return;
         _selectedOverlay = null;
         cleanupEditOverlays();
+
+        if (_selectedViewIdx !== null) {
+            // A split view is being configured — check if we're still on one of its panes
+            // AND split view is still active (if split closed, we've navigated away).
+            const viewObj = _state.slideStructure?.[_selectedViewIdx];
+            const onPane  = _state.splitView && viewObj && (
+                _state.currentSlide === (viewObj.left  ?? -1) ||
+                _state.currentSlide === (viewObj.right ?? -1)
+            );
+            if (onPane) {
+                // Stay in split view config mode: don't render overlays or show
+                // the regular slide settings — the view config panel is the only UI.
+                _updateAddMediaButtons();
+                return;
+            }
+            // Navigated away from the view panes — tear down.
+            hideViewConfig();
+            if (_state.splitView) document.getElementById('split-toggle')?.click();
+        } else {
+            hideViewConfig();
+        }
+
+        // Regular slide — show its overlays and settings normally.
         renderEditOverlays();
         updatePropertiesPanel();
         updateSlideSettingsPanel();
         _updateAddMediaButtons();
-
-        // Keep view config visible when the slide that just became current is one
-        // of the panes of the currently-selected view slide.
-        if (_selectedViewIdx !== null) {
-            const viewObj  = _state.slideStructure?.[_selectedViewIdx];
-            const onPane   = viewObj && (
-                _state.currentSlide === (viewObj.left  ?? -1) ||
-                _state.currentSlide === (viewObj.right ?? -1)
-            );
-            if (!onPane) {
-                hideViewConfig();
-                // Close the split view that was opened purely for the edit-mode preview
-                if (_state.splitView) document.getElementById('split-toggle')?.click();
-            }
-        } else {
-            hideViewConfig();
-        }
     });
 
     bus.on('view:select', (i) => {
@@ -364,13 +370,6 @@ function toggleEditMode() {
 }
 
 async function enterEditMode() {
-    // Edit mode uses a single-pane layout — exit split view first so the
-    // slide container resizes before we try to render edit overlays.
-    if (_state.splitView) {
-        document.getElementById('split-toggle')?.click();
-        // setSplitActive() has a 100 ms internal delay; wait for it to settle.
-        await new Promise(r => setTimeout(r, 250));
-    }
     _state.editMode = true;
     document.body.classList.add('edit-mode');
     const btn = document.getElementById('edit-mode-btn');
@@ -381,6 +380,23 @@ async function enterEditMode() {
         btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     }
     if (_state.annCvs?.canvas) _state.annCvs.canvas.style.pointerEvents = 'none';
+
+    // If we entered edit mode while a split view was active, keep it visible
+    // and show the view config panel.  Re-render at 50/50 for the edit preview.
+    if (_state.splitView) {
+        const viewIdx = _state.slideStructure?.findIndex(s =>
+            s.type === 'view' &&
+            s.left  === _state.currentSlide &&
+            s.right === _state.rightSlideIndex
+        ) ?? -1;
+        if (viewIdx !== -1) {
+            _selectedViewIdx = viewIdx;
+            showViewConfig(viewIdx);
+        }
+        bus.emit('view:ratio-commit', 50);
+        await new Promise(r => setTimeout(r, 350));
+    }
+
     applySlideReorder();
     setTimeout(() => { renderEditOverlays(); updateSlideSettingsPanel(); _updateAddMediaButtons(); }, 60);
 }
@@ -1200,6 +1216,12 @@ function showViewConfig(i) {
     const body      = document.getElementById('editor-view-body');
     if (!container || !body) return;
 
+    // Hide the regular slide settings panel — the view config is the only UI while
+    // a view slide is selected, so showing both would cause confusion (e.g. "Hide
+    // in presentation" would apply to the left pane slide, not the view).
+    const slideSettings = document.getElementById('editor-slide-settings');
+    if (slideSettings) slideSettings.style.display = 'none';
+
     container.style.display = 'flex';
     body.innerHTML = buildViewConfigHTML(obj, i);
     wireViewConfigHandlers(i, obj);
@@ -1209,6 +1231,9 @@ function hideViewConfig() {
     _selectedViewIdx = null;
     const container = document.getElementById('editor-view');
     if (container) container.style.display = 'none';
+    // Restore the regular slide settings panel now that the view config is dismissed.
+    const slideSettings = document.getElementById('editor-slide-settings');
+    if (slideSettings) slideSettings.style.display = '';
 }
 
 function buildViewConfigHTML(obj, viewIdx) {

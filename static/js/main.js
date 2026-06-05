@@ -993,12 +993,30 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     if (i < 0 || i >= state.slideStructure.length) return;
     hideSpotlight(true);
 
-    // Skip view slides always (only reachable by direct thumbnail click) and hidden slides
-    // outside edit mode.  Direct jumps (direction === null) bypass this entirely.
+    // Presentation-mode sequential nav from within split view:
+    //   forward → exit split, show right pane slide full-screen
+    //   backward → exit split, show left pane slide (currentSlide) full-screen
+    // This gives the reversible flow: A → [split A|B] → B → [back] → [split A|B] → A
+    if (!isSplitPaneNav && !state.editMode && state.splitView && direction !== null) {
+        const targetIdx = direction === 'forward' ? state.rightSlideIndex : state.currentSlide;
+        await setSplitActive(false);
+        // Pass direction so the hidden-slide while loop runs in the recursive call.
+        // Forward: skips right-pane if hidden, continues to next visible slide.
+        // Back: skips left-pane if hidden, continues to previous visible slide.
+        await goToSlide(targetIdx, direction, false);
+        return;
+    }
+
+    // When already inside a split view, skip view slides (to avoid re-triggering
+    // the same split view and getting stuck).  When not in split view, allow
+    // sequential nav to land on a view slide so the split activates normally.
+    // Always skip hidden slides regardless of edit mode — hidden slides are still
+    // reachable via direct thumbnail clicks (direction === null bypasses this loop).
+    // Direct jumps (direction === null) bypass this entirely.
     if (direction !== null) {
         const step = direction === 'forward' ? 1 : -1;
-        while (state.slideStructure[i]?.type === 'view' ||
-               (state.slideStructure[i]?.hidden && !state.editMode)) {
+        while ((state.slideStructure[i]?.type === 'view' && state.splitView) ||
+               state.slideStructure[i]?.hidden) {
             i += step;
             if (i < 0 || i >= state.slideStructure.length) return;
         }
@@ -1026,14 +1044,6 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
 
     // Save annotations before any canvas-clearing layout changes
     saveCurrentAnnotations();
-
-    // Skip over the right-pane slide when navigating sequentially
-    if (state.splitView && i === state.rightSlideIndex) {
-        if (direction === 'forward' && i + 1 < state.slideStructure.length) i = i + 1;
-        else if (direction === 'back' && i - 1 >= 0) i = i - 1;
-        else return;
-    }
-    // ─────────────────────────────────────────────────────────────
 
     // Edit mode: if split view is active and we're navigating to a slide that
     // isn't a pane of the currently displayed view, close split view NOW — before
@@ -1648,12 +1658,12 @@ function insertViewAfterCurrent() {
     // Splice first so we can compute post-splice indices correctly.
     state.slideStructure.splice(ins, 0, { type: 'view', viewId, left: 0, right: 0, ratio: 50 });
 
-    // Left pane: current slide (before ins, so index unchanged).
-    // Right pane: prefer 2 slides ahead of the view (ins+2), then 1 ahead (ins+1).
+    // Left pane: current slide (unchanged after splice).
+    // Right pane: the slide immediately after the view slide (ins+1), i.e. the
+    // old "next slide" which is now labelled e.g. 7b after the view slide 7a.
     const leftDef  = state.currentSlide;
     const len      = state.slideStructure.length;
-    const rightDef = ins + 2 < len ? ins + 2
-                   : ins + 1 < len ? ins + 1
+    const rightDef = ins + 1 < len ? ins + 1
                    : Math.max(0, leftDef - 1);
 
     state.slideStructure[ins].left  = leftDef;
