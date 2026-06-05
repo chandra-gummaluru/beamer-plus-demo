@@ -54,12 +54,6 @@ const STEPS = [
         body:  'Dims everything except a movable circle so your audience focuses exactly where you want. Drag the spotlight around the slide to move it.',
     },
     {
-        sel:   '#focus-mode-btn',
-        place: 'auto',
-        title: 'Focus mode',
-        body:  'Hides all UI panels so only the slide canvas is visible, ideal for clean, distraction-free presenting.',
-    },
-    {
         sel:   '#edit-mode-btn',
         place: 'auto',
         title: 'Edit mode',

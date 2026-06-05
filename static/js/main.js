@@ -401,7 +401,7 @@ function wireKeyboardNav() {
         if (e.key === sc.bookmark)         toggleBookmark(state.currentSlide);
         if (e.key === sc.clearAnnotations) document.getElementById('annotation-clear-btn')?.click();
         if (e.key === sc.splitView)        document.getElementById('split-toggle')?.click();
-        if (e.key === sc.focusMode)        document.getElementById('focus-mode-btn')?.click();
+        if (e.key === sc.focusMode)        toggleFocusMode();
         [sc.pen1, sc.pen2, sc.pen3, sc.pen4, sc.pen5].forEach((key, i) => {
             if (key && e.key === key) document.querySelectorAll('#pen-slots .pen-slot-btn')[i]?.click();
         });
@@ -824,32 +824,25 @@ function toggleBookmark(i) {
 }
 
 /* ─── focus mode ─────────────────────────────────────────────── */
-const _FOCUS_SVG_EXPAND   = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
-const _FOCUS_SVG_COMPRESS = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`;
+function toggleFocusMode() {
+    document.body.classList.toggle('focus-mode');
+    // Trigger canvas resize so annotations stay aligned with the new layout
+    setTimeout(() => {
+        sizeSlideCanvases();
+        state.annCvs?.resizeOnly?.();
+        state.pdfCvs?.resizeOnly?.();
+        if (state.splitView) {
+            state.annCvs2?.resizeOnly?.();
+            state.pdfCvs2?.resizeOnly?.();
+        }
+    }, 300); // wait for CSS transition to finish
+}
 
 function wireFocusMode() {
-    const btn = document.getElementById('focus-mode-btn');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-        const active = document.body.classList.toggle('focus-mode');
-        btn.title = active ? 'Exit focus mode' : 'Focus mode (hide UI)';
-        btn.innerHTML = active ? _FOCUS_SVG_COMPRESS : _FOCUS_SVG_EXPAND;
-        // Trigger canvas resize so annotations stay aligned with the new layout
-        setTimeout(() => {
-            sizeSlideCanvases(); // recompute 4:3 size for the new content area
-            state.annCvs?.resizeOnly?.();
-            state.pdfCvs?.resizeOnly?.();
-            if (state.splitView) {
-                state.annCvs2?.resizeOnly?.();
-                state.pdfCvs2?.resizeOnly?.();
-            }
-        }, 300); // wait for CSS transition to finish
-    });
-
-    // Pressing Escape also exits focus mode
+    // No button — feature is keyboard-only (configurable shortcut + Escape to exit).
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && document.body.classList.contains('focus-mode')) {
-            btn.click();
+            toggleFocusMode();
         }
     });
 }
@@ -1087,6 +1080,17 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     state.splitView = active;
     document.body.classList.toggle('split-view-active', active);
     if (btn) btn.classList.toggle('btn_selected', active);
+
+    // Block edit-mode, save, and upload while split view is active so the user
+    // can't enter edit mode or change the presentation mid-split.
+    // edit-mode-btn is exempted when already in edit mode — it becomes the close
+    // button and must stay enabled so the user can exit edit mode.
+    for (const id of ['edit-save-btn', 'upload-presentation-btn']) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = active;
+    }
+    const editBtn = document.getElementById('edit-mode-btn');
+    if (editBtn && !state.editMode) editBtn.disabled = active;
 
     if (active) {
         if (!state.annCvs2) {
