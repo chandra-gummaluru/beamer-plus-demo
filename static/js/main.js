@@ -879,30 +879,6 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
         emitSlideState();
     });
 
-    const moveBtn = document.getElementById('move-left-to-right-btn');
-    if (moveBtn) {
-        moveBtn.addEventListener('click', async () => {
-            if (!state.splitView) return;
-            
-            saveCurrentAnnotations();
-            
-            // If current slide is at the last slide, wrap left to beginning
-            if (state.currentSlide >= state.slideStructure.length - 1) {
-                state.rightSlideIndex = state.currentSlide;
-                state.currentSlide = 0;
-            } else {
-                state.rightSlideIndex = state.currentSlide;
-                state.currentSlide = state.currentSlide + 1;
-            }
-            
-            await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
-            updateSlideNavigator();
-            updateBlankSlideButtons();
-            emitSlideState();
-            bus.emit('slide:changed', state.currentSlide);
-        });
-    }
-
     // Divider dragging for resizing — pointer events so touch works too
     const divider = document.getElementById('split-view-divider');
     let isDragging = false;
@@ -919,6 +895,8 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
                 state.annCvs2?.resizeOnly?.();
                 updateWidgetPositions(document.getElementById('pdf-canvas'));
                 updateWidgetPositions(document.getElementById('pdf-canvas-2'));
+                updateMediaPositions(document.getElementById('pdf-canvas'));
+                updateMediaPositions(document.getElementById('pdf-canvas-2'));
                 await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
                 emitSlideState();
             }, 50);
@@ -927,6 +905,7 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
 
     if (divider) {
         divider.addEventListener('pointerdown', (e) => {
+            if (state.editMode) return;   // locked in edit mode; slider controls ratio instead
             isDragging = true;
             divider.classList.add('active');
             // Capture keeps pointermove/pointerup firing on this element even
@@ -968,18 +947,16 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
 function getSplitRatioBounds() {
     const mainContent = document.getElementById('main-content');
     if (!mainContent) return { min: 20, max: 80 };
-
     const rect = mainContent.getBoundingClientRect();
-    const totalWidth = rect.width;
+    const totalWidth  = rect.width;
     const totalHeight = rect.height;
     if (!totalWidth || !totalHeight) return { min: 20, max: 80 };
-
-    // Respect the 4:3 slide ratio under max-height constraints.
+    // Compute the widest a single pane can be while keeping height as the
+    // binding 4:3 constraint (so the full slide height remains visible).
     const maxContainerWidth = totalHeight * (4 / 3);
     const maxPercent = (maxContainerWidth / totalWidth) * 100;
     const min = Math.max(100 - maxPercent, 20);
     const max = Math.min(maxPercent, 80);
-
     if (min > max) return { min: 50, max: 50 };
     return { min, max };
 }
@@ -1001,35 +978,54 @@ function applySplitRatio(ratioPercent) {
 bus.on('slide:goto', (i) => goToSlide(i));
 bus.on('slide:next', () => goToSlide(state.currentSlide + 1, 'forward'));
 bus.on('slide:prev', () => goToSlide(state.currentSlide - 1, 'back'));
+bus.on('slide:goto-right', async (i) => {
+    if (!state.splitView || i === state.currentSlide) return;
+    saveCurrentAnnotations();
+    _slideOverlay(true)?.classList.add('visible');
+    state.rightSlideIndex = i;
+    await renderLogicalSlide(i, true);
+    updateSlideNavigator();
+    emitSlideState();
+    bus.emit('slide:changed', state.currentSlide);
+});
 
-async function goToSlide(i, direction = null) {
+async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     if (i < 0 || i >= state.slideStructure.length) return;
     hideSpotlight(true);
+
+    // Skip view slides always (only reachable by direct thumbnail click) and hidden slides
+    // outside edit mode.  Direct jumps (direction === null) bypass this entirely.
+    if (direction !== null) {
+        const step = direction === 'forward' ? 1 : -1;
+        while (state.slideStructure[i]?.type === 'view' ||
+               (state.slideStructure[i]?.hidden && !state.editMode)) {
+            i += step;
+            if (i < 0 || i >= state.slideStructure.length) return;
+        }
+    }
+
+    // View slides: activate their pre-configured split layout, then navigate to the left slide.
+    // Works in both presentation mode and edit mode (edit mode also shows the split for preview).
+    const prelimObj = state.slideStructure[i];
+    if (prelimObj?.type === 'view') {
+        const leftIdx  = Math.max(0, Math.min(state.slideStructure.length - 1, prelimObj.left  ?? 0));
+        const rightIdx = Math.max(0, Math.min(state.slideStructure.length - 1, prelimObj.right ?? 0));
+        saveCurrentAnnotations();
+        const previewRatio = state.editMode ? 50 : (prelimObj.ratio ?? null);
+        if (leftIdx !== rightIdx) await setSplitActive(true, rightIdx, previewRatio);
+        await goToSlide(leftIdx, null, true);  // isSplitPaneNav — skip auto-close
+        return;
+    }
 
     // Show overlay(s) immediately — before any async config loading or layout work
     _slideOverlay(false)?.classList.add('visible');
     if (state.splitView) _slideOverlay(true)?.classList.add('visible');
 
-    // ── Config-driven split-view logic ────────────────────────────
-    // Save BEFORE any setSplitActive call — resizeOnly() inside it clears canvases
+    // Capture right-pane index before any layout changes so we can detect if it shifted.
+    const prevRightIndex = state.rightSlideIndex;
+
+    // Save annotations before any canvas-clearing layout changes
     saveCurrentAnnotations();
-
-    // Load config for slide we're LEAVING to check onLeave directives
-    const leavingObj = state.slideStructure[state.currentSlide];
-    const leavingCfg = leavingObj?.type === 'pdf'
-        ? await loadSlideConfig(leavingObj.pdfIndex) : null;
-
-    // Handle leave actions — always, regardless of navigation method
-    const onLeave = leavingCfg?.onLeave;
-    if (onLeave) {
-        if (onLeave.closeSplit && state.splitView) {
-            await setSplitActive(false);
-        }
-        // Only redirect to onLeave.goToSlide when using next-slide (forward), not when clicking a slide directly
-        if (onLeave.goToSlide != null && direction === 'forward') {
-            i = resolvePdfRef(onLeave.goToSlide) ?? Math.max(0, Math.min(state.slideStructure.length - 1, onLeave.goToSlide));
-        }
-    }
 
     // Skip over the right-pane slide when navigating sequentially
     if (state.splitView && i === state.rightSlideIndex) {
@@ -1037,24 +1033,16 @@ async function goToSlide(i, direction = null) {
         else if (direction === 'back' && i - 1 >= 0) i = i - 1;
         else return;
     }
-
-    // Load config for slide we're ENTERING to check onEnter directives
-    const enteringObj = state.slideStructure[i];
-    const enteringCfg = enteringObj?.type === 'pdf'
-        ? await loadSlideConfig(enteringObj.pdfIndex) : null;
-
-    // Handle enter actions
-    const onEnter = enteringCfg?.onEnter;
-    const prevRightIndex = state.rightSlideIndex;
-    if (onEnter?.split != null) {
-        const rightIndex = resolvePdfRef(onEnter.split) ?? Math.max(0, Math.min(state.slideStructure.length - 1, onEnter.split));
-        if (!state.splitView || state.rightSlideIndex !== rightIndex) {
-            // About to enter split — also cover the right pane immediately
-            _slideOverlay(true)?.classList.add('visible');
-            await setSplitActive(true, rightIndex, onEnter.splitRatio ?? null);
-        }
-    }
     // ─────────────────────────────────────────────────────────────
+
+    // Edit mode: if split view is active and we're navigating to a slide that
+    // isn't a pane of the currently displayed view, close split view NOW — before
+    // any canvas sizing or rendering — so the new slide renders at full-width
+    // dimensions. Skip this when called internally from the view-slide handler
+    // (isSplitPaneNav = true) so we don't immediately undo the split activation.
+    if (!isSplitPaneNav && state.editMode && state.splitView && i !== state.rightSlideIndex) {
+        await setSplitActive(false);
+    }
 
     state.currentSlide = i;
     const obj = state.slideStructure[i];
@@ -1083,14 +1071,12 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     const annContainer2 = document.getElementById('ann-canvas-2');
     const pdfContainer2 = document.getElementById('pdf-canvas-2');
     const btn           = document.getElementById('split-toggle');
-    const moveBtn       = document.getElementById('move-left-to-right-btn');
 
     if (active === state.splitView && (rightIndex === null || rightIndex === state.rightSlideIndex)) return;
 
     state.splitView = active;
     document.body.classList.toggle('split-view-active', active);
     if (btn) btn.classList.toggle('btn_selected', active);
-    if (moveBtn) moveBtn.style.display = active ? 'flex' : 'none';
 
     if (active) {
         if (!state.annCvs2) {
@@ -1100,7 +1086,6 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
         }
         state.rightSlideIndex = rightIndex ?? Math.min(state.currentSlide + 1, state.slideStructure.length - 1);
         applySplitRatio(splitRatio ?? state.splitRatio);
-        await renderLogicalSlide(state.rightSlideIndex, true);
     }
 
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -1109,6 +1094,12 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     state.pdfCvs.resizeOnly?.();
     if (state.annCvs2) state.annCvs2.resizeOnly?.();
     if (state.pdfCvs2) state.pdfCvs2.resizeOnly?.();
+
+    // Render right pane AFTER the canvas resize — resizeOnly() clears canvas
+    // dimensions so any render done before it would be wiped. This is the reason
+    // the right slide sometimes appeared blank on first load.
+    if (active) await renderLogicalSlide(state.rightSlideIndex, true);
+
     populateSlideNavigator();
 }
 
@@ -1126,13 +1117,27 @@ function emitSlideState() {
 
 function updateSlideNavigator() {
     document.querySelectorAll('.slide-nav-item').forEach((el, idx) => {
-        el.classList.toggle('active', idx === state.currentSlide);
-        el.classList.toggle('current-slide', idx === state.currentSlide);
-        el.classList.toggle('bookmarked', !!state.bookmarks[idx]);
-        // Disable interaction with right slide in split view
-        const isRightSlide = state.splitView && idx === state.rightSlideIndex;
-        el.style.pointerEvents = isRightSlide ? 'none' : 'auto';
-        el.style.opacity = isRightSlide ? '0.5' : '1';
+        el.classList.toggle('active',          idx === state.currentSlide);
+        el.classList.toggle('current-slide',   idx === state.currentSlide);
+        el.classList.toggle('bookmarked',      !!state.bookmarks[idx]);
+        el.classList.toggle('type-view',        state.slideStructure[idx]?.type === 'view');
+        el.classList.toggle('is-right-slide',  state.splitView && idx === state.rightSlideIndex);
+        el.classList.toggle('is-hidden-slide', !!state.slideStructure[idx]?.hidden);
+
+        const leftZone  = el.querySelector('.slide-split-zone--left');
+        const rightZone = el.querySelector('.slide-split-zone--right');
+        if (leftZone && rightZone) {
+            // Active = this slide is currently assigned to that pane
+            leftZone.classList.toggle('is-active',   state.splitView && idx === state.currentSlide);
+            rightZone.classList.toggle('is-active',  state.splitView && idx === state.rightSlideIndex);
+            // Disabled = placing this slide on that pane would duplicate across both panes
+            leftZone.classList.toggle('is-disabled',  state.splitView && idx === state.rightSlideIndex && idx !== state.currentSlide);
+            rightZone.classList.toggle('is-disabled', state.splitView && idx === state.currentSlide   && idx !== state.rightSlideIndex);
+        }
+
+        // Clear any legacy inline styles
+        el.style.pointerEvents = '';
+        el.style.opacity = '';
     });
 }
 
@@ -1333,6 +1338,7 @@ async function renderMedia(config, container, rect, isRight, slideKey = null) {
             if (a.playMode === 'auto')  { audio.autoplay = true; }
             if (a.playMode === 'loop')  { audio.autoplay = true; audio.loop = true; }
             audio.controls = (a.playMode !== 'auto' && a.playMode !== 'loop');
+            Object.assign(audio.dataset, { audioX: a.x ?? 0.1, audioY: a.y ?? 0.1, audioWidth: a.width ?? 0.4 });
             Object.assign(audio.style, {
                 position: 'absolute',
                 left:   `${(a.x ?? 0.1) * rect.width}px`,
@@ -1354,7 +1360,7 @@ async function renderMedia(config, container, rect, isRight, slideKey = null) {
             if (m.autoRotate) mv.setAttribute('auto-rotate', '');
             if (m.animate !== false) mv.setAttribute('autoplay', '');
             if (m.animationName) mv.setAttribute('animation-name', m.animationName);
-            mv.dataset.modelId = m.id;
+            Object.assign(mv.dataset, { modelId: m.id, mediaX: m.x, mediaY: m.y, mediaWidth: m.width, mediaHeight: m.height });
             Object.assign(mv.style, { position:'absolute', left:`${m.x*rect.width}px`, top:`${m.y*rect.height}px`, width:`${m.width*rect.width}px`, height:`${m.height*rect.height}px`, zIndex: m.zIndex ?? 5 });
             mv.style.setProperty('--progress-bar-height', '0px');
             const progressBarSlot = document.createElement('div');
@@ -1380,6 +1386,49 @@ async function renderMedia(config, container, rect, isRight, slideKey = null) {
         await renderWidgets(config, container, state.zipFile, false, slideKey);
         setWidgetInteractivityForSpotlight(state.annotationTool === 'spotlight');
     }
+}
+
+/* ─── media reposition after resize ──────────────────────────── */
+function updateMediaPositions(container) {
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    // Videos
+    container.querySelectorAll('.slide-video').forEach(el => {
+        const x = parseFloat(el.dataset.videoX);
+        const y = parseFloat(el.dataset.videoY);
+        const w = parseFloat(el.dataset.videoWidth);
+        const h = parseFloat(el.dataset.videoHeight);
+        if (![x, y, w, h].some(isNaN)) {
+            el.style.left   = `${x * rect.width}px`;
+            el.style.top    = `${y * rect.height}px`;
+            el.style.width  = `${w * rect.width}px`;
+            el.style.height = `${h * rect.height}px`;
+        }
+    });
+    // Audio players
+    container.querySelectorAll('.slide-audio').forEach(el => {
+        const x = parseFloat(el.dataset.audioX);
+        const y = parseFloat(el.dataset.audioY);
+        const w = parseFloat(el.dataset.audioWidth);
+        if (![x, y, w].some(isNaN)) {
+            el.style.left  = `${x * rect.width}px`;
+            el.style.top   = `${y * rect.height}px`;
+            el.style.width = `${w * rect.width}px`;
+        }
+    });
+    // 3D model viewers
+    container.querySelectorAll('model-viewer').forEach(el => {
+        const x = parseFloat(el.dataset.mediaX);
+        const y = parseFloat(el.dataset.mediaY);
+        const w = parseFloat(el.dataset.mediaWidth);
+        const h = parseFloat(el.dataset.mediaHeight);
+        if (![x, y, w, h].some(isNaN)) {
+            el.style.left   = `${x * rect.width}px`;
+            el.style.top    = `${y * rect.height}px`;
+            el.style.width  = `${w * rect.width}px`;
+            el.style.height = `${h * rect.height}px`;
+        }
+    });
 }
 
 /* ─── slide config / media cache ─────────────────────────────── */
@@ -1452,14 +1501,54 @@ function saveCurrentAnnotations() {
 /* ─── populate slide navigator ────────────────────────────────── */
 function populateSlideNavigator() {
     const labels = getSlideLabels(state.slideStructure);
-    bus.emit('slides:loaded', state.slideStructure.map((obj, i) => ({
-        kind: obj.type,
-        label: labels[i],
-        title: obj.type === 'blank' ? labels[i] : `Slide ${labels[i]}`,
-        thumbUrl: obj.type === 'pdf' ? (state.slideThumbnailCache[obj.pdfIndex] ?? null) : null,
-    })));
+    bus.emit('slides:loaded', state.slideStructure.map((obj, i) => {
+        const base = {
+            kind:     obj.type,
+            label:    labels[i],
+            title:    obj.type === 'blank' ? labels[i] : `Slide ${labels[i]}`,
+            thumbUrl: obj.type === 'pdf'   ? (state.slideThumbnailCache[obj.pdfIndex] ?? null) : null,
+        };
+        if (obj.type === 'view') {
+            base.viewLeft      = obj.left  ?? 0;
+            base.viewRight     = obj.right ?? 0;
+            base.viewRatio     = obj.ratio ?? 50;
+            base.viewLeftLabel  = labels[obj.left]  ?? String((obj.left  ?? 0) + 1);
+            base.viewRightLabel = labels[obj.right] ?? String((obj.right ?? 0) + 1);
+        }
+        return base;
+    }));
     updateSlideNavigator();
 }
+
+bus.on('nav:refresh', () => populateSlideNavigator());
+
+// Live divider-position preview while the slider is being dragged.
+// Only adjusts CSS flex proportions — does NOT resize canvas pixel dimensions,
+// so the existing rendered slide content stays visible (stretched slightly by CSS).
+bus.on('view:set-ratio', (ratio) => {
+    if (!state.splitView) return;
+    applySplitRatio(ratio);
+    updateWidgetPositions(document.getElementById('pdf-canvas'));
+    updateWidgetPositions(document.getElementById('pdf-canvas-2'));
+    updateMediaPositions(document.getElementById('pdf-canvas'));
+    updateMediaPositions(document.getElementById('pdf-canvas-2'));
+});
+
+// Full resize + re-render committed when the slider is released.
+bus.on('view:ratio-commit', async (ratio) => {
+    if (!state.splitView) return;
+    applySplitRatio(ratio);
+    sizeSlideCanvases();
+    state.annCvs.resizeOnly?.();
+    state.annCvs2?.resizeOnly?.();
+    state.pdfCvs.resizeOnly?.();
+    state.pdfCvs2?.resizeOnly?.();
+    await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
+    updateWidgetPositions(document.getElementById('pdf-canvas'));
+    updateWidgetPositions(document.getElementById('pdf-canvas-2'));
+    updateMediaPositions(document.getElementById('pdf-canvas'));
+    updateMediaPositions(document.getElementById('pdf-canvas-2'));
+});
 
 /* ─── slide label helper ──────────────────────────────────────── */
 function getSlideLabels(structure) {
@@ -1467,7 +1556,7 @@ function getSlideLabels(structure) {
     let pdfCount = 0;
     let blankCount = 0;
     for (const obj of structure) {
-        if (obj.type !== 'blank') {
+        if (obj.type !== 'blank' && obj.type !== 'view') {
             pdfCount++;
             blankCount = 0;
             labels.push(String(pdfCount));
@@ -1508,19 +1597,70 @@ function populateBookmarkPins() {
     });
 }
 
-/* ─── blank slide management ──────────────────────────────────── */
+/* ─── blank / view slide management ──────────────────────────── */
 document.getElementById('add-blank-btn')?.addEventListener('click', () => insertBlankAfterCurrent());
+document.getElementById('add-view-btn')?.addEventListener('click',  () => insertViewAfterCurrent());
 document.getElementById('delete-blank-btn')?.addEventListener('click', () => deleteCurrentBlank());
+
+// Keeps every view slide's left/right pane indices consistent after an insertion (+1)
+// or deletion (-1) at position `atIdx`.  Called whenever any slide is added or removed.
+function adjustViewIndices(atIdx, delta) {
+    for (const obj of state.slideStructure) {
+        if (obj.type !== 'view') continue;
+        if (obj.left  !== undefined && obj.left  >= atIdx) obj.left  += delta;
+        if (obj.right !== undefined && obj.right >= atIdx) obj.right += delta;
+    }
+}
+
+// Shift structure-index-keyed maps (annotations, bookmarks) after an insert (+1) or
+// delete (-1) at `atIdx`.  For deletions the entry at the removed index is dropped.
+function _shiftIndexedMap(map, atIdx, delta) {
+    const out = {};
+    for (const [key, val] of Object.entries(map)) {
+        const k = parseInt(key, 10);
+        if (delta < 0 && k === atIdx) continue;   // deleted slot — discard its data
+        out[k >= atIdx ? k + delta : k] = val;
+    }
+    return out;
+}
+function shiftSlideData(atIdx, delta) {
+    state.annotations = _shiftIndexedMap(state.annotations, atIdx, delta);
+    state.bookmarks   = _shiftIndexedMap(state.bookmarks,   atIdx, delta);
+}
 
 function insertBlankAfterCurrent() {
     const ins = state.currentSlide + 1;
-    // blankId is a stable string key used to store this slide's media/widget config.
     const blankId = `b${Date.now()}`;
+    adjustViewIndices(ins, +1);
+    shiftSlideData(ins, +1);
     state.slideStructure.splice(ins, 0, { type: 'blank', blankId, parent: null });
-    // slideThumbnailCache is keyed by pdfIndex (stable PDF page numbers),
-    // not by logical position, so it needs no adjustment when blanks are inserted.
     goToSlide(ins);
     populateSlideNavigator();
+}
+
+function insertViewAfterCurrent() {
+    const ins    = state.currentSlide + 1;
+    const viewId = `v${Date.now()}`;
+
+    adjustViewIndices(ins, +1);
+    shiftSlideData(ins, +1);
+
+    // Splice first so we can compute post-splice indices correctly.
+    state.slideStructure.splice(ins, 0, { type: 'view', viewId, left: 0, right: 0, ratio: 50 });
+
+    // Left pane: current slide (before ins, so index unchanged).
+    // Right pane: prefer 2 slides ahead of the view (ins+2), then 1 ahead (ins+1).
+    const leftDef  = state.currentSlide;
+    const len      = state.slideStructure.length;
+    const rightDef = ins + 2 < len ? ins + 2
+                   : ins + 1 < len ? ins + 1
+                   : Math.max(0, leftDef - 1);
+
+    state.slideStructure[ins].left  = leftDef;
+    state.slideStructure[ins].right = rightDef;
+
+    populateSlideNavigator();
+    if (state.editMode) bus.emit('view:select', ins);
 }
 
 function deleteCurrentBlank() {
@@ -1529,8 +1669,7 @@ function deleteCurrentBlank() {
     const del = state.currentSlide;
     state.slideStructure.splice(del, 1);
     state.totalSlides = state.slideStructure.length;
-    // slideThumbnailCache is keyed by pdfIndex (stable PDF page numbers),
-    // not by logical position, so it needs no adjustment when blanks are removed.
+    adjustViewIndices(del, -1);          // fix view slides after deletion
     const next = Math.min(del, state.slideStructure.length - 1);
     state.currentSlide = next;
     goToSlide(next);

@@ -108,6 +108,25 @@ body.edit-mode #editor-panel { display: flex; }
     gap: var(--sp-5);
 }
 
+/* ─── Slide settings section ────────────────────────────────── */
+
+#editor-slide-settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding-bottom: var(--sp-3);
+    border-bottom: var(--line-soft);
+}
+
+.editor-section-title {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-3);
+    font-family: var(--font-sans);
+}
+
 /* ─── Properties section ──────────────────────────────────────── */
 
 #editor-properties {
@@ -705,6 +724,54 @@ body.split-view-active.edit-mode .slide-nav-item.drag-over-after {
 }
 .widget-card--custom .widget-card-icon { color: var(--ink-3); }
 .widget-card--custom .widget-card-label { color: var(--ink-3); }
+
+/* ─── View slide config section ───────────────────────────────── */
+
+#editor-view {
+    display: none;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+#editor-view-title {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-3);
+    font-family: var(--font-sans);
+}
+
+#editor-view-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.editor-flow-range {
+    width: 100%;
+    height: 3px;
+    cursor: pointer;
+    accent-color: var(--accent);
+    display: block;
+    margin-top: var(--sp-2);
+    border-radius: 2px;
+}
+
+.editor-flow-range-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.editor-flow-range-val {
+    font-size: var(--fs-xs);
+    color: var(--ink-2);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    min-width: 28px;
+    text-align: right;
+}
 
 /* ─── Mobile ─────────────────────────────────────────────────── */
 

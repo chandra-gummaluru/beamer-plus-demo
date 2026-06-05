@@ -290,6 +290,7 @@ let _selectedOverlay = null; // { div, arrKey, index }
 let _pendingMediaType = null;
 let _dragSrc = null;
 let _slideReorderListeners = [];
+let _selectedViewIdx = null;  // structure index of the view slide being configured, or null
 
 /* ─── init ──────────────────────────────────────────────────── */
 
@@ -305,6 +306,14 @@ export function initEditor(state) {
     document.getElementById('edit-add-model-btn')?.addEventListener('click', () => pickMediaFile('model', '.glb,.gltf'));
     document.getElementById('edit-add-widget-btn')?.addEventListener('click', addWidget);
 
+    document.getElementById('slide-hidden-toggle')?.addEventListener('change', e => {
+        const obj = _state?.slideStructure?.[_state?.currentSlide];
+        if (!obj) return;
+        if (e.target.checked) obj.hidden = true;
+        else delete obj.hidden;
+        bus.emit('nav:refresh');
+    });
+
     const fileInput = document.getElementById('edit-media-input');
     fileInput?.addEventListener('change', () => onMediaFileSelected(fileInput));
 
@@ -316,6 +325,35 @@ export function initEditor(state) {
         cleanupEditOverlays();
         renderEditOverlays();
         updatePropertiesPanel();
+        updateSlideSettingsPanel();
+        _updateAddMediaButtons();
+
+        // Keep view config visible when the slide that just became current is one
+        // of the panes of the currently-selected view slide.
+        if (_selectedViewIdx !== null) {
+            const viewObj  = _state.slideStructure?.[_selectedViewIdx];
+            const onPane   = viewObj && (
+                _state.currentSlide === (viewObj.left  ?? -1) ||
+                _state.currentSlide === (viewObj.right ?? -1)
+            );
+            if (!onPane) {
+                hideViewConfig();
+                // Close the split view that was opened purely for the edit-mode preview
+                if (_state.splitView) document.getElementById('split-toggle')?.click();
+            }
+        } else {
+            hideViewConfig();
+        }
+    });
+
+    bus.on('view:select', (i) => {
+        if (!_state?.editMode) return;
+        const obj = _state.slideStructure?.[i];
+        if (!obj || obj.type !== 'view') return;
+        _selectedOverlay = null;
+        cleanupEditOverlays();
+        updatePropertiesPanel();  // hides (no overlay)
+        showViewConfig(i);
     });
 }
 
@@ -344,10 +382,15 @@ async function enterEditMode() {
     }
     if (_state.annCvs?.canvas) _state.annCvs.canvas.style.pointerEvents = 'none';
     applySlideReorder();
-    setTimeout(() => { renderEditOverlays(); }, 60);
+    setTimeout(() => { renderEditOverlays(); updateSlideSettingsPanel(); _updateAddMediaButtons(); }, 60);
 }
 
-function exitEditMode() {
+async function exitEditMode() {
+    // If a view slide was being previewed in split view, close that first
+    if (_state.splitView && _selectedViewIdx !== null) {
+        document.getElementById('split-toggle')?.click();
+        await new Promise(r => setTimeout(r, 200));
+    }
     _state.editMode = false;
     document.body.classList.remove('edit-mode');
     const btn = document.getElementById('edit-mode-btn');
@@ -360,6 +403,7 @@ function exitEditMode() {
     cleanupEditOverlays();
     removeSlideReorder();
     _selectedOverlay = null;
+    hideViewConfig();
     updatePropertiesPanel();
     bus.emit('editor:exited');
 }
@@ -1125,6 +1169,168 @@ function reorderSlide(fromIndex, insertBefore) {
     _state.currentSlide = oldToNew[_state.currentSlide] ?? _state.currentSlide;
     _state.totalSlides  = struct.length;
     bus.emit('slides:reordered');
+}
+
+/* ─── slide settings panel ─────────────────────────────────── */
+
+function updateSlideSettingsPanel() {
+    const obj    = _state?.slideStructure?.[_state?.currentSlide];
+    const toggle = document.getElementById('slide-hidden-toggle');
+    if (toggle) toggle.checked = !!obj?.hidden;
+}
+
+// Disable the add-media buttons when the current slide is a view slide
+// (view slides have no content layer to attach media to).
+function _updateAddMediaButtons() {
+    const isView = _state?.slideStructure?.[_state?.currentSlide]?.type === 'view';
+    for (const id of ['edit-add-video-btn', 'edit-add-audio-btn', 'edit-add-model-btn', 'edit-add-widget-btn']) {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = isView;
+    }
+}
+
+/* ─── view slide config panel ───────────────────────────────── */
+
+function showViewConfig(i) {
+    const obj = _state?.slideStructure?.[i];
+    if (!obj || obj.type !== 'view') return;
+    _selectedViewIdx = i;
+
+    const container = document.getElementById('editor-view');
+    const body      = document.getElementById('editor-view-body');
+    if (!container || !body) return;
+
+    container.style.display = 'flex';
+    body.innerHTML = buildViewConfigHTML(obj, i);
+    wireViewConfigHandlers(i, obj);
+}
+
+function hideViewConfig() {
+    _selectedViewIdx = null;
+    const container = document.getElementById('editor-view');
+    if (container) container.style.display = 'none';
+}
+
+function buildViewConfigHTML(obj, viewIdx) {
+    const leftVal  = obj.left  !== undefined ? obj.left  : '';
+    const rightVal = obj.right !== undefined ? obj.right : '';
+    const ratio    = obj.ratio !== undefined ? obj.ratio : 50;
+
+    // Each dropdown excludes the view slide itself and the OTHER pane's choice.
+    const leftExclude  = [viewIdx, ...(rightVal !== '' ? [Number(rightVal)] : [])];
+    const rightExclude = [viewIdx, ...(leftVal  !== '' ? [Number(leftVal)]  : [])];
+
+    return `
+        <div class="editor-prop-row">
+            <div class="editor-prop-label">Left pane slide</div>
+            <select class="editor-prop-select" id="view-left" style="margin-top:var(--sp-1)">
+                ${buildSlideOptions(leftVal, 'Select a slide...', leftExclude)}
+            </select>
+        </div>
+        <div class="editor-prop-row">
+            <div class="editor-prop-label">Right pane slide</div>
+            <select class="editor-prop-select" id="view-right" style="margin-top:var(--sp-1)">
+                ${buildSlideOptions(rightVal, 'Select a slide...', rightExclude)}
+            </select>
+        </div>
+        <div class="editor-prop-row">
+            <div class="editor-flow-range-header">
+                <div class="editor-prop-label">Divider position</div>
+                <span class="editor-flow-range-val" id="view-ratio-val">${ratio}%</span>
+            </div>
+            <input type="range" class="editor-flow-range" id="view-ratio"
+                   min="20" max="80" step="1" value="${ratio}">
+        </div>
+        <button class="btn editor-delete-btn" id="view-delete">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            Remove view
+        </button>
+    `;
+}
+
+function wireViewConfigHandlers(i, obj) {
+    const get = id => document.getElementById(id);
+
+    function saveAndRefresh() {
+        const leftVal  = get('view-left')?.value  ?? '';
+        const rightVal = get('view-right')?.value ?? '';
+        const ratioVal = get('view-ratio')?.value ?? '50';
+        if (leftVal  !== '') obj.left  = parseInt(leftVal,  10); else delete obj.left;
+        if (rightVal !== '') obj.right = parseInt(rightVal, 10); else delete obj.right;
+        obj.ratio = parseInt(ratioVal, 10);
+        bus.emit('nav:refresh');
+    }
+
+    // When either pane changes, re-render the panel so exclusions update.
+    get('view-left')?.addEventListener('change',  () => { saveAndRefresh(); showViewConfig(i); });
+    get('view-right')?.addEventListener('change', () => { saveAndRefresh(); showViewConfig(i); });
+
+    const ratioEl  = get('view-ratio');
+    const ratioLbl = get('view-ratio-val');
+    ratioEl?.addEventListener('input', () => {
+        if (ratioLbl) ratioLbl.textContent = `${ratioEl.value}%`;
+    });
+    ratioEl?.addEventListener('change', () => {
+        saveAndRefresh();  // always persist the new ratio
+        if (!_state?.editMode) {
+            bus.emit('view:ratio-commit', parseInt(ratioEl.value, 10));
+        }
+    });
+
+    get('view-delete')?.addEventListener('click', () => {
+        if (_selectedViewIdx === null) return;
+        const delIdx = _selectedViewIdx;
+        _state.slideStructure.splice(delIdx, 1);
+        _state.totalSlides = _state.slideStructure.length;
+        // Adjust any remaining view slides whose pane indices shifted after the deletion
+        for (const obj of _state.slideStructure) {
+            if (obj.type !== 'view') continue;
+            if (obj.left  !== undefined && obj.left  >= delIdx) obj.left  -= 1;
+            if (obj.right !== undefined && obj.right >= delIdx) obj.right -= 1;
+        }
+        hideViewConfig();
+        if (_state.splitView) document.getElementById('split-toggle')?.click();
+        bus.emit('nav:refresh');
+    });
+}
+
+// Mirror of main.js getSlideLabels — produces the same "1","2",…,"7a","7b",… scheme.
+function _slideLabels(structure) {
+    const out = [];
+    let pdfCount = 0;
+    let blankCount = 0;
+    for (const obj of structure) {
+        if (obj.type !== 'blank' && obj.type !== 'view') {
+            pdfCount++;
+            blankCount = 0;
+            out.push(String(pdfCount));
+        } else {
+            blankCount++;
+            const suffix = blankCount <= 26
+                ? String.fromCharCode(96 + blankCount)
+                : String(blankCount);
+            out.push(`${pdfCount}${suffix}`);
+        }
+    }
+    return out;
+}
+
+// Build <option> list from all slides (all types), using structure index as the value.
+// excludeIdx may be a single number or an array of numbers to skip. Labels match the navigator.
+function buildSlideOptions(selectedVal, emptyLabel, excludeIdx) {
+    let html = `<option value="">${_escHtml(emptyLabel)}</option>`;
+    if (!_state?.slideStructure) return html;
+    const excluded = excludeIdx === undefined || excludeIdx === null ? new Set()
+                   : Array.isArray(excludeIdx) ? new Set(excludeIdx)
+                   : new Set([excludeIdx]);
+    const labels = _slideLabels(_state.slideStructure);
+    _state.slideStructure.forEach((s, idx) => {
+        if (excluded.has(idx)) return;
+        const sel = (selectedVal !== '' && selectedVal !== undefined && selectedVal !== null &&
+                     String(idx) === String(selectedVal)) ? 'selected' : '';
+        html += `<option value="${_escAttr(String(idx))}" ${sel}>${_escHtml(labels[idx])}</option>`;
+    });
+    return html;
 }
 
 /* ─── save ──────────────────────────────────────────────────── */

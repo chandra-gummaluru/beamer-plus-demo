@@ -15,8 +15,49 @@ function render(slides, state) {
         const item = document.createElement('div');
         item.className = 'slide-nav-item';
         item.dataset.index = String(i);
+
+        // ── View slides ────────────────────────────────────────────
+        if (s.kind === 'view') {
+            const preview = document.createElement('div');
+            preview.className = 'slide-preview slide-preview-view';
+            preview.dataset.slideNumber = s.label || String(i + 1);
+
+            const leftPane = document.createElement('div');
+            leftPane.className = 'view-preview-pane';
+            leftPane.textContent = s.viewLeftLabel ?? '?';
+
+            const sep = document.createElement('div');
+            sep.className = 'view-preview-sep';
+
+            const rightPane = document.createElement('div');
+            rightPane.className = 'view-preview-pane';
+            rightPane.textContent = s.viewRightLabel ?? '?';
+
+            preview.appendChild(leftPane);
+            preview.appendChild(sep);
+            preview.appendChild(rightPane);
+            item.appendChild(preview);
+
+            // Edit mode → show config panel AND render split preview
+            // Presentation mode → activate the split layout
+            item.addEventListener('click', () => {
+                if (document.body.classList.contains('edit-mode')) {
+                    bus.emit('view:select', i);  // sets _selectedViewIdx first (sync)
+                    bus.emit('slide:goto', i);   // then triggers async rendering
+                } else {
+                    bus.emit('slide:goto', i);
+                }
+            });
+
+            host.appendChild(item);
+            return; // skip split zones for view slides
+        }
+
+        // ── Regular slides ─────────────────────────────────────────
         const preview = document.createElement('div');
-        preview.className = 'slide-preview' + (s.kind === 'widget' ? ' slide-preview-widget' : s.kind === 'label' ? ' slide-preview-label' : '');
+        preview.className = 'slide-preview' +
+            (s.kind === 'widget' ? ' slide-preview-widget' :
+             s.kind === 'label'  ? ' slide-preview-label'  : '');
         const lbl = s.label || String(i + 1);
         preview.dataset.slideNumber = lbl;
         if (s.thumbUrl) {
@@ -30,7 +71,30 @@ function render(slides, state) {
             preview.appendChild(span);
         }
         item.appendChild(preview);
+
+        // Split-view left/right selection zones
+        const leftZone  = document.createElement('div');
+        leftZone.className  = 'slide-split-zone slide-split-zone--left';
+        const rightZone = document.createElement('div');
+        rightZone.className = 'slide-split-zone slide-split-zone--right';
+        item.appendChild(leftZone);
+        item.appendChild(rightZone);
+
+        // Non-split mode: whole item navigates to this slide
         item.addEventListener('click', () => bus.emit('slide:goto', i));
+
+        // Split-mode zones: stopPropagation prevents the item handler above from firing
+        leftZone.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (document.body.classList.contains('edit-mode')) return;
+            if (!leftZone.classList.contains('is-disabled')) bus.emit('slide:goto', i);
+        });
+        rightZone.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (document.body.classList.contains('edit-mode')) return;
+            if (!rightZone.classList.contains('is-disabled')) bus.emit('slide:goto-right', i);
+        });
+
         host.appendChild(item);
     });
     if (state.currentSlide < slides.length) {
