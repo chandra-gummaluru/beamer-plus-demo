@@ -1935,7 +1935,9 @@ export async function loadPdfPresentation(file) {
 
     try {
         const data   = await file.arrayBuffer();
-        const pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+        // Hand pdf.js a copy: v4 transfers the buffer to its worker, which
+        // detaches it, and we still need `data` for the ZIP below.
+        const pdfDoc = await pdfjsLib.getDocument({ data: data.slice(0) }).promise;
         const total  = pdfDoc.numPages;
 
         const zip = new JSZip();

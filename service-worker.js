@@ -1,28 +1,33 @@
-const CACHE_NAME = 'beamer-plus-v13';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v13';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v13';
+const CACHE_NAME = 'beamer-plus-v14';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v14';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v14';
 
 // The app shell — just enough to boot the presenter offline. These are the real
 // Flask route / entry-point assets; everything they pull in (the ES-module tree
 // under /static/js, CSS @imports, fonts) is cached on first use by the runtime
-// fetch handler below, so it never needs listing here.
+// fetch handler below, so it never needs listing here. Third-party libraries
+// are vendored under /static/vendor, so there are no CDN dependencies.
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/static/css/app.css',
   '/static/js/main.js',
+  '/static/vendor/socket.io.min.js',
+  '/static/vendor/jszip.min.js',
+  '/static/vendor/marked.min.js',
+  '/static/vendor/qrcode.min.js',
+  '/static/vendor/model-viewer.min.js',
+  '/static/vendor/pdfjs/pdf.min.mjs',
+  '/static/vendor/pdfjs/pdf.worker.min.mjs',
   '/static/icons/icon-192x192.png',
   '/static/icons/icon-512x512.png'
 ];
 
-// CDN assets to cache (optional - cache on first use instead)
-const CDN_ASSETS = [
-  'https://cdn.socket.io/4.7.2/socket.io.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js',
-  'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+// API endpoints that stream large ZIPs — never cache these (they would bloat
+// the dynamic cache by ~40MB per presentation load).
+const UNCACHED_API_PATHS = [
+  '/api/presentation/current',
+  '/api/demo-zip'
 ];
 
 // Install event - cache static assets
@@ -109,19 +114,21 @@ self.addEventListener('fetch', (event) => {
 
   // Network-first strategy for API calls
   if (url.pathname.startsWith('/api/')) {
+    // cache.put() throws on non-GET requests, and the big ZIP downloads
+    // shouldn't be cached at all.
+    const cacheable = request.method === 'GET' &&
+                      !UNCACHED_API_PATHS.includes(url.pathname);
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Clone the response before caching
-          const responseClone = response.clone();
-          
           // Only cache successful responses
-          if (response.status === 200) {
+          if (cacheable && response.status === 200) {
+            const responseClone = response.clone();
             caches.open(DYNAMIC_CACHE_NAME).then((cache) => {
               cache.put(request, responseClone);
             });
           }
-          
+
           return response;
         })
         .catch(() => {
@@ -152,9 +159,8 @@ self.addEventListener('fetch', (event) => {
             const responseClone = response.clone();
             
             // Determine which cache to use
-            const cacheName = STATIC_ASSETS.includes(url.pathname) || 
-                             CDN_ASSETS.includes(request.url)
-                             ? STATIC_CACHE_NAME 
+            const cacheName = STATIC_ASSETS.includes(url.pathname)
+                             ? STATIC_CACHE_NAME
                              : DYNAMIC_CACHE_NAME;
             
             caches.open(cacheName).then((cache) => {

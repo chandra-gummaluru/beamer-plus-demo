@@ -16,14 +16,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create source archive
+        # git archive only includes tracked files, so secrets (*.pem),
+        # uploads/, __pycache__/ and other ignored junk can never ship.
         run: |
           mkdir -p release
-          zip -r release/beamer-plus-source.zip . \
-            -x "*.git*" \
-            -x "*__pycache__*" \
-            -x "*.pyc" \
-            -x "*uploads/*" \
-            -x "release/*"
+          git archive --format=zip --output=release/beamer-plus-source.zip HEAD
 
       - name: Create release
         uses: softprops/action-gh-release@v1
@@ -31,22 +28,23 @@ jobs:
           files: release/beamer-plus-source.zip
           body: |
             ## Beamer+ Release
-            
+
             Download the source code and run locally with Python.
-            
+
             ### Requirements
-            - Python 3.8 or higher
+            - Python 3.10 or higher
             - pip (Python package installer)
-            
+
             ### Quick Start
             1. Download `beamer-plus-source.zip`
             2. Extract the archive
             3. Open a terminal in the extracted folder
             4. Install dependencies: `pip install -r requirements.txt`
-            5. Run the launcher: `python launch-beamer-plus.py`
-            6. Browser opens to http://localhost:5000
+            5. Run the launcher: `python launch.py`
+            6. Open the `https://...` URL it prints (accept the self-signed
+               certificate warning via "Advanced" → "Proceed")
             7. Upload and present!
-            
+
             ### Features
             - Interactive presentations with PDF slides
             - Drawing and annotation tools

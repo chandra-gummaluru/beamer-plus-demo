@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "beamer-plus",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["app.py", "--http", "--port", "5099"],
+      "port": 5099
+    }
+  ]
+}

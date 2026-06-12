@@ -15,8 +15,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Textbook — Beamer+</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="/static/vendor/socket.io.min.js"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
@@ -242,17 +241,20 @@ body {
   </div>
 </div>
 
-<script>
+<script type="module">
+// pdf.js 4.x is an ES module, so this whole script runs as a module; the
+// import binding is visible inside the IIFE below.
+import * as pdfjsLib from '/static/vendor/pdfjs/pdf.min.mjs';
+
 (function () {
   'use strict';
 
   // ── PDF.js setup ──────────────────────────────────────────────────────────────
-  // PDF.js 3.x exposes window.pdfjsLib; 2.x used window['pdfjs-dist/build/pdf']
-  const pdfjsLib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.min.mjs';
 
-  const CMAP_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/';
+  // cmaps are only needed for some CJK-encoded PDFs; they stay on the CDN
+  // rather than vendoring several hundred files.
+  const CMAP_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/';
 
   // ── State ─────────────────────────────────────────────────────────────────────
   let pdfDoc      = null;

@@ -7,6 +7,7 @@ import uuid
 import time
 import os
 import importlib.util
+import shutil
 import sys
 import tempfile
 import traceback
@@ -34,6 +35,10 @@ socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 surveys = {}
 survey_responses = defaultdict(list)
+
+# Responses are held in memory and the respond endpoint is open to the whole
+# LAN, so cap them per survey to bound worst-case memory use.
+MAX_RESPONSES_PER_SURVEY = 10000
 
 UPLOAD_FOLDER = os.path.join(BASE_PATH, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -85,13 +90,22 @@ def load_builtin_models():
     return models, available_models
 
 
+# sys.modules entries registered for the currently loaded ZIP, removed when the
+# next ZIP is loaded so repeated uploads don't accumulate dead modules.
+_zip_module_names: list = []
+
 def extract_and_load_models(zip_path):
     # SECURITY: this executes the `ai/*.py` files found inside an uploaded ZIP
     # (spec.loader.exec_module). Loading a presentation therefore runs arbitrary
     # Python from whoever produced it — only open ZIPs you trust. This mirrors
     # the cooperative-LAN assumption documented at the socketio setup above.
+    global _zip_module_names
     models = {}
     available_models = []
+    for stale in _zip_module_names:
+        sys.modules.pop(stale, None)
+    _zip_module_names = []
+    temp_dir = None
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             ai_files = [f for f in zip_ref.namelist() if f.startswith('ai/') and f.endswith('.py')]
@@ -109,6 +123,7 @@ def extract_and_load_models(zip_path):
                     module = importlib.util.module_from_spec(spec)
                     unique_name = f"ai_model_{model_name}_{int(time.time())}"
                     sys.modules[unique_name] = module
+                    _zip_module_names.append(unique_name)
                     spec.loader.exec_module(module)
                     if hasattr(module, 'summarize'):
                         models[model_name] = getattr(module, 'summarize')
@@ -117,6 +132,11 @@ def extract_and_load_models(zip_path):
                     print(f"Error loading model {ai_file}: {e}")
     except Exception as e:
         print(f"Error extracting models: {e}")
+    finally:
+        # The module code is fully loaded into memory by exec_module, so the
+        # extracted source files are no longer needed.
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
     return models, available_models
 
 
@@ -377,6 +397,8 @@ def respond_survey(survey_id):
         return jsonify({'error': 'Survey not found'}), 404
     if not surveys[survey_id]['active']:
         return jsonify({'error': 'Survey is closed'}), 403
+    if len(survey_responses[survey_id]) >= MAX_RESPONSES_PER_SURVEY:
+        return jsonify({'error': 'Response limit reached'}), 429
     data = request.json
     response = {'text': data.get('response', ''), 'timestamp': time.time()}
     survey_responses[survey_id].append(response)
@@ -489,11 +511,13 @@ if __name__ == '__main__':
             return False
 
     # debug=False: this binds 0.0.0.0, so we must not expose the Werkzeug
-    # interactive debugger to the LAN.
+    # interactive debugger to the LAN. allow_unsafe_werkzeug: serving over
+    # Werkzeug is fine for the cooperative-LAN deployment model (launch.py
+    # does the same).
     if args.http or not _can_use_adhoc_ssl():
         if not args.http:
             print('[WARN] Could not start HTTPS (cryptography library not found). Falling back to HTTP.')
             print('[WARN] The camera widget requires HTTPS on LAN addresses.')
-        socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=False, allow_unsafe_werkzeug=True)
     else:
-        socketio.run(app, host='0.0.0.0', port=args.port, debug=False, ssl_context='adhoc')
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=False, ssl_context='adhoc', allow_unsafe_werkzeug=True)

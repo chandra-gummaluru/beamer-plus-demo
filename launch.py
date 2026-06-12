@@ -28,7 +28,8 @@ def print_success(text):
     print(f"{Colors.GREEN}{text}{Colors.ENDC}")
 
 def print_info(text):
-    print(f"{Colors.BLUE}ℹ{text}{Colors.ENDC}")
+    # ASCII only: non-ASCII output crashes on Windows consoles using cp1252
+    print(f"{Colors.BLUE}{text}{Colors.ENDC}")
 
 def print_error(text):
     print(f"{Colors.RED}{text}{Colors.ENDC}")
@@ -57,59 +58,79 @@ def get_lan_ip():
     
     return None
 
-def generate_self_signed_cert():
-    """Generate a self-signed SSL certificate"""
+def generate_self_signed_cert(lan_ip=None):
+    """Generate a self-signed SSL certificate with localhost/LAN-IP SANs"""
     cert_file = "cert.pem"
     key_file = "key.pem"
-    
-    # Check if certificate already exists
+
+    # Check if certificate already exists (delete cert.pem/key.pem to force
+    # regeneration, e.g. after it expires or your LAN IP changes)
     if os.path.exists(cert_file) and os.path.exists(key_file):
         print_success("SSL certificate already exists")
         return cert_file, key_file
-    
+
     print_info("Generating self-signed SSL certificate...")
-    
+
     try:
-        # Check if pyOpenSSL is installed
+        import datetime
+        import ipaddress
         try:
-            from OpenSSL import crypto
+            from cryptography import x509
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            from cryptography.x509.oid import NameOID
         except ImportError:
-            print_warning("pyOpenSSL not found. Installing...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "pyOpenSSL"])
-            from OpenSSL import crypto
-        
-        # Generate key
-        k = crypto.PKey()
-        k.generate_key(crypto.TYPE_RSA, 2048)
-        
-        # Generate certificate
-        cert = crypto.X509()
-        cert.get_subject().C = "US"
-        cert.get_subject().ST = "State"
-        cert.get_subject().L = "City"
-        cert.get_subject().O = "Beamer+"
-        cert.get_subject().OU = "Beamer+"
-        cert.get_subject().CN = "localhost"
-        cert.set_serial_number(1000)
-        cert.gmtime_adj_notBefore(0)
-        cert.gmtime_adj_notAfter(365*24*60*60)  # Valid for 1 year
-        cert.set_issuer(cert.get_subject())
-        cert.set_pubkey(k)
-        cert.sign(k, 'sha256')
-        
+            print_error("The 'cryptography' package is required for HTTPS.")
+            print_error("Install dependencies with: pip install -r requirements.txt")
+            return None, None
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+        name = x509.Name([
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Beamer+"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+        ])
+        # Modern browsers validate the SAN list, not the CN
+        alt_names = [
+            x509.DNSName("localhost"),
+            x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+        ]
+        if lan_ip:
+            try:
+                alt_names.append(x509.IPAddress(ipaddress.ip_address(lan_ip)))
+            except ValueError:
+                pass
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + datetime.timedelta(days=365))
+            .add_extension(x509.SubjectAlternativeName(alt_names), critical=False)
+            .sign(key, hashes.SHA256())
+        )
+
         # Save certificate and key
         with open(cert_file, "wb") as f:
-            f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
-        
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+
         with open(key_file, "wb") as f:
-            f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k))
-        
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            ))
+
         print_success("SSL certificate generated successfully")
         print_warning("Note: Browsers will show a security warning for self-signed certificates")
         print_warning("      Click 'Advanced' and 'Proceed' to continue")
-        
+
         return cert_file, key_file
-    
+
     except Exception as e:
         print_error(f"Failed to generate SSL certificate: {e}")
         return None, None
@@ -145,6 +166,19 @@ def check_dependencies():
             print_success("Flask-SocketIO installed successfully")
         except subprocess.CalledProcessError:
             print_error("Failed to install Flask-SocketIO")
+            sys.exit(1)
+
+    # Check cryptography (needed for HTTPS cert generation)
+    try:
+        import cryptography
+        print_success("cryptography is installed")
+    except ImportError:
+        print_warning("cryptography not found. Installing...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "cryptography"])
+            print_success("cryptography installed successfully")
+        except subprocess.CalledProcessError:
+            print_error("Failed to install cryptography")
             sys.exit(1)
 
 def display_info(lan_ip, port):
@@ -211,15 +245,16 @@ def main():
     if not getattr(sys, 'frozen', False):
         check_dependencies()
     
+    # Get network information (before cert generation so the LAN IP can be
+    # baked into the certificate's SAN list)
+    print_header("Detecting network configuration...")
+    lan_ip = get_lan_ip()
+
     # Generate SSL certificate
-    cert_file, key_file = generate_self_signed_cert()
+    cert_file, key_file = generate_self_signed_cert(lan_ip)
     if not cert_file or not key_file:
         print_error("Failed to generate SSL certificate. Exiting.")
         sys.exit(1)
-    
-    # Get network information
-    print_header("Detecting network configuration...")
-    lan_ip = get_lan_ip()
     
     # Display what was detected
     if lan_ip:
@@ -248,7 +283,6 @@ def main():
         from app import socketio, app
         print(f"{Colors.GREEN}Server is running! Press Ctrl+C to quit.{Colors.ENDC}\n")
         print(f"{Colors.BOLD}{Colors.CYAN}Presenter:{Colors.ENDC} {primary_url}")
-        print(f"{Colors.BOLD}{Colors.CYAN}Viewer:{Colors.ENDC} {primary_url}/viewer")
         print()
         
         # Create SSL context

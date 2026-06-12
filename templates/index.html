@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Beamer+</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#333333">
@@ -12,16 +12,20 @@
     <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
     <link rel="stylesheet" href="/static/css/app.css">
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    <!-- Vendored libraries (static/vendor) — no CDN dependency, works offline -->
+    <script src="/static/vendor/socket.io.min.js"></script>
+    <script src="/static/vendor/jszip.min.js"></script>
+    <script type="module">
+        // pdf.js 4.x ships as an ES module; expose it as the window.pdfjsLib
+        // global the rest of the app expects. Module scripts execute in
+        // document order, so this runs before main.js below.
+        import * as pdfjsLib from '/static/vendor/pdfjs/pdf.min.mjs';
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.min.mjs';
+        window.pdfjsLib = pdfjsLib;
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+    <script src="/static/vendor/marked.min.js"></script>
+    <script src="/static/vendor/qrcode.min.js"></script>
+    <script type="module" src="/static/vendor/model-viewer.min.js"></script>
 </head>
 <body>
     <!-- Hidden file inputs for upload -->
