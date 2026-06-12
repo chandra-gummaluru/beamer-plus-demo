@@ -14,8 +14,7 @@
 }
 
 #top-right-controls #upload-container,
-#top-right-controls #save-container,
-#top-right-controls #screen-share-container {
+#top-right-controls #save-container {
     display: flex;
     align-items: center;
 }
@@ -25,13 +24,6 @@
     min-width: var(--hit-min);
     min-height: var(--hit-min);
     padding: 0;
-}
-
-/* Screen-sharing active */
-#top-right-controls .btn.is-sharing {
-    background: var(--accent);
-    color: var(--ink-on-accent);
-    border-color: var(--accent);
 }
 
 /* Top-controls panel (legacy hidden) */
@@ -47,8 +39,7 @@ body.focus-mode #slide-navigator,
 body.focus-mode #floating-annotation-toolbar,
 body.focus-mode #edit-mode-container,
 body.focus-mode #top-right-controls #upload-container,
-body.focus-mode #top-right-controls #save-container,
-body.focus-mode #top-right-controls #screen-share-container {
+body.focus-mode #top-right-controls #save-container {
     display: none !important;
 }
 

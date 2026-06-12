@@ -1,36 +1,16 @@
-const CACHE_NAME = 'beamer-plus-v11';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v11';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v11';
+const CACHE_NAME = 'beamer-plus-v13';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v13';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v13';
 
-// Static assets to cache immediately
+// The app shell — just enough to boot the presenter offline. These are the real
+// Flask route / entry-point assets; everything they pull in (the ES-module tree
+// under /static/js, CSS @imports, fonts) is cached on first use by the runtime
+// fetch handler below, so it never needs listing here.
 const STATIC_ASSETS = [
   '/',
-  '/index.html',
-  '/viewer.html',
-  '/offline.html',
-  '/static/css/shared.css',
-  '/static/css/control-panel.css',
-  '/static/css/button.css',
-  '/static/css/selector.css',
-  '/static/css/label.css',
-  '/static/css/toggle.css',
-  '/static/css/canvas.css',
-  '/static/css/timer.css',
-  '/static/css/modal.css',
-  '/static/css/splash.css',
-  '/static/js/main.js',
-  '/static/js/beamer_ui.js',
-  '/static/js/beamer_modal.js',
-  '/static/js/button.js',
-  '/static/js/canvas.js',
-  '/static/js/events.js',
-  '/static/js/core/iframe-widget-renderer.js',
-  '/static/js/label.js',
-  '/static/js/modal.js',
-  '/static/js/selector.js',
-  '/static/js/timer.js',
-  '/static/js/toggle.js',
   '/manifest.json',
+  '/static/css/app.css',
+  '/static/js/main.js',
   '/static/icons/icon-192x192.png',
   '/static/icons/icon-512x512.png'
 ];
@@ -122,7 +102,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(request).then(r => r || caches.match('/index.html')))
+        .catch(() => caches.match(request).then(r => r || caches.match('/')))
     );
     return;
   }
@@ -186,9 +166,9 @@ self.addEventListener('fetch', (event) => {
           .catch((err) => {
             console.error('[Service Worker] Fetch failed:', err);
             
-            // Return offline page for navigation requests
+            // Fall back to the cached presenter shell for navigations.
             if (request.mode === 'navigate') {
-              return caches.match('/index.html');
+              return caches.match('/');
             }
             
             throw err;

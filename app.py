@@ -1,5 +1,6 @@
 from flask import Flask, render_template, jsonify, request, send_file, send_from_directory, Response
 import io
+import inspect
 import mimetypes
 from flask_socketio import SocketIO, emit, join_room
 import uuid
@@ -8,11 +9,10 @@ import os
 import importlib.util
 import sys
 import tempfile
+import traceback
 import zipfile
-import subprocess
 from collections import defaultdict
 import urllib.request
-import urllib.parse
 
 def get_base_path():
     if getattr(sys, 'frozen', False):
@@ -26,23 +26,14 @@ app = Flask(
     static_folder=os.path.join(BASE_PATH, 'static'),
     template_folder=os.path.join(BASE_PATH, 'templates'),
 )
+# cors_allowed_origins='*' lets any page on the LAN open a socket. That's
+# deliberate — widget iframes connect from assorted origins — but it means the
+# widget_state relay trusts its senders. Beamer+ assumes a cooperative local
+# network; do not expose this server to the public internet.
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 surveys = {}
 survey_responses = defaultdict(list)
-
-# Tracks live presenter state so late-joining viewers can catch up
-presenter_state = {
-    'zip_loaded': False,
-    'slide_index': 0,
-    'right_slide_index': 0,
-    'split_view': False,
-    'split_ratio': 50,
-    'viewer_muted': True,
-    'annotations': None,
-    'widget_states': {},
-    'spotlight': {'visible': False, 'pane': 'left', 'x': 0.5, 'y': 0.5},
-}
 
 UPLOAD_FOLDER = os.path.join(BASE_PATH, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -61,8 +52,6 @@ current_presentation = {
 # Temporary in-memory store for files uploaded via the editor but not yet
 # saved into the ZIP.  Cleared each time a new presentation is loaded.
 _temp_assets: dict[str, bytes] = {}
-
-survey_server_process = None
 
 _builtin_models: dict = {}
 _builtin_available: list = []
@@ -97,6 +86,10 @@ def load_builtin_models():
 
 
 def extract_and_load_models(zip_path):
+    # SECURITY: this executes the `ai/*.py` files found inside an uploaded ZIP
+    # (spec.loader.exec_module). Loading a presentation therefore runs arbitrary
+    # Python from whoever produced it — only open ZIPs you trust. This mirrors
+    # the cooperative-LAN assumption documented at the socketio setup above.
     models = {}
     available_models = []
     try:
@@ -133,10 +126,6 @@ def extract_and_load_models(zip_path):
 def index():
     return render_template('index.html')
 
-@app.route('/viewer')
-def viewer():
-    return render_template('viewer.html')
-
 @app.route('/survey/<survey_id>')
 def survey_page(survey_id):
     if survey_id not in surveys:
@@ -170,11 +159,6 @@ def service_worker():
     resp.headers['Cache-Control'] = 'no-cache'
     resp.headers['Service-Worker-Allowed'] = '/'
     return resp
-
-@app.route('/offline.html')
-def offline():
-    return send_file(os.path.join(BASE_PATH, 'offline.html'))
-
 
 # ── Built-in widgets ───────────────────────────────────────────────────────────
 
@@ -242,19 +226,21 @@ def _save_and_load(file):
     current_presentation['available_models'] = merged_available
     return filepath, merged_available
 
+# Both routes hit the same handler: `/upload` is the original name still used by
+# the presenter UI; `/api/presentation/upload` is the REST-style alias that pairs
+# with `/api/presentation/current`. The response carries both shapes' fields so
+# either client keeps working.
 @app.route('/upload', methods=['POST'])
+@app.route('/api/presentation/upload', methods=['POST'])
 def upload():
     if 'file' not in request.files:
         return jsonify({'error': 'No file'}), 400
     _, available_models = _save_and_load(request.files['file'])
-    return jsonify({'success': True, 'models': available_models})
-
-@app.route('/api/presentation/upload', methods=['POST'])
-def upload_presentation():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file'}), 400
-    _, available_models = _save_and_load(request.files['file'])
-    return jsonify({'success': True, 'models_found': len(available_models), 'models': available_models})
+    return jsonify({
+        'success': True,
+        'models': available_models,
+        'models_found': len(available_models),
+    })
 
 @app.route('/api/presentation/current')
 def get_current_presentation():
@@ -374,9 +360,16 @@ def create_survey():
 def get_survey(survey_id):
     if survey_id not in surveys:
         return jsonify({'error': 'Survey not found'}), 404
-    s = surveys[survey_id].copy()
-    s['survey_id'] = survey_id
-    return jsonify(s)
+    # This endpoint is public — every audience member hits it to load the
+    # question. Only expose fields the respondent page actually needs; in
+    # particular never leak the presenter's `api_key` (or the internal model).
+    s = surveys[survey_id]
+    return jsonify({
+        'survey_id': survey_id,
+        'question': s.get('question'),
+        'options': s.get('options'),
+        'active': s.get('active', False),
+    })
 
 @app.route('/api/survey/<survey_id>/respond', methods=['POST'])
 def respond_survey(survey_id):
@@ -418,7 +411,6 @@ def analyze_survey(survey_id):
     if not model_func:
         return jsonify({'error': f'Model "{model_name}" not loaded'}), 404
     try:
-        import inspect
         num_summaries = survey.get('num_summaries', 3)
         api_key = survey.get('api_key')
         call_kwargs = {'api_key': api_key} if api_key and 'api_key' in inspect.signature(model_func).parameters else {}
@@ -434,7 +426,7 @@ def analyze_survey(survey_id):
             'num_responses': len(responses),
         })
     except Exception as e:
-        import traceback; traceback.print_exc()
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/survey/<survey_id>/close', methods=['POST'])
@@ -445,50 +437,15 @@ def close_survey(survey_id):
     return jsonify({'success': True})
 
 
-# ── Survey server subprocess ───────────────────────────────────────────────────
-
-@app.route('/api/survey-server/start', methods=['POST'])
-def start_survey_server():
-    global survey_server_process
-    if survey_server_process is not None and survey_server_process.poll() is None:
-        return jsonify({'success': True, 'url': 'http://localhost:5001', 'message': 'Already running'})
-    survey_server_path = os.path.join(BASE_PATH, 'survey_server.py')
-    if not os.path.exists(survey_server_path):
-        return jsonify({'success': False, 'error': 'survey_server.py not found'}), 404
-    cmd = [sys.executable, survey_server_path, '--port', '5001']
-    if current_presentation['file'] and os.path.exists(current_presentation['file']):
-        cmd.extend(['--zip', current_presentation['file']])
-    survey_server_process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
-    )
-    time.sleep(1)
-    if survey_server_process.poll() is not None:
-        stderr = survey_server_process.stderr.read().decode('utf-8', errors='ignore')
-        return jsonify({'success': False, 'error': f'Server failed to start: {stderr}'}), 500
-    return jsonify({'success': True, 'url': 'http://localhost:5001', 'message': 'Started'})
-
-@app.route('/api/survey-server/stop', methods=['POST'])
-def stop_survey_server():
-    global survey_server_process
-    if survey_server_process is not None:
-        survey_server_process.terminate()
-        survey_server_process = None
-    return jsonify({'success': True})
-
-
 # ── Socket.IO ──────────────────────────────────────────────────────────────────
+# Two real-time flows remain: survey response counts (server → presenter, see
+# respond_survey) and widget-to-widget state sync. The presenter UI is otherwise
+# self-contained, so there are no slide/annotation broadcasts here.
 
 @socketio.on('join_presenter')
 def join_presenter():
     join_room('presenter')
     emit('joined', {'room': 'presenter'})
-
-@socketio.on('join_viewer')
-def join_viewer():
-    join_room('viewer')
-    emit('joined', {'room': 'viewer'})
-    emit('viewer_catchup', presenter_state)
 
 @socketio.on('join_survey')
 def join_survey(data):
@@ -497,103 +454,26 @@ def join_survey(data):
         join_room(f'survey_{survey_id}')
         emit('joined', {'room': f'survey_{survey_id}'})
 
-@socketio.on('presentation_loaded')
-def handle_presentation_loaded(data):
-    presenter_state['zip_loaded'] = True
-    presenter_state['slide_index'] = 0
-    presenter_state['right_slide_index'] = data.get('rightSlideIndex', 0)
-    presenter_state['split_view'] = data.get('splitView', False)
-    presenter_state['split_ratio'] = data.get('splitRatio', 50)
-    presenter_state['annotations'] = None
-    presenter_state['widget_states'] = {}
-    presenter_state['spotlight'] = {'visible': False, 'pane': 'left', 'x': 0.5, 'y': 0.5}
-    presenter_state['slide_structure'] = None
-    emit('presentation_loaded', data, room='viewer')
-
-@socketio.on('slide_change')
-def handle_slide_change(data):
-    presenter_state['slide_index'] = data.get('slideIndex', 0)
-    presenter_state['right_slide_index'] = data.get('rightSlideIndex', 0)
-    presenter_state['split_view'] = data.get('splitView', False)
-    presenter_state['split_ratio'] = data.get('splitRatio', 50)
-    presenter_state['annotations'] = data.get('annotations')
-    if data.get('slideStructure'):
-        presenter_state['slide_structure'] = data.get('slideStructure')
-    emit('slide_change', data, room='viewer')
-
-@socketio.on('annotation_update')
-def handle_annotation_update(data):
-    if data.get('slideIndex') == presenter_state['slide_index']:
-        presenter_state['annotations'] = data.get('annotations')
-    emit('annotation_update', data, room='viewer')
-
-@socketio.on('clear_annotations')
-def handle_clear_annotations():
-    presenter_state['annotations'] = None
-    emit('clear_annotations', room='viewer')
-
-@socketio.on('video_action')
-def handle_video_action(data):
-    emit('video_action', data, room='viewer')
-
-@socketio.on('model_interaction')
-def handle_model_interaction(data):
-    emit('model_interaction', data, room='viewer')
-
-@socketio.on('spotlight_update')
-def handle_spotlight_update(data):
-    presenter_state['spotlight'] = {
-        'visible': bool(data.get('visible')),
-        'pane': data.get('pane', 'left'),
-        'x': data.get('x', 0.5),
-        'y': data.get('y', 0.5),
-    }
-    emit('spotlight_update', presenter_state['spotlight'], room='viewer')
-
-@socketio.on('survey_show')
-def handle_survey_show(data):
-    emit('survey_show', data, room='viewer')
-
-@socketio.on('survey_close')
-def handle_survey_close(data=None):
-    emit('survey_close', room='viewer')
-    if data and 'survey_id' in data:
-        survey_id = data['survey_id']
-        if survey_id in surveys:
-            surveys[survey_id]['active'] = False
-            emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
-
-@socketio.on('screen_share_start')
-def handle_screen_share_start():
-    presenter_state['viewer_muted'] = False
-    emit('screen_share_start', room='viewer')
-
-@socketio.on('screen_share_stop')
-def handle_screen_share_stop():
-    presenter_state['viewer_muted'] = True
-    emit('screen_share_stop', room='viewer')
-
-@socketio.on('screen_frame')
-def handle_screen_frame(data):
-    emit('screen_frame', data, room='viewer')
-
 @socketio.on('widget_state')
 def handle_widget_state(data):
-    # Generic relay for iframe widgets.
-    # Widgets open their own Socket.IO connection and are not required
-    # to join presenter/viewer rooms, so broadcast to all sockets except
-    # the sender to keep sync widget-agnostic.
+    # Generic relay for iframe widgets: a widget broadcasts its state and any
+    # other live instance of the same widget applies it. Widgets open their own
+    # Socket.IO connection and don't join a specific room, so we broadcast to
+    # every socket except the sender to keep the relay widget-agnostic.
     widget_id = data.get('widgetId') if isinstance(data, dict) else None
     state = data.get('state') if isinstance(data, dict) else None
     if not widget_id or state is None:
         return
-
-    presenter_state['widget_states'][widget_id] = state
     emit('widget_state', {'widgetId': widget_id, 'state': state}, broadcast=True, include_self=False)
 
 
 _init_builtin_models()
 
+# Running `python app.py` directly is the lightweight dev entry point; the
+# production launcher is launch.py, which generates a real self-signed cert.
+# Here we fall back to Flask-SocketIO's built-in "adhoc" certificate so that
+# HTTPS-only browser features (e.g. the camera widget) work on LAN addresses,
+# dropping to plain HTTP only when forced or when `cryptography` is missing.
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
@@ -603,17 +483,17 @@ if __name__ == '__main__':
 
     def _can_use_adhoc_ssl():
         try:
-            from cryptography import x509  # noqa: F401
+            from cryptography import x509  # noqa: F401  (required by adhoc SSL)
             return True
         except ImportError:
             return False
 
-    """
+    # debug=False: this binds 0.0.0.0, so we must not expose the Werkzeug
+    # interactive debugger to the LAN.
     if args.http or not _can_use_adhoc_ssl():
         if not args.http:
-            print("[WARN] Could not start HTTPS (cryptography library not found). Falling back to HTTP.")
-            print("[WARN] Camera widget requires HTTPS on LAN addresses.")
-        socketio.run(app, host='0.0.0.0', port=args.port, debug=True)
+            print('[WARN] Could not start HTTPS (cryptography library not found). Falling back to HTTP.')
+            print('[WARN] The camera widget requires HTTPS on LAN addresses.')
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=False)
     else:
-    """
-    socketio.run(app, host='0.0.0.0', port=args.port, debug=True)
+        socketio.run(app, host='0.0.0.0', port=args.port, debug=False, ssl_context='adhoc')

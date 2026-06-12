@@ -13,8 +13,6 @@ export function initToolbar(state) {
             bus.emit('tool:change', btn.dataset.tool);
         });
     });
-
-    document.getElementById('annotation-undo')?.addEventListener('click', () => bus.emit('annotation:undo'));
-    document.getElementById('annotation-redo')?.addEventListener('click', () => bus.emit('annotation:redo'));
-    document.getElementById('annotation-clear-btn')?.addEventListener('click', () => bus.emit('annotation:clear'));
+    // Note: undo / redo / clear buttons are wired directly to the canvas in
+    // main.js (wireUndoRedo / wireAnnotationClear), so they're not handled here.
 }

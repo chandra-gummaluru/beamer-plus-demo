@@ -62,6 +62,7 @@ const state = {
     pdfCvs2: null,
     slideThumbnailCache: {},
     thumbnailPdfDoc: null,
+    _pdfDocPromise: null,   // memoized parse of the current slides.pdf (see getPdfDoc)
     socket: null,
     surveyData: null,
     surveyResults: null,
@@ -197,17 +198,6 @@ function updateHistoryBtns() {
     if (redo) redo.disabled = !state.annCvs?.canRedo();
 }
 
-/* ─── pen / tool wiring ───────────────────────────────────────── */
-const PEN_SLOT_DEFAULTS = [
-    { mode: 'draw', color: '#333333', size: 2, label: 'P1' },
-    { mode: 'draw', color: '#e74c3c', size: 2, label: 'P2' },
-    { mode: 'highlight', color: '#f1c40f', size: 5, label: 'H1' },
-    { mode: 'highlight', color: '#2ecc71', size: 5, label: 'H2' },
-    { mode: 'draw', color: '#3498db', size: 2, label: 'P3' },
-];
-const PEN_SWATCHES = ['#eeeeee','#e74c3c','#f1c40f','#2ecc71','#3498db','#9b59b6','#333333'];
-state.penProfiles = PEN_SLOT_DEFAULTS.map(p => ({ ...p }));
-
 /* ─── keyboard shortcut bindings ──────────────────────────────── */
 const DEFAULT_SHORTCUTS = {
     hand:             'h',
@@ -257,16 +247,6 @@ function applyDefaultPen() {
     handBtn?.classList.add('btn_selected');
 }
 
-function applyPenSlot(i) {
-    const profile = state.penProfiles[i];
-    if (!profile) return;
-    state.activePenSlot = i;
-    state.annotationTool = profile.mode === 'highlight' ? 'highlight' : 'draw';
-    state.annCvs.setPointerMode(state.annotationTool);
-    state.annCvs.setStrokeColor(profile.color);
-    state.annCvs.setStrokeWidth(profile.size);
-}
-
 function wireHandButton() {
     const btn = document.querySelector('[data-tool="hand"], #hand-btn');
     if (!btn) return;
@@ -299,7 +279,6 @@ function wireEraserButton() {
         held = true;
         state.annCvs.clearAndCommit();
         state.annotations[state.currentSlide] = null;
-        state.socket.emit('clear_annotations');
     }, 550);
     btn.addEventListener('click', () => {
         if (held) { held = false; return; }
@@ -366,7 +345,6 @@ function wireAnnotationClear() {
     document.getElementById('annotation-clear-btn')?.addEventListener('click', () => {
         state.annCvs.clearAndCommit();
         state.annotations[state.currentSlide] = null;
-        state.socket.emit('clear_annotations');
     });
 }
 
@@ -869,7 +847,6 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
             _slideOverlay(false)?.classList.remove('visible');
             _slideOverlay(true)?.classList.remove('visible');
         }
-        emitSlideState();
     });
 
     // Divider dragging for resizing — pointer events so touch works too
@@ -891,7 +868,6 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
                 updateMediaPositions(document.getElementById('pdf-canvas'));
                 updateMediaPositions(document.getElementById('pdf-canvas-2'));
                 await renderSplitSlides(state.currentSlide, state.rightSlideIndex);
-                emitSlideState();
             }, 50);
         }
     }
@@ -918,7 +894,6 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
             applySplitRatio(newLeftPercent);
             // Recompute 4:3 canvas sizes now that the containers have new widths.
             sizeSlideCanvases();
-            emitSlideState();
         });
 
         divider.addEventListener('pointerup',     _onDividerDragEnd);
@@ -978,7 +953,6 @@ bus.on('slide:goto-right', async (i) => {
     state.rightSlideIndex = i;
     await renderLogicalSlide(i, true);
     updateSlideNavigator();
-    emitSlideState();
     bus.emit('slide:changed', state.currentSlide);
 });
 
@@ -1066,7 +1040,6 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     }
     updateSlideNavigator();
     updateBlankSlideButtons();
-    emitSlideState();
     bus.emit('slide:changed', i);
 }
 
@@ -1115,18 +1088,6 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     if (active) await renderLogicalSlide(state.rightSlideIndex, true);
 
     populateSlideNavigator();
-}
-
-function emitSlideState() {
-    const annData = state.annCvs?.canvas?.toDataURL('image/png') || null;
-    state.socket.emit('slide_change', {
-        slideIndex: state.currentSlide,
-        rightSlideIndex: state.rightSlideIndex,
-        splitView: state.splitView,
-        splitRatio: state.splitRatio,
-        annotations: annData,
-        slideStructure: state.slideStructure,
-    });
 }
 
 function updateSlideNavigator() {
@@ -1258,12 +1219,9 @@ async function renderLogicalSlide(logicalIndex, isRight = false, suppressOverlay
 async function renderPdfSlide(pdfIndex, logicalIndex, isRight = false, slideKey = null) {
     if (!state.zipFile) return;
 
-    const pdfFile = state.zipFile.file('slides.pdf');
-    if (!pdfFile) { console.error('No slides.pdf in ZIP'); return; }
-
-    const pdfData = await pdfFile.async('arraybuffer');
-    const pdfDoc  = await pdfjsLib.getDocument({ data: pdfData }).promise;
-    const page    = await pdfDoc.getPage(pdfIndex + 1);
+    const pdfDoc = await getPdfDoc();
+    if (!pdfDoc) { console.error('No slides.pdf in ZIP'); return; }
+    const page = await pdfDoc.getPage(pdfIndex + 1);
 
     // Bail out if the slide at this logical index has changed (e.g. a blank
     // was inserted here) or if the user navigated away while we were loading.
@@ -1309,35 +1267,30 @@ async function renderMedia(config, container, rect, isRight, slideKey = null) {
             if (v.playMode === 'once' || v.playMode === 'auto') { video.autoplay = true; video.muted = true; }
             if (v.playMode === 'loop') { video.autoplay = true; video.loop = true; video.muted = true; }
             if (v.playMode === 'manual') { video.controls = true; }
-            // Expand-on-play logic
+            // Expand-on-play: after expandDelay seconds the video grows to fill
+            // the slide, then snaps back to its placed size when paused/ended.
             let _expandTimer = null;
             function _expandVideo() {
                 const cr = container.getBoundingClientRect();
                 Object.assign(video.style, { left: '0px', top: '0px', width: `${cr.width}px`, height: `${cr.height}px`, zIndex: '500' });
-                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'expand' });
             }
             function _collapseVideo() {
                 clearTimeout(_expandTimer); _expandTimer = null;
                 const cr = container.getBoundingClientRect();
                 const vz = video.dataset.videoZIndex;
                 Object.assign(video.style, { left: `${v.x*cr.width}px`, top: `${v.y*cr.height}px`, width: `${v.width*cr.width}px`, height: `${v.height*cr.height}px`, zIndex: vz });
-                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'collapse' });
             }
-            // Emit play/pause/seek to viewers from the interacted pane.
             video.addEventListener('play', () => {
-                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'play', time: video.currentTime });
                 if (!isRight && v.expandDelay != null && _expandTimer === null) {
                     _expandTimer = setTimeout(_expandVideo, v.expandDelay * 1000);
                 }
             });
             video.addEventListener('pause', () => {
-                state.socket.emit('video_action', { id: video.dataset.videoId, action: 'pause', time: video.currentTime });
                 if (!isRight && v.expandDelay != null) _collapseVideo();
             });
             video.addEventListener('ended', () => {
                 if (!isRight && v.expandDelay != null) _collapseVideo();
             });
-            video.addEventListener('seeked', () => state.socket.emit('video_action', { id: video.dataset.videoId, action: 'seek',  time: video.currentTime }));
             video.addEventListener('click', (e) => { video.paused ? video.play() : video.pause(); e.stopPropagation(); });
             container.appendChild(video);
         }
@@ -1381,19 +1334,6 @@ async function renderMedia(config, container, rect, isRight, slideKey = null) {
             progressBarSlot.slot = 'progress-bar';
             mv.appendChild(progressBarSlot);
             container.appendChild(mv);
-            if (!isRight) {
-                let cameraTimer = null;
-                mv.addEventListener('camera-change', () => {
-                    clearTimeout(cameraTimer);
-                    cameraTimer = setTimeout(() => {
-                        state.socket.emit('model_interaction', {
-                            id: m.id,
-                            cameraOrbit: mv.getCameraOrbit().toString(),
-                            fieldOfView: mv.getFieldOfView() + 'deg',
-                        });
-                    }, 150);
-                });
-            }
         }
     }
     if (config.widgets) {
@@ -1488,24 +1428,36 @@ async function loadMedia(path) {
     return url;
 }
 
-/* ─── annotation sync ─────────────────────────────────────────── */
+// Parse slides.pdf once per presentation and reuse the PDFDocument for every
+// slide render and for thumbnail generation. We memoize the *promise* (not just
+// the resolved doc) so the parallel left/right renders in split view share a
+// single parse instead of each decoding the whole file. Reset to null whenever
+// a new presentation is loaded.
+function getPdfDoc() {
+    if (state._pdfDocPromise) return state._pdfDocPromise;
+    const pdfFile = state.zipFile?.file('slides.pdf');
+    if (!pdfFile) return Promise.resolve(null);
+    state._pdfDocPromise = pdfFile.async('arraybuffer')
+        .then(data => pdfjsLib.getDocument({ data }).promise);
+    return state._pdfDocPromise;
+}
+
+/* ─── annotation persistence ──────────────────────────────────── */
+// Stash the current canvas into state.annotations so strokes survive
+// navigating away and back (and get bundled into the saved ZIP).
 let annotationSyncTimer = null;
 function syncAnnotations() {
     clearTimeout(annotationSyncTimer);
     const idx = state.currentSlide;
     annotationSyncTimer = setTimeout(() => {
-        const data = state.annCvs.canvas.toDataURL('image/png');
-        state.annotations[idx] = data;
-        state.socket.emit('annotation_update', { annotations: data, slideIndex: idx });
+        state.annotations[idx] = state.annCvs.canvas.toDataURL('image/png');
     }, 100);
 }
 
 function saveCurrentAnnotations() {
     clearTimeout(annotationSyncTimer);
     if (!state.annCvs) return;
-    const data = state.annCvs.canvas.toDataURL('image/png');
-    state.annotations[state.currentSlide] = data;
-    state.socket.emit('annotation_update', { annotations: data, slideIndex: state.currentSlide });
+    state.annotations[state.currentSlide] = state.annCvs.canvas.toDataURL('image/png');
     // Also save the right pane when in split view
     if (state.splitView && state.annCvs2) {
         state.annotations[state.rightSlideIndex] = state.annCvs2.canvas.toDataURL('image/png');
@@ -1751,8 +1703,6 @@ function wireResizeAndFullscreen() {
 }
 
 /* ─── spotlight tool ─────────────────────────────────────────── */
-let spotlightEmitFrame = null;
-
 function initSpotlight() {
     ensureSpotlightOverlay('left');
     ensureSpotlightOverlay('right');
@@ -1777,7 +1727,6 @@ function initSpotlight() {
         };
 
         renderSpotlight();
-        scheduleSpotlightEmit();
     }, true);
 
     document.addEventListener('pointerleave', () => {
@@ -1850,44 +1799,22 @@ function renderSpotlight() {
     overlay.classList.add('visible');
 }
 
-function hideSpotlight(emit = false) {
-    if (!state.spotlight.visible && !emit) return;
+function hideSpotlight(force = false) {
+    if (!state.spotlight.visible && !force) return;
     state.spotlight = { ...state.spotlight, visible: false };
     renderSpotlight();
-    if (emit) scheduleSpotlightEmit();
-}
-
-function scheduleSpotlightEmit() {
-    if (!state.socket || spotlightEmitFrame) return;
-    spotlightEmitFrame = requestAnimationFrame(() => {
-        spotlightEmitFrame = null;
-        state.socket.emit('spotlight_update', state.spotlight);
-    });
 }
 
 /* ─── socket events ───────────────────────────────────────────── */
+// The only inbound socket event the presenter cares about is the live survey
+// response count (broadcast to the 'presenter' room by respond_survey).
 function wireSocketEvents() {
-    state.socket.on('annotation_update', async (data) => {
-        if (data.slideIndex !== state.currentSlide) return;
-        state.annotations[data.slideIndex] = data.annotations;
-        await state.annCvs.loadAnnotations(data.annotations);
-    });
-
-    state.socket.on('slide_change', async (data) => {
-        await goToSlide(data.slideIndex);
-    });
-
     state.socket.on('survey_response', (data) => {
         if (!state.surveyData || data.survey_id !== state.surveyData.survey_id) return;
         if (typeof data.total === 'number') {
             state.surveyResponseCount = data.total;
             state.surveyCountSubscribers.forEach(cb => { try { cb(state.surveyResponseCount); } catch(e) {} });
         }
-    });
-
-    state.socket.on('spotlight_update', (data) => {
-        state.spotlight = { ...state.spotlight, ...data };
-        renderSpotlight();
     });
 }
 
@@ -1906,16 +1833,13 @@ bus.on('slides:reordered', async () => {
     await renderLogicalSlide(state.currentSlide);
     updateSlideNavigator();
     updateBlankSlideButtons();
-    emitSlideState();
 });
 
 /* ─── thumbnail generation ────────────────────────────────────── */
 async function generateThumbnails() {
     if (!state.zipFile) return;
-    const pdfFile = state.zipFile.file('slides.pdf');
-    if (!pdfFile) return;
-    const pdfData = await pdfFile.async('arraybuffer');
-    const pdfDoc  = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    const pdfDoc = await getPdfDoc();
+    if (!pdfDoc) return;
     state.thumbnailPdfDoc = pdfDoc;
 
     for (let i = 0; i < pdfDoc.numPages; i++) {
@@ -1962,6 +1886,8 @@ export async function loadZipPresentation(file) {
         if (rightCvs) delete rightCvs.dataset.slideKey;
 
         state.zipFile        = zip;
+        // Reuse the document we just parsed instead of decoding it again on first render.
+        state._pdfDocPromise = Promise.resolve(pdfDoc);
         state.totalSlides    = slideStructure.length;
         state.slideStructure = slideStructure;
         state.currentSlide   = 0;
@@ -1994,7 +1920,6 @@ export async function loadZipPresentation(file) {
         updateBlankSlideButtons();
         await locateSurveyWidgetSlide();
 
-        state.socket.emit('presentation_loaded', { totalSlides: slideStructure.length, splitView: false, rightSlideIndex: 0, splitRatio: state.splitRatio });
         modal?.close();
         enableControls();
     } catch (err) {
@@ -2016,6 +1941,8 @@ export async function loadPdfPresentation(file) {
         const zip = new JSZip();
         zip.file('slides.pdf', data);
         state.zipFile = zip;
+        // Reuse the document we just parsed instead of decoding it again on first render.
+        state._pdfDocPromise = Promise.resolve(pdfDoc);
         state.totalSlides = total;
         state.slideStructure = Array.from({ length: total }, (_, i) => ({ type: 'pdf', pdfIndex: i }));
         state.currentSlide   = 0;
@@ -2027,7 +1954,6 @@ export async function loadPdfPresentation(file) {
         await generateThumbnails();
         populateSlideNavigator();
         updateBlankSlideButtons();
-        state.socket.emit('presentation_loaded', { totalSlides: total, splitView: false, rightSlideIndex: 0, splitRatio: state.splitRatio });
         modal?.close();
         enableControls();
     } catch (err) {
@@ -2040,7 +1966,6 @@ export async function loadPdfPresentation(file) {
 function enableControls() {
     const els = document.querySelectorAll('.controls-disable-before-load');
     els.forEach(el => { el.disabled = false; el.style.opacity = '1'; el.style.pointerEvents = 'auto'; });
-    document.getElementById('screen-share-btn')?.removeAttribute('disabled');
 }
 
 async function locateSurveyWidgetSlide() {

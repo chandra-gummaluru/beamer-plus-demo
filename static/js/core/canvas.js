@@ -661,18 +661,6 @@ export class Canvas {
             this.strokeBufferCtx.clearRect(0, 0, this.strokeBuffer.width, this.strokeBuffer.height);
         }
 
-//        // Optional e-ink smoothing pass on freehand strokes
-//        if (
-//            this.isEink &&
-//            this.currentStroke &&
-//            this.currentStroke.points &&
-//            this.currentStroke.points.length > 2 &&
-//            !this.currentStroke.shape &&
-//            !this.shapeLock
-//        ) {
-//            this.redrawStrokeSmooth(this.currentStroke);
-//        }
-
         this.currentStroke = null;
         this.ctx.globalCompositeOperation = "source-over";
         this.ctx.globalAlpha = 1;
@@ -748,36 +736,6 @@ export class Canvas {
         return shape;
     }
     
-    redrawStrokeSmooth(stroke) {
-        // Clear and redraw the stroke with better smoothing
-        // This happens only once when the pen lifts, so it's acceptable on e-ink
-        const ctx = this.ctx;
-        const pts = stroke.points;
-
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.width;
-
-        // Draw a simplified smooth path through all points
-        if (pts.length < 3) return;
-
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-
-        // Use quadratic curves for smoothing (simpler than Bezier)
-        for (let i = 1; i < pts.length - 1; i++) {
-            const xc = (pts[i].x + pts[i + 1].x) / 2;
-            const yc = (pts[i].y + pts[i + 1].y) / 2;
-            ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-        }
-
-        // Draw final point
-        const lastPt = pts[pts.length - 1];
-        ctx.lineTo(lastPt.x, lastPt.y);
-        ctx.stroke();
-    }
-
     clear() {
         this.ctx.clearRect(0, 0, this.canvas.width / this.dpr, this.canvas.height / this.dpr);
     }

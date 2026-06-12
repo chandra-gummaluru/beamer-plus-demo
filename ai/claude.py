@@ -31,5 +31,9 @@ def summarize(responses, n, api_key=None):
         }],
     )
 
-    data = json.loads(message.content[0].text.strip())
+    text = message.content[0].text.strip()
+    if text.startswith('```'):
+        # Strip ```json … ``` fences if the model adds them despite the instruction.
+        text = text.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+    data = json.loads(text)
     return [(item['summary'], int(item['num_respondents'])) for item in data]

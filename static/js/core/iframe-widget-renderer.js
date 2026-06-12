@@ -183,6 +183,15 @@ function _bySlideSel(slideKey) {
     return `.widget-iframe[data-widget-slide="${slideKey}"]`;
 }
 
+// Escape text before dropping it into an iframe srcdoc. srcdoc iframes inherit
+// the parent's origin, so an unescaped widget path or error message could run
+// script as same-origin. Used only for the error placeholders below.
+function _escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
 // ── Park / restore ─────────────────────────────────────────────────────────
 
 /**
@@ -308,7 +317,11 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
             // ── Reveal parked iframe ───────────────────────────────────────
             existingMap.delete(String(w.id));
 
-            _widgetRegistry.set(w.id, { iframe: existing, container, savedStyle: null });
+            // Always key the registry by the string form of the id: parkWidgets
+            // and the expand/collapse listener look it up via the iframe's
+            // dataset.widgetId, which is always a string. Mixing a numeric w.id
+            // key here would leave stale entries that never get cleaned up.
+            _widgetRegistry.set(String(w.id), { iframe: existing, container, savedStyle: null });
             _ensureExpandListener();
 
             // Restore position / size in case the container was resized
@@ -365,7 +378,7 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
         iframe.allow = 'autoplay; fullscreen; camera; microphone';
 
         container.appendChild(iframe);
-        _widgetRegistry.set(w.id, { iframe, container, savedStyle: null });
+        _widgetRegistry.set(String(w.id), { iframe, container, savedStyle: null });
         _ensureExpandListener();
 
         try {
@@ -384,7 +397,7 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
                 const widgetFile = findWidgetFile(zipFile, widgetPath);
                 if (!widgetFile) {
                     console.error(`Widget file not found in zip: ${widgetPath}`);
-                    iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#666;">Widget not found: ${widgetPath}</div>`;
+                    iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#666;">Widget not found: ${_escapeHtml(widgetPath)}</div>`;
                     return;
                 }
                 htmlContent = await widgetFile.async('string');
@@ -440,7 +453,7 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
 
         } catch (error) {
             console.error('Error loading widget:', error);
-            iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#e74c3c;">Error loading widget: ${error.message}</div>`;
+            iframe.srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#e74c3c;">Error loading widget: ${_escapeHtml(error.message)}</div>`;
         }
     });
 
