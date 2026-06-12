@@ -103,6 +103,14 @@ document.addEventListener('DOMContentLoaded', () => {
     state.annCvs.setHistoryChangeHandler(updateHistoryBtns);
     updateHistoryBtns();
     sizeSlideCanvases();   // set pixel-exact 4:3 dimensions before any render
+    // The Canvas constructors above read their container size before
+    // sizeSlideCanvases() ran, so #ann-canvas (position:absolute, no CSS size)
+    // measured 0×0 and the annotation bitmap is 0×0 — drawing produces nothing
+    // until some resize path runs. Sync the bitmaps to the now-correct
+    // container size so annotations work on first load (previously they only
+    // started working after toggling split view / resizing the window).
+    state.annCvs.resizeOnly();
+    state.pdfCvs.resizeOnly();
 
     // modules
     initNavigator(state);
