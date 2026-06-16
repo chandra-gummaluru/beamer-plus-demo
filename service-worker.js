@@ -1,4 +1,3 @@
-const CACHE_NAME = 'beamer-plus-v11';
 const STATIC_CACHE_NAME = 'beamer-plus-static-v11';
 const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v11';
 

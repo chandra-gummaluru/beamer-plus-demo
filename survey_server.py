@@ -8,7 +8,7 @@ Usage:
     python survey_server.py [--port 5001] [--zip path/to/presentation.zip]
 """
 
-from flask import Flask, render_template_string, jsonify, request, send_from_directory
+from flask import Flask, render_template_string, jsonify, request
 from flask_socketio import SocketIO, emit, join_room
 from flask_cors import CORS
 import uuid
@@ -20,11 +20,10 @@ import importlib.util
 import tempfile
 import zipfile
 from collections import defaultdict
-from typing import List, Tuple
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Store surveys and responses
 surveys = {}
@@ -34,6 +33,7 @@ survey_responses = defaultdict(list)
 loaded_models = {}
 available_models = []
 
+
 def extract_and_load_models(zip_path):
     """
     Extract AI models from a ZIP file and load them.
@@ -42,49 +42,58 @@ def extract_and_load_models(zip_path):
     global loaded_models, available_models
     loaded_models = {}
     available_models = []
-    
+
     if not zip_path or not os.path.exists(zip_path):
         print(f"ZIP file not found: {zip_path}")
         return
-    
+
     try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            ai_files = [f for f in zip_ref.namelist() if f.startswith('ai/') and f.endswith('.py')]
-            
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            ai_files = [
+                f
+                for f in zip_ref.namelist()
+                if f.startswith("ai/") and f.endswith(".py")
+            ]
+
             if not ai_files:
                 print("No AI models found in ZIP file")
                 return
-            
+
             temp_dir = tempfile.mkdtemp()
-            
+
             for ai_file in ai_files:
                 try:
                     zip_ref.extract(ai_file, temp_dir)
                     model_name = os.path.splitext(os.path.basename(ai_file))[0]
-                    
-                    if model_name.startswith('_'):
+
+                    if model_name.startswith("_"):
                         continue
-                    
+
                     model_path = os.path.join(temp_dir, ai_file)
-                    spec = importlib.util.spec_from_file_location(model_name, model_path)
+                    spec = importlib.util.spec_from_file_location(
+                        model_name, model_path
+                    )
                     module = importlib.util.module_from_spec(spec)
-                    
+
                     unique_name = f"survey_model_{model_name}_{int(time.time())}"
                     sys.modules[unique_name] = module
                     spec.loader.exec_module(module)
-                    
-                    if hasattr(module, 'summarize'):
-                        loaded_models[model_name] = getattr(module, 'summarize')
+
+                    if hasattr(module, "summarize"):
+                        loaded_models[model_name] = getattr(module, "summarize")
                         available_models.append(model_name)
                         print(f"Loaded model: {model_name}")
                     else:
-                        print(f"Warning: {ai_file} does not define a 'summarize' function")
-                
+                        print(
+                            f"Warning: {ai_file} does not define a 'summarize' function"
+                        )
+
                 except Exception as e:
                     print(f"Error loading model {ai_file}: {str(e)}")
-    
+
     except Exception as e:
         print(f"Error extracting models from ZIP: {str(e)}")
+
 
 # HTML template for the survey response page
 SURVEY_RESPONSE_HTML = """
@@ -683,212 +692,255 @@ WIDGET_HTML = """
 </html>
 """
 
-@app.route('/')
+
+@app.route("/")
 def index():
     """Serve the widget UI"""
     return WIDGET_HTML
 
-@app.route('/survey/<survey_id>')
+
+@app.route("/survey/<survey_id>")
 def survey_page(survey_id):
     """Serve the survey response page"""
     if survey_id not in surveys:
         return "<h1>Survey not found</h1>", 404
-    return render_template_string(SURVEY_RESPONSE_HTML, 
-                                  survey_id=survey_id, 
-                                  question=surveys[survey_id].get('question', 'Survey'))
+    return render_template_string(
+        SURVEY_RESPONSE_HTML,
+        survey_id=survey_id,
+        question=surveys[survey_id].get("question", "Survey"),
+    )
 
-@app.route('/wordcloud/<survey_id>')
+
+@app.route("/wordcloud/<survey_id>")
 def wordcloud_page(survey_id):
     """Serve the wordcloud response page (alias of survey)"""
     if survey_id not in surveys:
         return "<h1>Survey not found</h1>", 404
-    return render_template_string(SURVEY_RESPONSE_HTML,
-                                  survey_id=survey_id,
-                                  question=surveys[survey_id].get('question', 'Word Cloud'))
+    return render_template_string(
+        SURVEY_RESPONSE_HTML,
+        survey_id=survey_id,
+        question=surveys[survey_id].get("question", "Word Cloud"),
+    )
 
-@app.route('/api/models')
+
+@app.route("/api/models")
 def get_models():
     """Get list of available AI models"""
-    return jsonify({'models': available_models})
+    return jsonify({"models": available_models})
 
-@app.route('/api/models/load', methods=['POST'])
+
+@app.route("/api/models/load", methods=["POST"])
 def load_models():
     """Load models from a ZIP file"""
     data = request.json
-    zip_path = data.get('zip_path')
+    zip_path = data.get("zip_path")
     if zip_path:
         extract_and_load_models(zip_path)
-    return jsonify({'models': available_models})
+    return jsonify({"models": available_models})
 
-@app.route('/api/survey/create', methods=['POST'])
+
+@app.route("/api/survey/create", methods=["POST"])
 def create_survey():
     """Create a new survey"""
     data = request.json
     survey_id = str(uuid.uuid4())[:8]
-    
-    model_name = data.get('model')
-    
+
+    model_name = data.get("model")
+
     if model_name and model_name not in loaded_models:
-        return jsonify({'error': f'Model "{model_name}" not found'}), 400
-    
+        return jsonify({"error": f'Model "{model_name}" not found'}), 400
+
     surveys[survey_id] = {
-        'question': data.get('question', 'Survey'),
-        'created_at': time.time(),
-        'active': True,
-        'model': model_name,
-        'num_summaries': data.get('num_summaries', 3)
+        "question": data.get("question", "Survey"),
+        "created_at": time.time(),
+        "active": True,
+        "model": model_name,
+        "num_summaries": data.get("num_summaries", 3),
     }
-    is_wordcloud = data.get('is_wordcloud', False)
+    is_wordcloud = data.get("is_wordcloud", False)
 
-    return jsonify({
-        'survey_id': survey_id,
-        'url': f'/wordcloud/{survey_id}' if is_wordcloud else f'/survey/{survey_id}'
-    })
+    return jsonify(
+        {
+            "survey_id": survey_id,
+            "url": f"/wordcloud/{survey_id}"
+            if is_wordcloud
+            else f"/survey/{survey_id}",
+        }
+    )
 
-@app.route('/api/survey/<survey_id>')
+
+@app.route("/api/survey/<survey_id>")
 def get_survey(survey_id):
     """Get survey details"""
     if survey_id not in surveys:
-        return jsonify({'error': 'Survey not found'}), 404
+        return jsonify({"error": "Survey not found"}), 404
     return jsonify(surveys[survey_id])
 
-@app.route('/api/survey/<survey_id>/respond', methods=['POST'])
+
+@app.route("/api/survey/<survey_id>/respond", methods=["POST"])
 def respond_survey(survey_id):
     """Submit a response to a survey"""
     if survey_id not in surveys:
-        return jsonify({'error': 'Survey not found'}), 404
-    
-    if not surveys[survey_id]['active']:
-        return jsonify({'error': 'Survey is closed'}), 403
-    
-    data = request.json
-    response = {
-        'text': data.get('response', ''),
-        'timestamp': time.time()
-    }
-    survey_responses[survey_id].append(response)
-    
-    # Notify widget of new response
-    socketio.emit('survey_response', {
-        'survey_id': survey_id,
-        'response': response,
-        'total': len(survey_responses[survey_id])
-    })
-    
-    return jsonify({'success': True})
+        return jsonify({"error": "Survey not found"}), 404
 
-@app.route('/api/survey/<survey_id>/responses')
+    if not surveys[survey_id]["active"]:
+        return jsonify({"error": "Survey is closed"}), 403
+
+    data = request.json
+    response = {"text": data.get("response", ""), "timestamp": time.time()}
+    survey_responses[survey_id].append(response)
+
+    # Notify widget of new response
+    socketio.emit(
+        "survey_response",
+        {
+            "survey_id": survey_id,
+            "response": response,
+            "total": len(survey_responses[survey_id]),
+        },
+    )
+
+    return jsonify({"success": True})
+
+
+@app.route("/api/survey/<survey_id>/responses")
 def get_responses(survey_id):
     """Get all responses for a survey"""
     if survey_id not in surveys:
-        return jsonify({'error': 'Survey not found'}), 404
-    return jsonify({
-        'responses': survey_responses[survey_id],
-        'total': len(survey_responses[survey_id])
-    })
+        return jsonify({"error": "Survey not found"}), 404
+    return jsonify(
+        {
+            "responses": survey_responses[survey_id],
+            "total": len(survey_responses[survey_id]),
+        }
+    )
 
-@app.route('/api/survey/<survey_id>/analyze', methods=['POST'])
+
+@app.route("/api/survey/<survey_id>/analyze", methods=["POST"])
 def analyze_survey(survey_id):
     """Analyze survey responses using the specified model"""
     if survey_id not in surveys:
-        return jsonify({'error': 'Survey not found'}), 404
-    
+        return jsonify({"error": "Survey not found"}), 404
+
     survey = surveys[survey_id]
     responses = survey_responses[survey_id]
-    
+
     if len(responses) == 0:
-        return jsonify({'error': 'No responses to analyze'}), 400
-    
-    model_name = survey.get('model')
-    num_summaries = survey.get('num_summaries', 3)
-    
+        return jsonify({"error": "No responses to analyze"}), 400
+
+    model_name = survey.get("model")
+    num_summaries = survey.get("num_summaries", 3)
+
     if not model_name:
-        return jsonify({'error': 'No model specified for this survey'}), 400
-    
+        return jsonify({"error": "No model specified for this survey"}), 400
+
     model_func = loaded_models.get(model_name)
-    
+
     if not model_func:
-        return jsonify({'error': f'Model "{model_name}" not loaded'}), 404
-    
+        return jsonify({"error": f'Model "{model_name}" not loaded'}), 404
+
     try:
-        response_texts = [r['text'] for r in responses]
+        response_texts = [r["text"] for r in responses]
         summaries = model_func(response_texts, num_summaries)
-        
+
         if not isinstance(summaries, list):
-            return jsonify({'error': 'Model must return a list of summaries'}), 500
-        
+            return jsonify({"error": "Model must return a list of summaries"}), 500
+
         if len(summaries) != num_summaries:
-            return jsonify({
-                'error': f'Model returned {len(summaries)} summaries, expected {num_summaries}'
-            }), 500
-        
+            return jsonify(
+                {
+                    "error": f"Model returned {len(summaries)} summaries, expected {num_summaries}"
+                }
+            ), 500
+
         for i, item in enumerate(summaries):
             if not isinstance(item, tuple) or len(item) != 2:
-                return jsonify({
-                    'error': f'Summary {i} must be a tuple of (summary, num_respondents)'
-                }), 500
+                return jsonify(
+                    {
+                        "error": f"Summary {i} must be a tuple of (summary, num_respondents)"
+                    }
+                ), 500
             if not isinstance(item[0], str) or not isinstance(item[1], int):
-                return jsonify({
-                    'error': f'Summary {i} has invalid types: expected (str, int)'
-                }), 500
-        
-        summaries_json = [
-            {'summary': s[0], 'num_respondents': s[1]}
-            for s in summaries
-        ]
-        
-        return jsonify({
-            'summaries': summaries_json,
-            'model': model_name,
-            'num_responses': len(responses)
-        })
-    
+                return jsonify(
+                    {"error": f"Summary {i} has invalid types: expected (str, int)"}
+                ), 500
+
+        summaries_json = [{"summary": s[0], "num_respondents": s[1]} for s in summaries]
+
+        return jsonify(
+            {
+                "summaries": summaries_json,
+                "model": model_name,
+                "num_responses": len(responses),
+            }
+        )
+
     except Exception as e:
         import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Error analyzing responses: {str(e)}'}), 500
 
-@app.route('/api/survey/<survey_id>/close', methods=['POST'])
+        traceback.print_exc()
+        return jsonify({"error": f"Error analyzing responses: {str(e)}"}), 500
+
+
+@app.route("/api/survey/<survey_id>/close", methods=["POST"])
 def close_survey(survey_id):
     """Close a survey"""
     if survey_id in surveys:
-        surveys[survey_id]['active'] = False
-        socketio.emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
-    return jsonify({'success': True})
+        surveys[survey_id]["active"] = False
+        socketio.emit(
+            "survey_closed", {"survey_id": survey_id}, room=f"survey_{survey_id}"
+        )
+    return jsonify({"success": True})
 
-@socketio.on('join_survey')
+
+@socketio.on("join_survey")
 def join_survey(data):
     """Join a survey room for real-time updates"""
-    survey_id = data.get('survey_id')
+    survey_id = data.get("survey_id")
     if survey_id:
-        join_room(f'survey_{survey_id}')
-        emit('joined', {'room': f'survey_{survey_id}'})
+        join_room(f"survey_{survey_id}")
+        emit("joined", {"room": f"survey_{survey_id}"})
 
-@socketio.on('survey_close')
+
+@socketio.on("survey_close")
 def handle_survey_close(data):
     """Handle survey close event from widget"""
-    survey_id = data.get('survey_id')
+    survey_id = data.get("survey_id")
     if survey_id:
-        socketio.emit('survey_closed', {'survey_id': survey_id}, room=f'survey_{survey_id}')
+        socketio.emit(
+            "survey_closed", {"survey_id": survey_id}, room=f"survey_{survey_id}"
+        )
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Beamer+ Survey Server')
-    parser.add_argument('--port', type=int, default=5001, help='Port to run the server on')
-    parser.add_argument('--zip', type=str, help='Path to presentation ZIP file with AI models')
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to')
+    parser = argparse.ArgumentParser(description="Beamer+ Survey Server")
+    parser.add_argument(
+        "--port", type=int, default=5001, help="Port to run the server on"
+    )
+    parser.add_argument(
+        "--zip", type=str, help="Path to presentation ZIP file with AI models"
+    )
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
     args = parser.parse_args()
-    
+
     if args.zip:
         print(f"Loading models from: {args.zip}")
         extract_and_load_models(args.zip)
-    
+
     print(f"\nSurvey server starting on http://{args.host}:{args.port}")
     print("Open this URL in a browser or embed as an iframe widget.\n")
-    
+
     # use_reloader=False prevents the server from spawning a child process
     # allow_unsafe_werkzeug=True allows running without a proper TTY
-    socketio.run(app, host=args.host, port=args.port, debug=False, 
-                 use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        host=args.host,
+        port=args.port,
+        debug=False,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True,
+    )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

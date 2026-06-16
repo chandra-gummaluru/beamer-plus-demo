@@ -122,7 +122,6 @@ function _buildOneFieldRow(field, item) {
         ? ` <span class="editor-prop-label-note">${_escHtml(field.note)}</span>` : '';
 
     if (field.type === 'file') {
-        const displayName = eff ? String(eff).split('/').pop() : '';
         return `
         <div class="editor-prop-row">
             <div class="editor-prop-label">${_escHtml(field.label)}${notePart}</div>
@@ -427,11 +426,6 @@ async function exitEditMode() {
 /* ─── helpers ───────────────────────────────────────────────── */
 
 function getSlideEl() { return document.getElementById('pdf-canvas'); }
-
-function getCurrentPdfIndex() {
-    const obj = _state.slideStructure[_state.currentSlide];
-    return obj?.type === 'pdf' ? obj.pdfIndex : null;
-}
 
 function getOrCreateConfig() {
     const obj = _state.slideStructure[_state.currentSlide];

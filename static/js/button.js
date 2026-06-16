@@ -1,6 +1,4 @@
 // button.js
-import { addHoldListener } from './events.js';
-
 export class Button {
     constructor(parentOrSelector, options = {}) {
         const { label = '', className = '' } = options;

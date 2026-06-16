@@ -7,7 +7,7 @@ import { initButtons } from './core/button.js';
 import { initToggle } from './core/toggle.js';
 import { initModal } from './core/modal.js';
 import { Canvas } from './core/canvas.js';
-import { renderWidgets, cleanupWidgets, updateWidgetPositions,
+import { renderWidgets, updateWidgetPositions,
          parkWidgets, discardParkedWidgets, clearAllParked, setWidgetStates } from './core/iframe-widget-renderer.js';
 
 import { initToolbar } from './annotations/toolbar.js';
@@ -205,7 +205,6 @@ const PEN_SLOT_DEFAULTS = [
     { mode: 'highlight', color: '#2ecc71', size: 5, label: 'H2' },
     { mode: 'draw', color: '#3498db', size: 2, label: 'P3' },
 ];
-const PEN_SWATCHES = ['#eeeeee','#e74c3c','#f1c40f','#2ecc71','#3498db','#9b59b6','#333333'];
 state.penProfiles = PEN_SLOT_DEFAULTS.map(p => ({ ...p }));
 
 /* ─── keyboard shortcut bindings ──────────────────────────────── */
@@ -255,16 +254,6 @@ function applyDefaultPen() {
     setShapeSidebarVisible(false);
     clearToolSelection();
     handBtn?.classList.add('btn_selected');
-}
-
-function applyPenSlot(i) {
-    const profile = state.penProfiles[i];
-    if (!profile) return;
-    state.activePenSlot = i;
-    state.annotationTool = profile.mode === 'highlight' ? 'highlight' : 'draw';
-    state.annCvs.setPointerMode(state.annotationTool);
-    state.annCvs.setStrokeColor(profile.color);
-    state.annCvs.setStrokeWidth(profile.size);
 }
 
 function wireHandButton() {
@@ -1157,7 +1146,6 @@ function updateSlideNavigator() {
 
 function updateBlankSlideButtons() {
     const obj = state.slideStructure[state.currentSlide];
-    const addBtn  = document.getElementById('add-blank-btn');
     const delBtn  = document.getElementById('delete-blank-btn');
     if (delBtn) {
         const isBlank = obj?.type === 'blank';
@@ -1446,15 +1434,6 @@ function updateMediaPositions(container) {
 }
 
 /* ─── slide config / media cache ─────────────────────────────── */
-
-// Resolve a pdfIndex reference (used in onEnter.split / onLeave.goToSlide) to
-// the corresponding slideStructure position.  Blank slides inserted by the user
-// shift positions but never change pdfIndex values, so this keeps config
-// cross-references stable regardless of how many blank slides exist.
-function resolvePdfRef(pdfIndex) {
-    const idx = state.slideStructure.findIndex(s => s.type === 'pdf' && s.pdfIndex === pdfIndex);
-    return idx === -1 ? null : idx;
-}
 
 async function loadSlideConfig(pdfIndex) {
     if (state.slideConfigs[pdfIndex]) return state.slideConfigs[pdfIndex];
