@@ -1,0 +1,269 @@
+// Settings — theme, rebindable keyboard shortcuts, and PWA install.
+// Owns the settings modal and the preferences persisted in localStorage.
+
+/* ─── PWA install prompt ──────────────────────────────────────── */
+let _pwaInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _pwaInstallPrompt = e;
+});
+window.addEventListener('appinstalled', () => { _pwaInstallPrompt = null; });
+
+/* ─── keyboard shortcut bindings ──────────────────────────────── */
+export const DEFAULT_SHORTCUTS = {
+    hand:             'h',
+    eraser:           'e',
+    spotlight:        's',
+    bookmark:         'b',
+    clearAnnotations: 'c',
+    splitView:        'v',
+    focusMode:        'f',
+    pen1:             '1',
+    pen2:             '2',
+    pen3:             '3',
+    pen4:             '4',
+    pen5:             '5',
+};
+
+const SHORTCUT_LABELS = {
+    hand:             'Hand / pointer',
+    eraser:           'Eraser',
+    spotlight:        'Spotlight',
+    bookmark:         'Bookmark slide',
+    clearAnnotations: 'Clear annotations',
+    splitView:        'Split view',
+    focusMode:        'Focus mode',
+    pen1:             'Pen slot 1',
+    pen2:             'Pen slot 2',
+    pen3:             'Pen slot 3',
+    pen4:             'Pen slot 4',
+    pen5:             'Pen slot 5',
+};
+
+export function loadShortcuts() {
+    try { return { ...DEFAULT_SHORTCUTS, ...JSON.parse(localStorage.getItem('beamer-shortcuts') || '{}') }; }
+    catch { return { ...DEFAULT_SHORTCUTS }; }
+}
+
+export function saveShortcuts(sc) {
+    localStorage.setItem('beamer-shortcuts', JSON.stringify(sc));
+}
+
+/* ─── theme ───────────────────────────────────────────────────── */
+export function applyTheme(theme) {
+    localStorage.setItem('beamer-theme', theme);
+    const html = document.documentElement;
+    if (theme === 'dark') {
+        html.setAttribute('data-theme', 'dark');
+    } else {
+        // 'light' or any legacy value (e.g. 'system') → light
+        html.removeAttribute('data-theme');
+    }
+}
+
+const NON_BINDABLE = new Set([
+    'Tab','Enter','Backspace','Delete','Escape',
+    'ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageUp','PageDown','Home','End',
+    'Control','Meta','Alt','Shift','CapsLock',
+    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+]);
+
+function _hasShortcutConflicts(sc) {
+    const vals = Object.values(sc).filter(v => v);
+    return vals.length !== new Set(vals).size;
+}
+
+function _updateShortcutConflicts(scGrid, sc, hintEl) {
+    const counts = {};
+    for (const key of Object.values(sc)) {
+        if (key) counts[key] = (counts[key] || 0) + 1;
+    }
+    const hasConflicts = Object.values(counts).some(c => c > 1);
+    scGrid.querySelectorAll('.shortcut-capture').forEach(inp => {
+        const key = sc[inp.dataset.action];
+        inp.classList.toggle('is-error', !!(key && counts[key] > 1));
+    });
+    if (hintEl) {
+        if (hasConflicts) {
+            hintEl.textContent = 'Duplicate keys: resolve all conflicts to close.';
+            hintEl.classList.add('is-error');
+        } else {
+            hintEl.textContent = 'Click a key to rebind it.';
+            hintEl.classList.remove('is-error');
+        }
+    }
+}
+
+const _SUN_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>`;
+const _MOON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+
+/* ─── settings modal (theme + editable shortcuts) ─────────────── */
+export function showSettingsModal() {
+    const rawTheme = localStorage.getItem('beamer-theme') || 'light';
+    // Treat legacy 'system' as 'light'
+    const savedTheme = (rawTheme === 'dark') ? 'dark' : 'light';
+    const sc = loadShortcuts();
+
+    const body = document.createElement('div');
+    body.className = 'settings-grid';
+
+    // ── Theme ──────────────────────────────────────────────────
+    const themeLabel = document.createElement('div');
+    themeLabel.className = 'settings-label settings-label-center';
+    themeLabel.textContent = 'Theme';
+    body.appendChild(themeLabel);
+
+    const themeRow = document.createElement('div');
+    themeRow.className = 'settings-theme-row';
+    [{ value: 'light', label: 'Light', svg: _SUN_SVG }, { value: 'dark', label: 'Dark', svg: _MOON_SVG }].forEach(({ value, label, svg }) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn settings-theme-btn' + (savedTheme === value ? ' btn_selected' : '');
+        btn.title = label;
+        btn.innerHTML = svg;
+        btn.addEventListener('click', () => {
+            applyTheme(value);
+            themeRow.querySelectorAll('.btn').forEach(b => b.classList.remove('btn_selected'));
+            btn.classList.add('btn_selected');
+        });
+        themeRow.appendChild(btn);
+    });
+    body.appendChild(themeRow);
+
+    // ── Keyboard Shortcuts ─────────────────────────────────────
+    const scSection = document.createElement('div');
+    scSection.className = 'settings-section';
+
+    const scLabel = document.createElement('div');
+    scLabel.className = 'settings-label settings-label-center';
+    scLabel.textContent = 'Keyboard Shortcuts';
+    scSection.appendChild(scLabel);
+
+    // Hint + reset on one line
+    const scHintRow = document.createElement('div');
+    scHintRow.className = 'settings-hint-row';
+
+    const scHint = document.createElement('p');
+    scHint.className = 'settings-shortcut-hint';
+    scHint.textContent = 'Click a key to rebind it.';
+    scHintRow.appendChild(scHint);
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'settings-shortcuts-reset-btn';
+    resetBtn.textContent = 'Reset defaults';
+    resetBtn.addEventListener('click', () => {
+        Object.assign(sc, DEFAULT_SHORTCUTS);
+        saveShortcuts(sc);
+        scGrid.querySelectorAll('.shortcut-capture').forEach((inp, i) => {
+            inp.value = DEFAULT_SHORTCUTS[Object.keys(SHORTCUT_LABELS)[i]] ?? '';
+        });
+        _updateShortcutConflicts(scGrid, sc, scHint);
+    });
+    scHintRow.appendChild(resetBtn);
+    scSection.appendChild(scHintRow);
+
+    const scGrid = document.createElement('div');
+    scGrid.className = 'settings-shortcuts-grid';
+
+    Object.entries(SHORTCUT_LABELS).forEach(([action, labelText]) => {
+        const labelEl = document.createElement('span');
+        labelEl.className = 'settings-shortcut-label';
+        labelEl.textContent = labelText;
+        scGrid.appendChild(labelEl);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.readOnly = true;
+        input.className = 'shortcut-capture';
+        input.dataset.action = action;
+        input.value = sc[action] ?? DEFAULT_SHORTCUTS[action] ?? '';
+        input.title = 'Click to rebind';
+
+        input.addEventListener('focus', () => {
+            input.dataset.prev = input.value;
+            input.value = '';
+            input.placeholder = '…';
+            input.classList.add('capturing');
+        });
+        input.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.key === 'Escape') { input.value = input.dataset.prev ?? ''; input.blur(); return; }
+            if (e.ctrlKey || e.metaKey || e.altKey) { input.blur(); return; }
+            if (NON_BINDABLE.has(e.key)) { input.blur(); return; }
+            input.value = e.key;
+            sc[action] = e.key;
+            _updateShortcutConflicts(scGrid, sc, scHint);
+            input.blur();
+        });
+        input.addEventListener('blur', () => {
+            input.classList.remove('capturing');
+            input.placeholder = '';
+            if (!input.value) input.value = input.dataset.prev ?? '';
+        });
+
+        scGrid.appendChild(input);
+    });
+    scSection.appendChild(scGrid);
+
+    body.appendChild(scSection);
+
+    // ── Install App ────────────────────────────────────────────────
+    const _isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+    if (!_isStandalone) {
+        const installSection = document.createElement('div');
+        installSection.className = 'settings-section';
+
+        const installLabel = document.createElement('div');
+        installLabel.className = 'settings-label settings-label-center';
+        installLabel.textContent = 'Install App';
+        installSection.appendChild(installLabel);
+
+        const installBtn = document.createElement('button');
+        installBtn.className = 'btn settings-install-btn';
+
+        const _DL_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+
+        installBtn.innerHTML = _DL_ICON;
+        installBtn.title = _pwaInstallPrompt ? 'Install as App' : 'Add to home screen from your browser menu';
+        if (_pwaInstallPrompt) {
+            installBtn.addEventListener('click', async () => {
+                _pwaInstallPrompt.prompt();
+                const { outcome } = await _pwaInstallPrompt.userChoice;
+                if (outcome === 'accepted') _pwaInstallPrompt = null;
+                window.BeamerModal?.close();
+            });
+        } else {
+            installBtn.disabled = true;
+        }
+
+        installSection.appendChild(installBtn);
+        body.appendChild(installSection);
+    }
+
+    window.BeamerModal?.show({
+        kind: 'info',
+        title: 'Settings',
+        body,
+        canClose: () => !_hasShortcutConflicts(sc),
+        buttons: [
+            {
+                label: 'Cancel',
+                kind: 'cancel',
+                onClick: () => applyTheme(savedTheme),
+            },
+            {
+                label: 'Save',
+                kind: 'ok',
+                guard: () => !_hasShortcutConflicts(sc),
+                onClick: () => saveShortcuts(sc),
+            },
+        ],
+    });
+}
+
+/* ─── init ────────────────────────────────────────────────────── */
+export function initSettings() {
+    document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
+    applyTheme(localStorage.getItem('beamer-theme') || 'light');
+}

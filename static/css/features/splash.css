@@ -74,3 +74,284 @@
     transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast);
 }
 #pwa-install-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-pop); }
+
+/* ── Welcome / landing page ─────────────────────────────────── */
+body.welcome-page {
+    overflow: auto;
+    min-height: 100%;
+    height: auto;
+    background: var(--surface-paper);
+}
+
+/* Oversized logo watermark sitting behind the copy on the left half. */
+.welcome-watermark {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    width: min(50vw, 720px);
+    max-height: 100vh;
+    transform: translateY(-50%) translateX(-8%);
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.07;
+}
+
+.welcome-watermark svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.welcome-screen {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-8) var(--sp-6);
+    box-sizing: border-box;
+}
+
+.welcome-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    align-items: center;
+    gap: clamp(var(--sp-8), 6vw, 88px);
+    width: 100%;
+    max-width: 1080px;
+}
+
+.welcome-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    animation: welcome-in 0.6s var(--ease-out) both;
+}
+
+@keyframes welcome-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.welcome-brand {
+    margin-bottom: var(--sp-6);
+}
+
+.welcome-wordmark {
+    display: flex;
+    flex-direction: column;
+}
+
+.welcome-title {
+    font-family: var(--font-serif);
+    font-size: clamp(48px, 6.5vw, 76px);
+    font-weight: 500;
+    color: var(--ink-1);
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+    margin: 0;
+}
+
+.welcome-institution {
+    font-family: var(--font-sans);
+    font-size: clamp(var(--fs-md), 1.7vw, var(--fs-lg));
+    font-weight: 500;
+    color: var(--ink-2);
+    letter-spacing: 0.01em;
+    margin: var(--sp-2) 0 0;
+}
+
+.welcome-tagline {
+    font-family: var(--font-serif);
+    font-size: clamp(var(--fs-lg), 2.4vw, var(--fs-2xl));
+    font-style: italic;
+    color: var(--ink-1);
+    line-height: 1.2;
+    margin: 0 0 var(--sp-4);
+    margin-left: -0.05em;
+}
+
+.welcome-lede {
+    font-size: clamp(var(--fs-base), 1.5vw, var(--fs-md));
+    color: var(--ink-2);
+    line-height: 1.6;
+    max-width: 30em;
+    margin: 0 0 var(--sp-8);
+}
+
+.welcome-preview {
+    animation: welcome-in 0.6s var(--ease-out) 0.1s both;
+}
+
+.welcome-mockup {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: var(--r-lg);
+    filter: drop-shadow(0 24px 48px oklch(20% 0.01 260 / 0.16));
+}
+
+.welcome-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    align-items: stretch;
+    width: 100%;
+    max-width: 340px;
+}
+
+.welcome-actions-row {
+    display: flex;
+    gap: var(--sp-3);
+    align-items: stretch;
+}
+
+.welcome-btn {
+    font-family: var(--font-sans);
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    min-height: 56px;
+    width: 100%;
+    padding: 0 var(--sp-6);
+    border-radius: var(--r-md);
+    border: var(--line-hairline);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.welcome-actions-row .welcome-btn--primary {
+    flex: 1 1 auto;
+}
+
+.welcome-btn--help {
+    flex: 0 0 auto;
+    width: 56px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border-color: transparent;
+    color: var(--ink-3);
+    text-decoration: none;
+}
+
+.welcome-btn--help:hover {
+    color: var(--ink-1);
+    transform: none;
+}
+
+.welcome-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.welcome-btn--primary {
+    background: var(--accent);
+    color: var(--ink-on-accent);
+    border-color: var(--accent-strong);
+}
+
+.welcome-btn--primary:hover:not(:disabled) {
+    background: var(--accent-strong);
+    transform: translateY(-1px);
+}
+
+.welcome-btn--ghost {
+    background: transparent;
+    border: none;
+    /* Match the primary button's width (row minus the help button + gap) so the
+       link centers under "Start a new session", not the whole action row. */
+    width: calc(100% - 56px - var(--sp-3));
+    min-height: 0;
+    padding: 0;
+    align-self: flex-start;
+    text-align: center;
+    color: var(--ink-3);
+    font-weight: 500;
+    font-size: var(--fs-sm);
+    text-decoration: underline;
+    text-decoration-color: var(--ink-4);
+    text-underline-offset: 3px;
+}
+
+.welcome-btn--ghost:hover:not(:disabled) {
+    color: var(--ink-1);
+    text-decoration-color: var(--ink-2);
+}
+
+.welcome-hint {
+    font-size: var(--fs-sm);
+    color: var(--ink-3);
+    margin: var(--sp-4) 0 0;
+    min-height: 1.4em;
+}
+
+.welcome-hint.is-error {
+    color: var(--danger);
+}
+
+@media (max-width: 860px) {
+    .welcome-hero {
+        grid-template-columns: 1fr;
+        gap: var(--sp-8);
+        max-width: 520px;
+    }
+
+    .welcome-copy {
+        align-items: center;
+        text-align: center;
+        order: 2;
+    }
+
+    .welcome-preview {
+        order: 1;
+    }
+
+    .welcome-lede {
+        display: none;
+    }
+
+    .welcome-actions {
+        max-width: 340px;
+    }
+}
+
+/* ── Presenter session badge ──────────────────────────────── */
+.session-badge {
+    position: fixed;
+    top: var(--sp-3);
+    left: calc(var(--nav-width) + var(--sp-3));
+    z-index: 220;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: var(--line-hairline);
+    border-radius: var(--r-pill);
+    padding: var(--sp-1) var(--sp-3);
+    pointer-events: none;
+    user-select: all;
+}
+
+body.split-view-active .session-badge,
+body.focus-mode .session-badge {
+    display: none;
+}
+
+@media (max-width: 1024px) {
+    .session-badge {
+        left: var(--sp-3);
+        top: var(--sp-2);
+        font-size: 10px;
+        padding: 2px var(--sp-2);
+    }
+}

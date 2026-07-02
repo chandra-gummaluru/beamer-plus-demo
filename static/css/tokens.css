@@ -98,11 +98,19 @@
     :root {
         --hit-min: 44px;
         --toolbar-w: 60px;
+        --nav-width: 0px;
     }
 }
 
-/* Respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
+@media (max-width: 1024px) {
+    :root {
+        --nav-width: 0px;
+    }
+}
+
+/* Respect reduced motion; (update: slow) additionally covers e-ink panels,
+   which report slow screen updates rather than a motion preference. */
+@media (prefers-reduced-motion: reduce), (update: slow) {
     *, *::before, *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;

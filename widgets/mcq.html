@@ -263,7 +263,8 @@ function showPhase(p) {
 }
 
 function showQR(sid) {
-  const url = `${publicBaseUrl || serverUrl}/mcq/${sid}`;
+  const base = (publicBaseUrl || serverUrl).replace(/\/$/, '');
+  const url = `${base}/mcq/${sid}`;
   document.getElementById('join-url').textContent = url;
   const el = document.getElementById('qrcode');
   if (!el.innerHTML)
@@ -276,7 +277,7 @@ function copyUrl() {
 
 function emitState() {
   if (!socket || role !== 'presenter') return;
-  socket.emit('widget_state', { widgetId,
+  socket.emit('widget_state', { widgetId, session_id: cfg.sessionId,
     state: { question: cfg.question, options, votes, revealed, correctAnswer, surveyId, pollClosed } });
 }
 
@@ -294,7 +295,9 @@ function initSocket() {
   const url = cfg.socketUrl || serverUrl;
   if (!url) return;
   socket = io(url);
-  socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
+  socket.on('connect', () => {
+    if (role === 'presenter') socket.emit('join_presenter', { session_id: cfg.sessionId });
+  });
   socket.on('widget_state', data => {
     if (role !== 'viewer' || data?.widgetId !== widgetId) return;
     applyState(data.state);

@@ -160,8 +160,10 @@ body {
 
 <script>
 const SURVEY_ID   = "{{ survey_id }}";
+const SESSION_ID  = "{{ session_id }}";
+const API_PREFIX  = `/s/${SESSION_ID}/api/survey`;
 const LETTERS     = ['A','B','C','D','E','F','G','H','I','J'];
-const SESSION_KEY = 'voted_' + SURVEY_ID;
+const SESSION_KEY = 'voted_' + SESSION_ID + '_' + SURVEY_ID;
 const CARDS = ['thanks-card', 'already-card', 'closed-card', 'error-card'];
 
 let socket   = null;
@@ -199,7 +201,7 @@ async function submitVote(letter, btnEl) {
   disableAll();
   btnEl.classList.add('selected');
   try {
-    const res = await fetch(`/api/survey/${SURVEY_ID}/respond`, {
+    const res = await fetch(`${API_PREFIX}/${SURVEY_ID}/respond`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ response: letter }),
     });
@@ -220,7 +222,7 @@ async function submitVote(letter, btnEl) {
 async function load() {
   if (sessionStorage.getItem(SESSION_KEY)) { showCard('already-card'); return; }
   try {
-    const res = await fetch(`/api/survey/${SURVEY_ID}`);
+    const res = await fetch(`${API_PREFIX}/${SURVEY_ID}`);
     if (!res.ok) {
       if (res.status === 404) document.getElementById('error-detail').textContent = 'This poll does not exist.';
       showCard('error-card'); return;
@@ -233,6 +235,7 @@ async function load() {
     document.getElementById('poll-area').style.display = 'flex';
     try {
       socket = io();
+      socket.emit('join_survey', { session_id: SESSION_ID, survey_id: SURVEY_ID });
       socket.on('survey_closed', d => {
         if (d && d.survey_id && d.survey_id !== SURVEY_ID) return;
         if (!hasVoted) { disableAll(); showCard('closed-card'); }

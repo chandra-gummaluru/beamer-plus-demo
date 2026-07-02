@@ -1,0 +1,239 @@
+// "Add Widget" picker — enumerates built-in widgets from the server, groups
+// them into categories, and adds the chosen widget (or a custom uploaded
+// .html file) to the current slide.
+//
+// The maps below are used ONLY by the picker to enumerate and categorise
+// available widgets. They do NOT control editable fields — each widget HTML
+// file declares its own schema via:
+//   <script id="widget-schema" type="application/json"> … </script>
+import { ctx, getOrCreateConfig, escHtml } from './context.js';
+import { renderEditOverlays, cleanupEditOverlays, selectOverlayEl } from './overlays.js';
+
+const WIDGET_ICONS = {
+    browser:            `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+    calculator:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="12" y2="16"/></svg>`,
+    camera:             `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+    circuit_widget:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="1"/><line x1="9" y1="7" x2="9" y2="4"/><line x1="12" y1="7" x2="12" y2="3"/><line x1="15" y1="7" x2="15" y2="4"/><line x1="9" y1="17" x2="9" y2="20"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="15" y1="17" x2="15" y2="20"/><line x1="7" y1="9" x2="4" y2="9"/><line x1="7" y1="12" x2="3" y2="12"/><line x1="7" y1="15" x2="4" y2="15"/><line x1="17" y1="9" x2="20" y2="9"/><line x1="17" y1="12" x2="21" y2="12"/><line x1="17" y1="15" x2="20" y2="15"/></svg>`,
+    'function-plotter': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+    ipynb_widget:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+    'll-delete':        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="10" y="9" width="6" height="6" rx="1"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="19" y1="10" x2="22" y2="10"/><line x1="19" y1="14" x2="22" y2="14"/><line x1="22" y1="10" x2="22" y2="14"/></svg>`,
+    map:                `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+    mcq:                `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
+    'python-repl':      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><polyline points="8 9 12 13 8 17"/><line x1="12" y1="17" x2="16" y2="17"/></svg>`,
+    shell:              `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><polyline points="4 9 8 13 4 17"/><line x1="10" y1="17" x2="20" y2="17"/></svg>`,
+    survey:             `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    textbook:           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+    timer:              `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    'word-cloud':       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
+    youtube:            `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="currentColor" stroke="none"/></svg>`,
+    __default__:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+    __custom__:         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+};
+
+export const WIDGET_LABELS = {
+    'ipynb_widget':     'Coding Notebook',
+    'circuit_widget':   'Digital Circuit Sim',
+    'function-plotter': 'Function Plotter',
+    'mcq':              'Choice',
+    'word-cloud':       'Word Cloud',
+};
+
+// Widgets that exist on the server but should not appear in the picker UI.
+const WIDGET_HIDDEN = new Set(['python-repl', 'll-delete']);
+
+const WIDGET_CATEGORY_ORDER = [
+    'Mathematics',
+    'Computer Science',
+    'Biology',
+    'Engineering',
+    'Audience Response',
+    'Tools',
+    'Other',
+];
+
+const WIDGET_CATEGORIES = {
+    'calculator':       'Mathematics',
+    'function-plotter': 'Mathematics',
+    'browser':          'Tools',
+    'ipynb_widget':     'Computer Science',
+    'shell':            'Computer Science',
+    'circuit_widget':   'Engineering',
+    'mcq':              'Audience Response',
+    'survey':           'Audience Response',
+    'word-cloud':       'Audience Response',
+    'camera':           'Tools',
+    'map':              'Tools',
+    'textbook':         'Tools',
+    'timer':            'Tools',
+    'youtube':          'Tools',
+};
+
+/* ─── picker modal ──────────────────────────────────────────── */
+
+export async function addWidget() {
+    // Toggle: second click closes the modal
+    if (document.getElementById('widget-modal-overlay')) {
+        document.getElementById('widget-modal-overlay').remove();
+        return;
+    }
+
+    let widgets = [];
+    try {
+        const res = await fetch('/api/widgets');
+        if (res.ok) widgets = await res.json();
+    } catch (e) {
+        console.warn('Could not load widget list:', e);
+    }
+
+    _showWidgetModal(widgets);
+}
+
+function _showWidgetModal(widgets) {
+    document.getElementById('widget-modal-overlay')?.remove();
+
+    // Determine which categories actually have widgets (so we don't show empty tabs).
+    const usedCats = new Set(widgets.flatMap(f => {
+        const type = f.replace(/\.html$/i, '');
+        if (WIDGET_HIDDEN.has(type)) return [];
+        return [WIDGET_CATEGORIES[type] || 'Other'];
+    }));
+    const visibleCats = WIDGET_CATEGORY_ORDER.filter(c => usedCats.has(c));
+
+    const overlay = document.createElement('div');
+    overlay.id = 'widget-modal-overlay';
+    overlay.className = 'widget-modal-overlay';
+    overlay.innerHTML = `
+        <div class="widget-modal" id="widget-modal">
+            <div class="widget-modal-header">
+                <h2 class="widget-modal-title">Add Widget</h2>
+                <button class="btn widget-modal-close" id="widget-modal-close" title="Close">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="widget-modal-cats" id="widget-modal-cats">
+                <button class="widget-cat-btn is-active" data-cat="all">All</button>
+                ${visibleCats.map(c => `<button class="widget-cat-btn" data-cat="${c}">${c}</button>`).join('')}
+            </div>
+            <div class="widget-modal-search-row">
+                <input class="editor-prop-input widget-modal-search" type="search"
+                       id="widget-modal-search" placeholder="Search widgets…" autocomplete="off">
+            </div>
+            <div class="widget-modal-grid" id="widget-modal-grid"></div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const grid   = document.getElementById('widget-modal-grid');
+    const search = document.getElementById('widget-modal-search');
+    let activeCat = 'all';
+
+    const refresh = () => _populateWidgetGrid(grid, widgets, search?.value ?? '', activeCat);
+    refresh();
+
+    document.getElementById('widget-modal-cats')?.addEventListener('click', e => {
+        const btn = e.target.closest('.widget-cat-btn');
+        if (!btn) return;
+        activeCat = btn.dataset.cat;
+        document.querySelectorAll('#widget-modal-cats .widget-cat-btn').forEach(b =>
+            b.classList.toggle('is-active', b === btn));
+        refresh();
+    });
+
+    search?.addEventListener('input', refresh);
+
+    const close = () => overlay.remove();
+    document.getElementById('widget-modal-close')?.addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+
+    setTimeout(() => search?.focus(), 40);
+}
+
+function _populateWidgetGrid(grid, widgets, filter, category = 'all') {
+    grid.innerHTML = '';
+    const q = filter.trim().toLowerCase();
+
+    // Custom upload card — shown in All and Other only (no category)
+    const showCustom = (category === 'all' || category === 'Other')
+        && (!q || 'custom upload html file'.includes(q));
+    if (showCustom) {
+        grid.appendChild(_makeWidgetCard('__custom__', 'Custom', WIDGET_ICONS.__custom__, true));
+    }
+
+    widgets.forEach(filename => {
+        const type  = filename.replace(/\.html$/i, '');
+        if (WIDGET_HIDDEN.has(type)) return;
+        const cat   = WIDGET_CATEGORIES[type] || 'Other';
+        if (category !== 'all' && cat !== category) return;
+        const label = WIDGET_LABELS[type] || type.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        if (q && !label.toLowerCase().includes(q) && !type.toLowerCase().includes(q)) return;
+        grid.appendChild(_makeWidgetCard(type, label, WIDGET_ICONS[type] || WIDGET_ICONS.__default__));
+    });
+}
+
+function _makeWidgetCard(type, label, iconSvg, isCustom = false) {
+    const card = document.createElement('button');
+    card.className = 'widget-card' + (isCustom ? ' widget-card--custom' : '');
+    card.innerHTML = `<div class="widget-card-icon">${iconSvg}</div><div class="widget-card-label">${escHtml(label)}</div>`;
+    card.addEventListener('click', () => {
+        document.getElementById('widget-modal-overlay')?.remove();
+        if (type === '__custom__') _pickCustomWidget();
+        else _doAddWidget(type);
+    });
+    return card;
+}
+
+/* ─── adding widgets to the slide config ────────────────────── */
+
+function _pickCustomWidget() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.html';
+    input.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const type = file.name.replace(/\.html$/i, '');
+        // Blob URL for immediate preview; file stored for ZIP inclusion on save
+        const blobUrl = URL.createObjectURL(file);
+        ctx.state.editorNewFiles[`widgets/${file.name}`] = await file.arrayBuffer();
+
+        const cfg = getOrCreateConfig();
+        if (!cfg) return;
+        if (!cfg.widgets) cfg.widgets = [];
+        cfg.widgets.push({
+            id: `widget_${Date.now()}`,
+            type,
+            src: blobUrl,
+            x: 0.1, y: 0.1,
+            width: 0.8, height: 0.8,
+            zIndex: 10,
+        });
+        const newIndex = cfg.widgets.length - 1;
+        cleanupEditOverlays();
+        renderEditOverlays();
+        const ov = document.querySelector(`.edit-overlay[data-arr-key="widgets"][data-item-index="${newIndex}"]`);
+        if (ov) selectOverlayEl(ov, 'widgets', newIndex);
+    });
+    input.click();
+}
+
+function _doAddWidget(type) {
+    const cfg = getOrCreateConfig();
+    if (!cfg) return;
+    if (!cfg.widgets) cfg.widgets = [];
+    cfg.widgets.push({
+        id: `widget_${Date.now()}`,
+        type,
+        src: '',
+        x: 0.1, y: 0.1,
+        width: 0.8, height: 0.8,
+        zIndex: 10,
+        builtin: true,
+    });
+    const newIndex = cfg.widgets.length - 1;
+    cleanupEditOverlays();
+    renderEditOverlays();
+    const overlay = document.querySelector(`.edit-overlay[data-arr-key="widgets"][data-item-index="${newIndex}"]`);
+    if (overlay) selectOverlayEl(overlay, 'widgets', newIndex);
+}

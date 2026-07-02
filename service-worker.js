@@ -1,6 +1,6 @@
-const CACHE_NAME = 'beamer-plus-v14';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v14';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v14';
+const CACHE_NAME = 'beamer-plus-v16';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v16';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v16';
 
 // The app shell — just enough to boot the presenter offline. These are the real
 // Flask route / entry-point assets; everything they pull in (the ES-module tree
@@ -23,11 +23,14 @@ const STATIC_ASSETS = [
   '/static/icons/icon-512x512.png'
 ];
 
-// API endpoints that stream large ZIPs — never cache these (they would bloat
-// the dynamic cache by ~40MB per presentation load).
-const UNCACHED_API_PATHS = [
+// API endpoints that stream large payloads — never cache these. The ZIP
+// endpoints would add ~40MB per presentation load; /api/zip-asset/ streams
+// per-slide media (videos, 3D models) that would otherwise accumulate in the
+// dynamic cache without bound. Matched by prefix.
+const UNCACHED_API_PREFIXES = [
   '/api/presentation/current',
-  '/api/demo-zip'
+  '/api/demo-zip',
+  '/api/zip-asset/'
 ];
 
 // Install event - cache static assets
@@ -117,7 +120,7 @@ self.addEventListener('fetch', (event) => {
     // cache.put() throws on non-GET requests, and the big ZIP downloads
     // shouldn't be cached at all.
     const cacheable = request.method === 'GET' &&
-                      !UNCACHED_API_PATHS.includes(url.pathname);
+                      !UNCACHED_API_PREFIXES.some(p => url.pathname.startsWith(p));
     event.respondWith(
       fetch(request)
         .then((response) => {

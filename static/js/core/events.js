@@ -43,7 +43,3 @@ export function addHoldListener(el, onHold, holdTime = 500, onEnd) {
         el.addEventListener('touchcancel', end);
     }
 }
-
-export function initEvents(state) {
-    // Keyboard nav and bookmarks are handled directly in main.js wireKeyboardNav()
-}

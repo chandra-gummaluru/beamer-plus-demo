@@ -202,7 +202,9 @@ function _initSocket() {
   if (!url) return;
   try {
     _socket = io(url);
-    _socket.on('connect', () => { if (_role === 'presenter') _socket.emit('join_presenter'); });
+    _socket.on('connect', () => {
+      if (_role === 'presenter') _socket.emit('join_presenter', { session_id: _cfg.sessionId });
+    });
     _socket.on('widget_event', ({ id, type, payload }) => {
       if (id !== _widgetId) return;
       if (type === 'state') _applyRemoteState(payload);
@@ -245,6 +247,7 @@ function _applyRemoteState(s) {
 function _absUrl(path) {
   if (!path) return '';
   if (path.startsWith('http')) return path;
+  if (path.startsWith('/s/')) return window.location.origin + path;
   return (_pubBase || _server) + (path.startsWith('/') ? path : '/' + path);
 }
 

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beamer+ — {{ institution }}</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#333333">
+    <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="welcome-page">
+    <div class="welcome-watermark" aria-hidden="true">
+        <svg viewBox="0 0 120 120" role="img" aria-label="">
+            <g transform="translate(50, 96) rotate(25) scale(1.08)">
+                <polygon points="0,0 -18,-54 -38,-54" fill="none" stroke="var(--ink-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <polygon points="0,0 5,-40 19,-40" fill="none" stroke="var(--ink-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+            </g>
+        </svg>
+    </div>
+
+    <main id="welcome-screen" class="welcome-screen">
+        <section class="welcome-hero">
+            <div class="welcome-copy">
+                <div class="welcome-brand">
+                    <div class="welcome-wordmark">
+                        <h1 class="welcome-title">Beamer+</h1>
+                        <p class="welcome-institution">{{ institution }}</p>
+                    </div>
+                </div>
+
+                <p class="welcome-tagline">The chalkboard, reborn for the projector.</p>
+                <p class="welcome-lede">Bring your static slides to life by embedding them with modern multimedia, all in one place.</p>
+
+                <div class="welcome-actions">
+                    <div class="welcome-actions-row">
+                        <button type="button" class="welcome-btn welcome-btn--primary" id="welcome-create-btn">
+                            Start a new session
+                        </button>
+                        <a class="welcome-btn welcome-btn--help" href="https://chandra-gummaluru.github.io/post/beamer-plus"
+                           target="_blank" rel="noopener" aria-label="Learn more about Beamer+" title="Learn more about Beamer+">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9.25"/>
+                                <path d="M9.4 9.2a2.6 2.6 0 0 1 5.05.85c0 1.73-2.45 2.35-2.45 3.95"/>
+                                <circle cx="12" cy="17.4" r="0.4" fill="currentColor" stroke="none"/>
+                            </svg>
+                        </a>
+                    </div>
+                    <button type="button" class="welcome-btn welcome-btn--ghost" id="welcome-continue-btn" hidden>
+                        Continue last session (<span id="welcome-continue-code"></span>)
+                    </button>
+                </div>
+
+                <p class="welcome-hint" id="welcome-status" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="welcome-preview" aria-hidden="true">
+                <svg class="welcome-mockup" viewBox="0 0 520 360" role="img" aria-label="Beamer+ interface preview">
+                    <!-- window frame -->
+                    <rect x="8" y="8" width="504" height="344" rx="16" fill="var(--surface-cream)" stroke="var(--ink-4)" stroke-width="1.5"/>
+                    <!-- title bar -->
+                    <circle cx="34" cy="34" r="4.5" fill="var(--ink-4)"/>
+                    <circle cx="50" cy="34" r="4.5" fill="var(--ink-4)"/>
+                    <circle cx="66" cy="34" r="4.5" fill="var(--ink-4)"/>
+                    <line x1="8" y1="56" x2="512" y2="56" stroke="var(--ink-4)" stroke-width="1"/>
+
+                    <!-- slide navigator rail -->
+                    <rect x="20" y="72" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
+                    <rect x="20" y="132" width="72" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+                    <rect x="20" y="192" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
+                    <rect x="20" y="252" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
+
+                    <!-- slide stage -->
+                    <rect x="108" y="72" width="388" height="232" rx="8" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1.5"/>
+
+                    <!-- slide content: heading + body lines -->
+                    <rect x="132" y="98" width="150" height="14" rx="4" fill="var(--ink-3)"/>
+                    <rect x="132" y="132" width="300" height="7" rx="3.5" fill="var(--ink-4)"/>
+                    <rect x="132" y="150" width="264" height="7" rx="3.5" fill="var(--ink-4)"/>
+                    <rect x="132" y="168" width="288" height="7" rx="3.5" fill="var(--ink-4)"/>
+
+                    <!-- live ink annotations (accent) -->
+                    <path d="M132 210 q 40 -22, 84 -4 t 96 -2" fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="404" cy="150" r="26" fill="none" stroke="var(--accent-strong)" stroke-width="3"/>
+                    <path d="M300 240 l 26 26 m 0 -26 l -26 26" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round"/>
+
+                    <!-- floating toolbar -->
+                    <rect x="196" y="320" width="128" height="24" rx="12" fill="var(--surface-cream)" stroke="var(--ink-4)" stroke-width="1"/>
+                    <circle cx="216" cy="332" r="5" fill="var(--accent-strong)"/>
+                    <circle cx="240" cy="332" r="5" fill="var(--ink-4)"/>
+                    <circle cx="264" cy="332" r="5" fill="var(--ink-4)"/>
+                    <circle cx="288" cy="332" r="5" fill="var(--ink-4)"/>
+                    <circle cx="308" cy="332" r="5" fill="var(--ink-4)"/>
+                </svg>
+            </div>
+        </section>
+    </main>
+    <script type="module" src="/static/js/app/welcome.js"></script>
+</body>
+</html>

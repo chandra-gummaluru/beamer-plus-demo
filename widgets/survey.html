@@ -270,7 +270,7 @@ function emitState() {
   if (phase === 'collect') { state.surveyId = currentSurvey?.survey_id; state.url = document.getElementById('join-url').textContent; state.count = respCount; }
   else if (phase === 'responses') { state.surveyId = currentSurvey?.survey_id; }
   else if (phase === 'results') { state.results = currentResults; state.idx = currentIdx; }
-  socket.emit('widget_state', { widgetId, state });
+  socket.emit('widget_state', { widgetId, session_id: cfg.sessionId, state });
 }
 
 function applyState(s) {
@@ -292,8 +292,10 @@ function applyState(s) {
 
 function connectSocket() {
   if (socket) socket.disconnect();
-  socket = io(serverUrl);
-  socket.on('connect', () => { if (role === 'presenter') socket.emit('join_presenter'); });
+  socket = io(cfg.socketUrl || serverUrl);
+  socket.on('connect', () => {
+    if (role === 'presenter') socket.emit('join_presenter', { session_id: cfg.sessionId });
+  });
   socket.on('widget_state', data => { if (role !== 'viewer' || data?.widgetId !== widgetId) return; applyState(data.state); });
   socket.on('survey_response', data => {
     if (!currentSurvey || data.survey_id !== currentSurvey.survey_id) return;
@@ -320,7 +322,7 @@ async function doLaunch(question, model, n, apiKey) {
     currentSurvey = { ...data, question, model, num_summaries: n };
     setRespCount(0);
     document.getElementById('question-text').textContent = question;
-    showQR((publicBaseUrl || serverUrl) + data.url);
+    showQR(window.location.origin + data.url);
     showPhase('collect'); emitState();
   } catch (e) { console.error('doLaunch:', e); }
 }

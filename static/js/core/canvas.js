@@ -105,6 +105,11 @@ export class Canvas {
             return true;
         }
 
+        // Browsers on e-ink panels report slow screen updates
+        if (window.matchMedia?.('(update: slow)').matches) {
+            return true;
+        }
+
         // Low color depth might indicate e-ink
         if (colorDepth <= 8) {
             return true;

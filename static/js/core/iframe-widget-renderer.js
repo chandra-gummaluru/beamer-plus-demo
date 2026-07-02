@@ -1,6 +1,8 @@
 // iframe-widget-renderer.js
 // Renders widgets from HTML files in the zip file.
 //
+import { widgetSessionConfig } from '../app/session.js';
+
 // ── Persistence strategy ───────────────────────────────────────────────────
 // Iframes are NEVER moved or destroyed during normal slide navigation.
 // When a slide is "parked" (navigated away from) its iframes stay in the
@@ -426,8 +428,8 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
 
             const _configPayload = {
                 ...w,
+                ...widgetSessionConfig(),
                 role: viewerMode ? 'viewer' : 'presenter',
-                socketUrl: window.location.origin,
                 ...(notebookContent !== null ? { notebookContent } : {}),
             };
             const _configJson   = JSON.stringify(_configPayload).replace(/<\/script>/gi, '<\\/script>');
@@ -484,17 +486,6 @@ export function updateWidgetPositions(container) {
             iframe.style.width  = `${width * rect.width}px`;
             iframe.style.height = `${height * rect.height}px`;
         }
-    });
-}
-
-// ── Cleanup (hard destroy — used for editor changes) ───────────────────────
-
-export function cleanupWidgets(container) {
-    container.querySelectorAll('.widget-iframe').forEach(iframe => {
-        const wid = iframe.dataset.widgetId;
-        if (wid) { _widgetRegistry.delete(wid); _capturedStates.delete(String(wid)); }
-        try { iframe.contentWindow?.postMessage({ type: 'widget-cleanup' }, '*'); } catch (_) {}
-        iframe.remove();
     });
 }
 

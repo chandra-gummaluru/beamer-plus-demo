@@ -146,7 +146,9 @@ textarea::placeholder { color: var(--text-3); }
 
 <script>
 const SURVEY_ID  = "{{ survey_id }}";
-const SESSION_KEY = 'responded_' + SURVEY_ID;
+const SESSION_ID = "{{ session_id }}";
+const API_PREFIX = `/s/${SESSION_ID}/api/survey`;
+const SESSION_KEY = 'responded_' + SESSION_ID + '_' + SURVEY_ID;
 const CARDS = ['thanks-card', 'already-card', 'closed-card', 'error-card'];
 
 function showCard(id) {
@@ -162,7 +164,7 @@ async function submit() {
   btn.disabled = true;
   document.getElementById('response-input').disabled = true;
   try {
-    const res = await fetch(`/api/survey/${SURVEY_ID}/respond`, {
+    const res = await fetch(`${API_PREFIX}/${SURVEY_ID}/respond`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ response: text }),
     });
@@ -182,7 +184,7 @@ async function submit() {
 async function load() {
   if (sessionStorage.getItem(SESSION_KEY)) { showCard('already-card'); return; }
   try {
-    const res = await fetch(`/api/survey/${SURVEY_ID}`);
+    const res = await fetch(`${API_PREFIX}/${SURVEY_ID}`);
     if (!res.ok) { showCard('error-card'); return; }
     const data = await res.json();
     if (!data.active) { showCard('closed-card'); return; }
@@ -191,6 +193,7 @@ async function load() {
     document.getElementById('main-area').style.display = 'flex';
     try {
       const socket = io();
+      socket.emit('join_survey', { session_id: SESSION_ID, survey_id: SURVEY_ID });
       socket.on('survey_closed', d => { if (!d?.survey_id || d.survey_id === SURVEY_ID) showCard('closed-card'); });
     } catch (_) {}
   } catch (_) {

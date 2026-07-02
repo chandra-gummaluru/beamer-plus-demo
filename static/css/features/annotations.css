@@ -210,15 +210,18 @@ body.split-view-active #annotation-undo-redo {
         transform: translateX(50%);
         flex-direction: row;
         align-items: center;
-        max-width: calc(100vw - var(--sp-6));
+        max-width: calc(100vw - var(--sp-4));
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
     }
     #floating-annotation-toolbar::-webkit-scrollbar { display: none; }
     #floating-annotation-toolbar #tool-container,
+    #floating-annotation-toolbar #pen-slots,
+    #floating-annotation-toolbar #annotation-clear,
     #floating-annotation-toolbar #annotation-undo-redo {
         flex-direction: row;
+        align-items: center;
     }
     #floating-annotation-toolbar #annotation-undo-redo {
         border-top: none;

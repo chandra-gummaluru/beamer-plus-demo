@@ -6,8 +6,10 @@ on top: pen and shape annotations, embedded video / audio / 3D models,
 interactive widgets (calculators, plotters, Python REPLs, maps, …), and
 real-time audience surveys with AI-powered response summarization.
 
-Everything runs from a single Flask server on your machine. Audience devices
-on the same network join over LAN — no cloud service involved.
+Everything runs from a single Flask server — on your machine for solo use, or
+hosted by your university for multiple concurrent lectures. Each presenter
+creates a **session** and works at `/s/{code}/`; audience survey QR codes
+point to URLs under that same session prefix.
 
 ## Quick start
 
@@ -18,7 +20,9 @@ pip install -r requirements.txt
 python launch.py            # production launcher: HTTPS with a self-signed cert
 ```
 
-Open the `https://...` URL the launcher prints. Browsers warn about the
+Open the `https://...` URL the launcher prints, then **Start a new session**
+on the welcome screen (or go directly to `/s/{code}/` if you already have a
+code). Browsers warn about the
 self-signed certificate — click **Advanced → Proceed**. HTTPS is needed so
 camera/microphone widgets work on LAN addresses.
 
@@ -104,6 +108,41 @@ internet):
   `launch.py`; delete them to force regeneration).
 
 Do not expose the server to the public internet.
+
+## Project layout
+
+```
+beamer-plus/
+├── app.py                  # dev entry point (`python app.py`)
+├── launch.py               # production launcher: HTTPS cert + startup info
+├── server/                 # backend (Flask) — one module per concern
+│   ├── core.py             #   Flask app + Socket.IO instances
+│   ├── paths.py            #   BASE_PATH and derived folders
+│   ├── state.py            #   in-memory shared state (surveys, presentation)
+│   ├── ai_models.py        #   survey-summarization model loading
+│   ├── pages.py            #   HTML pages + PWA files
+│   ├── presentation.py     #   upload, ZIP assets, demo packaging
+│   ├── widgets.py          #   widget serving, embeddability probe
+│   ├── surveys.py          #   survey REST API
+│   └── sockets.py          #   Socket.IO handlers
+├── ai/                     # built-in survey-summarization models (plugin dir)
+├── templates/              # audience-facing pages + presenter shell
+├── static/
+│   ├── css/                # tokens → base → components/ → features/
+│   ├── js/
+│   │   ├── main.js         #   orchestrator: state, navigation, rendering
+│   │   ├── core/           #   event bus, canvas, modal, widget iframes
+│   │   ├── slides/         #   navigator, thumbnails, structure, media, spotlight
+│   │   ├── annotations/    #   toolbar, pen slots, shape tools
+│   │   ├── app/            #   settings, help, tour, uploader
+│   │   └── editor/         #   edit mode (overlays, properties, picker, save)
+│   └── vendor/             # vendored third-party libraries (no CDN)
+├── widgets/                # built-in widget HTML files (one file per widget)
+├── demo/                   # bundled demo presentation (used by the tour)
+├── tests/                  # pytest suite for the Flask API
+├── manifest.json           # PWA manifest (served from /manifest.json)
+└── service-worker.js       # PWA service worker (served from /)
+```
 
 ## Development
 

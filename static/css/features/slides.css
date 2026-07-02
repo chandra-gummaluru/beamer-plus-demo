@@ -6,7 +6,8 @@
     display: flex;
     margin-left: var(--nav-width);
     padding-right: var(--nav-width);
-    height: 100vh;
+    height: 100vh;   /* fallback for browsers without dvh */
+    height: 100dvh;  /* tracks the visual viewport when mobile URL bars show/hide */
     position: relative;
     background: var(--surface-stage);
 }
@@ -44,6 +45,7 @@ body.split-view-active #main-content {
     margin-right: 0;
     padding-right: 0;
     height: calc(100vh - 88px);
+    height: calc(100dvh - 88px);
     padding-top: var(--sp-4);
     box-sizing: border-box;
     background: var(--surface-stage);
@@ -734,5 +736,29 @@ body.edit-mode .slide-nav-item.is-hidden-slide .slide-nav-label::after {
         margin-left: 0;
         padding-right: 0;
         height: calc(100vh - 100px);
+        height: calc(100dvh - 100px);
+        overflow: hidden;
+    }
+}
+
+@media (max-width: 480px) {
+    #pdf-container,
+    #pdf-container-2 {
+        padding: var(--sp-2);
+    }
+    #slide-navigator {
+        height: 88px;
+    }
+    #slide-navigator .slide-nav-item {
+        flex: 0 0 84px;
+        width: 84px;
+        height: 63px;
+    }
+    #main-content {
+        height: calc(100dvh - 88px);
+    }
+    body.split-view-active #main-content {
+        height: calc(100dvh - 88px - 88px);
+        padding-top: var(--sp-2);
     }
 }
