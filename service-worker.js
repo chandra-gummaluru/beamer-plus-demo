@@ -1,6 +1,6 @@
-const CACHE_NAME = 'beamer-plus-v16';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v16';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v16';
+const CACHE_NAME = 'beamer-plus-v17';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v17';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v17';
 
 // The app shell — just enough to boot the presenter offline. These are the real
 // Flask route / entry-point assets; everything they pull in (the ES-module tree
@@ -92,12 +92,19 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   
   // Skip WebSocket connections and Socket.IO polling
-  if (url.pathname.includes('/socket.io/') || 
+  if (url.pathname.includes('/socket.io/') ||
       request.url.includes('transport=polling') ||
       request.url.includes('transport=websocket')) {
     return;
   }
-  
+
+  // The Cache API only supports GET. Let non-GET requests (session/survey
+  // creation, responses, etc.) go straight to the network — intercepting them
+  // just risks a `cache.put` throwing 'Request method POST is unsupported'.
+  if (request.method !== 'GET') {
+    return;
+  }
+
   // Network-first strategy for HTML navigation requests — ensures the page
   // markup is always fresh even when a cached copy exists.
   if (request.mode === 'navigate') {

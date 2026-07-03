@@ -332,7 +332,7 @@ body.welcome-page {
     .welcome-watermark {
         left: 50%;
         width: min(78vw, 400px);
-        transform: translate(-50%, -55%);
+        transform: translate(-53%, -48%);
         opacity: 0.05;
     }
 

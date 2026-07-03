@@ -4,19 +4,6 @@
 
 @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600&display=swap');
 
-@font-face {
-    font-family: "Computer Modern Sans";
-    src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunss.otf") format('opentype');
-    font-display: swap;
-    font-weight: 400;
-}
-@font-face {
-    font-family: "Computer Modern Sans";
-    src: url("https://mirrors.ctan.org/fonts/cm-unicode/fonts/otf/cmunsx.otf") format('opentype');
-    font-display: swap;
-    font-weight: 600;
-}
-
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {

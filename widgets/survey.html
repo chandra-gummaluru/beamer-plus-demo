@@ -322,7 +322,9 @@ async function doLaunch(question, model, n, apiKey) {
     currentSurvey = { ...data, question, model, num_summaries: n };
     setRespCount(0);
     document.getElementById('question-text').textContent = question;
-    showQR(window.location.origin + data.url);
+    // data.url is a root-relative path (/s/<id>/survey/<sid>). location.origin
+    // is "null" inside the srcdoc iframe, so use the origin the parent passed.
+    showQR((cfg.socketUrl || deriveServer()) + data.url);
     showPhase('collect'); emitState();
   } catch (e) { console.error('doLaunch:', e); }
 }
@@ -419,7 +421,9 @@ document.addEventListener('keydown', e => {
 async function updateConfig(c) {
   cfg = c || {}; role = cfg.role || 'presenter';
   widgetId = cfg.id || cfg.widgetId || widgetId;
-  serverUrl = cfg.socketUrl || cfg.serverUrl || deriveServer();
+  // REST calls are session-scoped (/s/<id>/api/…), so prefer serverUrl; the
+  // socket connection separately uses cfg.socketUrl (the bare origin).
+  serverUrl = cfg.serverUrl || cfg.socketUrl || deriveServer();
   publicBaseUrl = cfg.publicBaseUrl || serverUrl;
   minResponses = parseInt(cfg.minResponses) || 1;
   if (cfg.mode) setMode(cfg.mode);

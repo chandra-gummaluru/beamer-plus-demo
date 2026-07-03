@@ -247,7 +247,8 @@ function _applyRemoteState(s) {
 function _absUrl(path) {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  if (path.startsWith('/s/')) return window.location.origin + path;
+  // location.origin is "null" inside the srcdoc iframe; use the parent origin.
+  if (path.startsWith('/s/')) return (_cfg.socketUrl || _deriveServer()) + path;
   return (_pubBase || _server) + (path.startsWith('/') ? path : '/' + path);
 }
 
@@ -343,7 +344,9 @@ function _deriveServer() {
 async function _applyConfig(c) {
   _cfg = c || {}; _role = _cfg.role || 'presenter';
   _widgetId = _cfg.id || _cfg.widgetId || _widgetId;
-  _server   = _cfg.socketUrl || _cfg.serverUrl || _deriveServer();
+  // REST calls are session-scoped (/s/<id>/api/…), so prefer serverUrl; the
+  // socket connection separately uses _cfg.socketUrl (the bare origin).
+  _server   = _cfg.serverUrl || _cfg.socketUrl || _deriveServer();
   _pubBase  = _cfg.publicBaseUrl || _server;
   _mode     = parseInt(_cfg.mode || '1');
 

@@ -345,7 +345,9 @@ async function closePoll() {
 function init(c) {
   cfg = c || {}; role = cfg.role || 'presenter';
   widgetId = cfg.id || cfg.widgetId || widgetId;
-  serverUrl = cfg.socketUrl || cfg.serverUrl || (() => { try { return window.parent.location.origin; } catch (_) { return window.location.origin; } })();
+  // REST calls are session-scoped (/s/<id>/api/…), so prefer serverUrl; the
+  // socket connection separately uses cfg.socketUrl (the bare origin).
+  serverUrl = cfg.serverUrl || cfg.socketUrl || (() => { try { return window.parent.location.origin; } catch (_) { return window.location.origin; } })();
   publicBaseUrl = cfg.publicBaseUrl || serverUrl;
   options = cfg.options || []; correctAnswer = cfg.correctAnswer ?? null;
   if (cfg.question) setMd(document.getElementById('question-text'), cfg.question);
