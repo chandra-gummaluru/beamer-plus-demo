@@ -1,5 +1,8 @@
 // Settings — theme, rebindable keyboard shortcuts, and PWA install.
-// Owns the settings modal and the preferences persisted in localStorage.
+// Exposes a settings panel (built into the combined Help & Settings modal) and
+// owns the preferences persisted in localStorage.
+
+import { getSessionId } from './session.js';
 
 /* ─── PWA install prompt ──────────────────────────────────────── */
 let _pwaInstallPrompt = null;
@@ -97,21 +100,50 @@ function _updateShortcutConflicts(scGrid, sc, hintEl) {
 const _SUN_SVG  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>`;
 const _MOON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
 
-/* ─── settings modal (theme + editable shortcuts) ─────────────── */
-export function showSettingsModal() {
-    const rawTheme = localStorage.getItem('beamer-theme') || 'light';
-    // Treat legacy 'system' as 'light'
-    const savedTheme = (rawTheme === 'dark') ? 'dark' : 'light';
+/* ─── settings panel (theme + editable shortcuts, applied live) ──
+   Built into the combined Help & Settings modal. Changes persist as they are
+   made (theme on click, shortcuts on each rebind), so there is no Save/Cancel —
+   the caller only needs to block closing while there are shortcut conflicts,
+   via the returned hasConflicts(). */
+export function buildSettingsPanel() {
     const sc = loadShortcuts();
 
     const body = document.createElement('div');
     body.className = 'settings-grid';
 
+    // ── Session code ───────────────────────────────────────────
+    const sessionId = getSessionId();
+    if (sessionId) {
+        const sessionLabel = document.createElement('div');
+        sessionLabel.className = 'settings-label settings-label-center';
+        sessionLabel.textContent = 'Session Code';
+        body.appendChild(sessionLabel);
+
+        const codeBtn = document.createElement('button');
+        codeBtn.className = 'settings-session-code';
+        codeBtn.type = 'button';
+        codeBtn.textContent = sessionId;
+        codeBtn.title = 'Click to copy — share with co-presenters';
+        codeBtn.addEventListener('click', async () => {
+            try { await navigator.clipboard?.writeText(sessionId); } catch { /* ignore */ }
+            const prev = codeBtn.textContent;
+            codeBtn.classList.add('is-copied');
+            codeBtn.textContent = 'Copied';
+            setTimeout(() => { codeBtn.textContent = prev; codeBtn.classList.remove('is-copied'); }, 1200);
+        });
+        body.appendChild(codeBtn);
+    }
+
     // ── Theme ──────────────────────────────────────────────────
+    const themeSection = document.createElement('div');
+    themeSection.className = 'settings-section';
+    const rawTheme = localStorage.getItem('beamer-theme') || 'light';
+    // Treat legacy 'system' as 'light'
+    const savedTheme = (rawTheme === 'dark') ? 'dark' : 'light';
     const themeLabel = document.createElement('div');
     themeLabel.className = 'settings-label settings-label-center';
     themeLabel.textContent = 'Theme';
-    body.appendChild(themeLabel);
+    themeSection.appendChild(themeLabel);
 
     const themeRow = document.createElement('div');
     themeRow.className = 'settings-theme-row';
@@ -127,7 +159,8 @@ export function showSettingsModal() {
         });
         themeRow.appendChild(btn);
     });
-    body.appendChild(themeRow);
+    themeSection.appendChild(themeRow);
+    body.appendChild(themeSection);
 
     // ── Keyboard Shortcuts ─────────────────────────────────────
     const scSection = document.createElement('div');
@@ -192,6 +225,7 @@ export function showSettingsModal() {
             if (NON_BINDABLE.has(e.key)) { input.blur(); return; }
             input.value = e.key;
             sc[action] = e.key;
+            saveShortcuts(sc);
             _updateShortcutConflicts(scGrid, sc, scHint);
             input.blur();
         });
@@ -241,29 +275,12 @@ export function showSettingsModal() {
         body.appendChild(installSection);
     }
 
-    window.BeamerModal?.show({
-        kind: 'info',
-        title: 'Settings',
-        body,
-        canClose: () => !_hasShortcutConflicts(sc),
-        buttons: [
-            {
-                label: 'Cancel',
-                kind: 'cancel',
-                onClick: () => applyTheme(savedTheme),
-            },
-            {
-                label: 'Save',
-                kind: 'ok',
-                guard: () => !_hasShortcutConflicts(sc),
-                onClick: () => saveShortcuts(sc),
-            },
-        ],
-    });
+    return { node: body, hasConflicts: () => _hasShortcutConflicts(sc) };
 }
 
 /* ─── init ────────────────────────────────────────────────────── */
 export function initSettings() {
-    document.getElementById('settings-btn')?.addEventListener('click', showSettingsModal);
+    // The settings UI now lives inside the combined Help & Settings modal
+    // (see help.js); here we only need to apply the persisted theme on load.
     applyTheme(localStorage.getItem('beamer-theme') || 'light');
 }

@@ -22,7 +22,7 @@ import { initSpotlight, hideSpotlight, renderSpotlight,
 import { initMedia, renderMedia, updateMediaPositions, resetMediaCache } from './slides/media.js';
 
 import { initSettings, loadShortcuts } from './app/settings.js';
-import { initHelp } from './app/help.js';
+import { showHelpModal } from './app/help.js';
 import { initUploader } from './app/uploader.js';
 import { startTour } from './app/tour.js';
 import { initEditor } from './editor/editor.js';
@@ -70,11 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
     saveLastSession(sessionId);
-    const badge = document.getElementById('session-badge');
-    if (badge) {
-        badge.textContent = sessionId;
-        badge.hidden = false;
-    }
 
     // splash
     setTimeout(() => {
@@ -116,7 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initUploader(state);
     initEditor(state);
     initSettings();
-    initHelp();
 
     // pen + hand defaults
     applyDefaultPen();
@@ -129,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wireAnnotationClear();
     wireKeyboardNav();
     wireResizeAndFullscreen();
-    wireTourBtn();
+    wireMenuBtn();
     initSpotlight(state);
 
     // annotation sync
@@ -333,16 +327,24 @@ function wireKeyboardNav() {
     });
 }
 
-function wireTourBtn() {
-    document.getElementById('tour-btn')?.addEventListener('click', () => {
-        const loader = state.zipFile ? null : async () => {
-            window.BeamerModal?.show({ kind: 'loading', title: 'Loading demo…', message: 'Fetching demo presentation…' });
-            const resp = await fetch('/api/demo-zip');
-            if (!resp.ok) { window.BeamerModal?.close(); return; }
-            const blob = await resp.blob();
-            await loadZipPresentation(new File([blob], 'demo.zip', { type: 'application/zip' }));
-        };
-        startTour(loader);
+function wireMenuBtn() {
+    document.getElementById('menu-btn')?.addEventListener('click', () => {
+        showHelpModal({
+            onStartTour: () => {
+                // Defer to a fresh task so the Help & Settings modal finishes
+                // closing before the tour (and its demo-loading modal) mount.
+                setTimeout(() => {
+                    const loader = state.zipFile ? null : async () => {
+                        window.BeamerModal?.show({ kind: 'loading', title: 'Loading demo…', message: 'Fetching demo presentation…' });
+                        const resp = await fetch('/api/demo-zip');
+                        if (!resp.ok) { window.BeamerModal?.close(); return; }
+                        const blob = await resp.blob();
+                        await loadZipPresentation(new File([blob], 'demo.zip', { type: 'application/zip' }));
+                    };
+                    startTour(loader);
+                }, 0);
+            },
+        });
     });
 }
 

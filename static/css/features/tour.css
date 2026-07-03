@@ -178,8 +178,3 @@
     background: var(--accent-strong);
     border-color: var(--accent-strong);
 }
-
-/* ── Tour trigger button (bottom controls) ── */
-#tour-btn {
-    /* Inherits .btn styles; no extra overrides needed */
-}

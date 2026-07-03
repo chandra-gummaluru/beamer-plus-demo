@@ -762,3 +762,67 @@ body.edit-mode .slide-nav-item.is-hidden-slide .slide-nav-label::after {
         padding-top: var(--sp-2);
     }
 }
+
+/* ── Mobile landscape — vertical space is scarce, so show the navigator as a
+   left rail (like desktop) instead of a bottom bar, unless in split view. ── */
+@media (max-width: 1024px) and (orientation: landscape) {
+    body:not(.split-view-active) #slide-navigator {
+        left: 0; top: 0; bottom: 0; right: auto;
+        width: 104px;
+        height: auto;
+        flex-direction: column;
+        border-right: var(--line-soft);
+        border-top: none;
+    }
+    body:not(.split-view-active) #slide-nav-slides {
+        flex-direction: column;
+        align-items: center;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: var(--sp-3) 0;
+    }
+    body:not(.split-view-active) #slide-navigator .slide-nav-item {
+        flex: 0 0 auto;
+        width: calc(100% - 24px);
+        height: auto;
+        aspect-ratio: 4 / 3;
+        margin: 0 var(--sp-3);
+    }
+    body:not(.split-view-active) #slide-navigator .slide-nav-child {
+        flex: 0 0 auto;
+        width: calc(100% - 40px);
+        height: auto;
+        aspect-ratio: 4 / 3;
+        margin: 0 var(--sp-5);
+    }
+    body:not(.split-view-active) #slide-nav-top-actions,
+    body:not(.split-view-active) #slide-nav-bottom-actions {
+        flex-direction: column;
+        width: 100%;
+        height: auto;
+        padding: var(--sp-3) var(--sp-2);
+    }
+    body:not(.split-view-active) #slide-nav-top-actions { border-right: none; border-bottom: var(--line-hairline); }
+    body:not(.split-view-active) #slide-nav-bottom-actions { border-left: none; border-top: var(--line-hairline); }
+    body:not(.split-view-active) #slide-nav-top-actions .btn,
+    body:not(.split-view-active) #slide-nav-bottom-actions .btn {
+        width: calc(100% - 8px);
+        height: auto;
+        min-height: var(--hit-min);
+    }
+    body:not(.split-view-active) #bookmark-pins {
+        flex-direction: column;
+        width: 100%;
+        height: auto;
+        padding: var(--sp-2);
+    }
+    body:not(.split-view-active) #main-content {
+        margin-left: 104px;
+        height: 100vh;
+        height: 100dvh;
+    }
+    /* The annotation toolbar no longer needs to clear a bottom nav bar. */
+    body:not(.split-view-active) #floating-annotation-toolbar {
+        bottom: var(--sp-3);
+    }
+}

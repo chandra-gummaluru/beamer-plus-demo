@@ -69,7 +69,7 @@ const STEPS = [
         sel:   '#bottom-controls',
         place: 'top',
         title: 'Help & settings',
-        body:  'Open the usage guide for a full reference, or visit settings to switch the theme, rebind keyboard shortcuts, and install Beamer+ as a standalone app.',
+        body:  'One place for everything else: the full usage guide, plus a Settings tab to see your session code, switch the theme, rebind keyboard shortcuts, and install Beamer+ as an app. You can relaunch this tour from here too.',
     },
 ];
 

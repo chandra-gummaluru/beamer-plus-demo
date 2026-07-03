@@ -1,4 +1,7 @@
-// Help — the "Usage Guide" modal opened from the bottom-left help button.
+// Help & Settings — the combined modal opened from the single menu button.
+// Bundles the usage guide, a Settings tab, and a "Take a tour" launcher.
+
+import { buildSettingsPanel } from './settings.js';
 
 function _hic(s) { return `<code class="help-ic">${s}</code>`; }
 
@@ -23,8 +26,13 @@ function _hbtn(key, label) {
     return `<span class="help-btn-ref" title="${label}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${_HELP_ICONS[key]}</svg></span>`;
 }
 
-export function showHelpModal() {
-    const sections = [
+const _TOUR_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`;
+
+export function showHelpModal({ onStartTour = null } = {}) {
+    const settings = buildSettingsPanel();
+    // The how-to content is grouped into a single Help tab; each entry below is
+    // one topic block, joined with dividers.
+    const topics = [
         {
             id: 'start', label: 'Getting Started',
             html: `
@@ -120,6 +128,16 @@ var(--radius)    /* …and more */</code>
         },
     ];
 
+    const sections = [
+        {
+            id: 'help', label: 'Help', tour: true,
+            html: topics.map(t => t.html).join('<hr class="help-divider">'),
+        },
+        {
+            id: 'settings', label: 'Settings', node: settings.node,
+        },
+    ];
+
     const wrap = document.createElement('div');
     wrap.className = 'help-modal-wrap';
 
@@ -145,26 +163,45 @@ var(--radius)    /* …and more */</code>
         const sec = document.createElement('div');
         sec.className = 'help-section' + (i === 0 ? ' active' : '');
         sec.id = 'help-sec-' + s.id;
-        sec.innerHTML = s.html;
+        if (s.node) sec.appendChild(s.node);
+        else sec.innerHTML = s.html;
+
+        // Guided-tour launcher — a full-width callout at the top of the Help tab.
+        if (s.tour && onStartTour) {
+            const tourBtn = document.createElement('button');
+            tourBtn.className = 'help-tour-cta';
+            tourBtn.type = 'button';
+            tourBtn.innerHTML = `
+                <span class="help-tour-cta-icon">${_TOUR_ICON}</span>
+                <span class="help-tour-cta-text">
+                    <strong>New to Beamer+? Take the guided tour</strong>
+                    <span>A quick walkthrough of the main features</span>
+                </span>
+                <span class="help-tour-cta-arrow" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </span>`;
+            tourBtn.addEventListener('click', () => { window.BeamerModal?.close(); onStartTour(); });
+            sec.insertBefore(tourBtn, sec.firstChild);
+        }
+
         pane.appendChild(sec);
     });
 
     wrap.appendChild(nav);
     wrap.appendChild(pane);
 
+    const buttons = [{ label: 'Done', kind: 'ok', guard: () => !settings.hasConflicts() }];
+
     window.BeamerModal?.show({
         kind: 'info',
-        title: 'Usage Guide',
+        title: 'Help & Settings',
         body: wrap,
-        buttons: [{ label: 'Done', kind: 'ok' }],
+        canClose: () => !settings.hasConflicts(),
+        buttons,
     });
 
     // Widen the modal card for this documentation layout
     window.BeamerModal?.open
         ?.querySelector('.custom-modal-content')
         ?.classList.add('help-modal-content');
-}
-
-export function initHelp() {
-    document.getElementById('help-btn')?.addEventListener('click', showHelpModal);
 }

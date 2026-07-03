@@ -75,3 +75,18 @@ body.focus-mode #main-content {
         right: var(--sp-2);
     }
 }
+
+/* ── Mobile portrait — upload/download/edit grouped at the top-left ──
+   (the combined menu button moves to the top-right; see shortcuts.css) */
+@media (max-width: 1024px) and (orientation: portrait) {
+    #top-right-controls {
+        left: var(--sp-2);
+        right: auto;
+        top: var(--sp-2);
+    }
+    #edit-mode-container {
+        left: calc(2 * var(--hit-min) + 3 * var(--sp-2));
+        right: auto;
+        top: var(--sp-2);
+    }
+}

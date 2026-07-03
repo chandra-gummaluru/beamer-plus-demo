@@ -24,7 +24,7 @@ const Modal = {
             content.querySelector('.custom-modal-title').textContent = title || 'Loading…';
             content.querySelector('.custom-modal-message').textContent = message;
         } else {
-            const icon = { error: '✕', success: '✓', warning: '!', info: 'i' }[kind] || '';
+            const icon = { error: '✕', success: '✓', warning: '!' }[kind] || '';
             content.innerHTML = `
                 ${icon ? `<div class="custom-modal-icon">${icon}</div>` : ''}
                 ${title ? '<h3 class="custom-modal-title"></h3>' : ''}
