@@ -137,6 +137,13 @@ body.welcome-page {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Opacity-only variant used on mobile so the animated element doesn't create a
+   containing block that would trap the fixed-positioned help icon. */
+@keyframes welcome-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
 .welcome-brand {
     margin-bottom: var(--sp-6);
 }
@@ -306,6 +313,7 @@ body.welcome-page {
         align-items: center;
         text-align: center;
         order: 2;
+        animation-name: welcome-fade;
     }
 
     .welcome-preview {
@@ -318,6 +326,36 @@ body.welcome-page {
 
     .welcome-actions {
         max-width: 340px;
+    }
+
+    /* Center the watermark behind the stacked, centered content. */
+    .welcome-watermark {
+        left: 50%;
+        width: min(78vw, 400px);
+        transform: translate(-58%, -50%);
+        opacity: 0.05;
+    }
+
+    /* Full-width CTA so it centers under the wordmark; float the help icon to
+       the top-right corner instead of crowding the button row. */
+    .welcome-actions-row {
+        display: block;
+    }
+
+    .welcome-btn--help {
+        position: fixed;
+        top: var(--sp-4);
+        right: var(--sp-4);
+        width: 44px;
+        min-height: 44px;
+        border: var(--line-hairline);
+        border-radius: var(--r-pill);
+        background: var(--surface-cream);
+        z-index: 5;
+    }
+
+    .welcome-btn--ghost {
+        width: 100%;
     }
 }
 
