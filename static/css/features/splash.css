@@ -203,6 +203,9 @@ body.welcome-page {
     align-items: stretch;
     width: 100%;
     max-width: 340px;
+    /* Nudge left to line the button edge up with the wordmark (which carries a
+       small negative margin). Reset when centered on mobile. */
+    margin-left: -3px;
 }
 
 .welcome-actions-row {
@@ -324,6 +327,7 @@ body.welcome-page {
 
     .welcome-actions {
         max-width: 340px;
+        margin-left: 0;
     }
 
     /* Center the watermark behind the stacked, centered content. */
