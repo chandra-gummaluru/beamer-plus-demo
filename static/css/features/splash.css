@@ -161,25 +161,19 @@ body.welcome-page {
     letter-spacing: -0.03em;
     line-height: 0.95;
     margin: 0;
+    /* Serif caps carry a left side-bearing; nudge left so the "B" lines up with
+       the sans-serif institution text below it. Reset when centered on mobile. */
+    margin-left: -0.04em;
 }
 
 .welcome-institution {
-    font-family: var(--font-sans);
-    font-size: clamp(var(--fs-md), 1.7vw, var(--fs-lg));
+    font-family: var(--font-serif);
+    font-size: clamp(var(--fs-lg), 2vw, var(--fs-xl));
+    font-style: normal;
     font-weight: 500;
     color: var(--ink-2);
     letter-spacing: 0.01em;
     margin: var(--sp-2) 0 0;
-}
-
-.welcome-tagline {
-    font-family: var(--font-serif);
-    font-size: clamp(var(--fs-lg), 2.4vw, var(--fs-2xl));
-    font-style: italic;
-    color: var(--ink-1);
-    line-height: 1.2;
-    margin: 0 0 var(--sp-4);
-    margin-left: -0.05em;
 }
 
 .welcome-lede {
@@ -314,6 +308,10 @@ body.welcome-page {
         text-align: center;
         order: 2;
         animation-name: welcome-fade;
+    }
+
+    .welcome-title {
+        margin-left: 0;
     }
 
     .welcome-preview {
