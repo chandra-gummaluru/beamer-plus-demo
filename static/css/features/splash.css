@@ -167,7 +167,7 @@ body.welcome-page {
 }
 
 .welcome-institution {
-    font-family: var(--font-serif);
+    font-family: var(--font-sans);
     font-size: clamp(var(--fs-lg), 2vw, var(--fs-xl));
     font-style: normal;
     font-weight: 500;
