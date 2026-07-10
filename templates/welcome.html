@@ -10,6 +10,15 @@
     <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body class="welcome-page">
+    <a class="welcome-help-fab" href="https://chandra-gummaluru.github.io/post/beamer-plus"
+       target="_blank" rel="noopener" aria-label="Learn more about Beamer+" title="Learn more about Beamer+">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9.25"/>
+            <path d="M9.4 9.2a2.6 2.6 0 0 1 5.05.85c0 1.73-2.45 2.35-2.45 3.95"/>
+            <circle cx="12" cy="17.4" r="0.4" fill="currentColor" stroke="none"/>
+        </svg>
+    </a>
+
     <div class="welcome-watermark" aria-hidden="true">
         <svg viewBox="0 0 120 120" role="img" aria-label="">
             <g transform="translate(50, 96) rotate(25) scale(1.08)">
@@ -34,20 +43,12 @@
                 <div class="welcome-actions">
                     <div class="welcome-actions-row">
                         <button type="button" class="welcome-btn welcome-btn--primary" id="welcome-create-btn">
-                            Start a new session
+                            New Session
                         </button>
-                        <a class="welcome-btn welcome-btn--help" href="https://chandra-gummaluru.github.io/post/beamer-plus"
-                           target="_blank" rel="noopener" aria-label="Learn more about Beamer+" title="Learn more about Beamer+">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="12" cy="12" r="9.25"/>
-                                <path d="M9.4 9.2a2.6 2.6 0 0 1 5.05.85c0 1.73-2.45 2.35-2.45 3.95"/>
-                                <circle cx="12" cy="17.4" r="0.4" fill="currentColor" stroke="none"/>
-                            </svg>
-                        </a>
+                        <button type="button" class="welcome-btn welcome-btn--secondary" id="welcome-continue-btn" hidden>
+                            Last Session
+                        </button>
                     </div>
-                    <button type="button" class="welcome-btn welcome-btn--ghost" id="welcome-continue-btn" hidden>
-                        Continue last session (<span id="welcome-continue-code"></span>)
-                    </button>
                 </div>
 
                 <p class="welcome-hint" id="welcome-status" role="status" aria-live="polite"></p>
@@ -65,9 +66,11 @@
 
                     <!-- slide navigator rail -->
                     <rect x="20" y="72" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
-                    <rect x="20" y="132" width="72" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+                    <rect x="20" y="132" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
                     <rect x="20" y="192" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
                     <rect x="20" y="252" width="72" height="52" rx="6" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1"/>
+                    <!-- active-slide highlight steps down the rail -->
+                    <rect class="wm-nav-active" x="20" y="72" width="72" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
 
                     <!-- slide stage -->
                     <rect x="108" y="72" width="388" height="232" rx="8" fill="var(--surface-paper)" stroke="var(--ink-4)" stroke-width="1.5"/>
@@ -78,10 +81,10 @@
                     <rect x="132" y="150" width="264" height="7" rx="3.5" fill="var(--ink-4)"/>
                     <rect x="132" y="168" width="288" height="7" rx="3.5" fill="var(--ink-4)"/>
 
-                    <!-- live ink annotations (accent) -->
-                    <path d="M132 210 q 40 -22, 84 -4 t 96 -2" fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round"/>
-                    <circle cx="404" cy="150" r="26" fill="none" stroke="var(--accent-strong)" stroke-width="3"/>
-                    <path d="M300 240 l 26 26 m 0 -26 l -26 26" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round"/>
+                    <!-- live ink annotations (accent), drawn on in sequence -->
+                    <path class="wm-ink wm-ink-1" pathLength="100" d="M132 210 q 40 -22, 84 -4 t 96 -2" fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round"/>
+                    <circle class="wm-ink wm-ink-2" pathLength="100" cx="404" cy="150" r="26" fill="none" stroke="var(--accent-strong)" stroke-width="3"/>
+                    <path class="wm-ink wm-ink-3" pathLength="100" d="M300 240 l 26 26 m 0 -26 l -26 26" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round"/>
 
                     <!-- floating toolbar -->
                     <rect x="196" y="320" width="128" height="24" rx="12" fill="var(--surface-cream)" stroke="var(--ink-4)" stroke-width="1"/>

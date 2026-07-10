@@ -2,7 +2,6 @@ import { createSession, getLastSession, saveLastSession, sessionExists } from '.
 
 const createBtn = document.getElementById('welcome-create-btn');
 const continueBtn = document.getElementById('welcome-continue-btn');
-const continueCode = document.getElementById('welcome-continue-code');
 const statusEl = document.getElementById('welcome-status');
 
 function setStatus(msg, isError = false) {
@@ -47,9 +46,8 @@ continueBtn?.addEventListener('click', handleContinue);
 
 (async () => {
     const last = getLastSession();
-    if (!last || !continueBtn || !continueCode) return;
+    if (!last || !continueBtn) return;
     if (await sessionExists(last)) {
-        continueCode.textContent = last;
         continueBtn.hidden = false;
     }
 })();

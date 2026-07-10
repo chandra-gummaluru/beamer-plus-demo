@@ -168,7 +168,7 @@ body.welcome-page {
 
 .welcome-institution {
     font-family: var(--font-sans);
-    font-size: clamp(var(--fs-lg), 2vw, var(--fs-xl));
+    font-size: clamp(var(--fs-md), 1.5vw, var(--fs-lg));
     font-style: normal;
     font-weight: 500;
     color: var(--ink-2);
@@ -194,6 +194,50 @@ body.welcome-page {
     display: block;
     border-radius: var(--r-lg);
     filter: drop-shadow(0 24px 48px oklch(20% 0.01 260 / 0.16));
+}
+
+/* Abstract "process" loop inside the preview figure: the active slide steps
+   down the navigator while ink annotations are drawn onto the stage, then the
+   whole cycle resets. */
+.wm-nav-active {
+    animation: wm-nav-step 9s infinite;
+}
+
+@keyframes wm-nav-step {
+    0%,   20% { transform: translateY(0); }
+    25%,  45% { transform: translateY(60px); }
+    50%,  70% { transform: translateY(120px); }
+    75%,  95% { transform: translateY(180px); }
+    100%      { transform: translateY(0); }
+}
+
+.wm-ink {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: wm-ink-draw 9s infinite;
+}
+
+.wm-ink-1 { animation-delay: 0.4s; }
+.wm-ink-2 { animation-delay: 1.3s; }
+.wm-ink-3 { animation-delay: 2.2s; }
+
+@keyframes wm-ink-draw {
+    0%   { stroke-dashoffset: 100; opacity: 0; }
+    4%   { opacity: 1; }
+    18%  { stroke-dashoffset: 0; opacity: 1; }
+    80%  { stroke-dashoffset: 0; opacity: 1; }
+    90%  { stroke-dashoffset: 0; opacity: 0; }
+    100% { stroke-dashoffset: 100; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wm-nav-active,
+    .wm-ink {
+        animation: none;
+    }
+    .wm-ink {
+        stroke-dashoffset: 0;
+    }
 }
 
 .welcome-actions {
@@ -227,26 +271,34 @@ body.welcome-page {
     transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
-.welcome-actions-row .welcome-btn--primary {
-    flex: 1 1 auto;
+.welcome-actions-row .welcome-btn {
+    flex: 1 1 0;
 }
 
-.welcome-btn--help {
-    flex: 0 0 auto;
-    width: 56px;
-    padding: 0;
+/* Help affordance pinned to the top-right corner of the viewport. Lives outside
+   the animated .welcome-copy so its fixed positioning is relative to the page,
+   not trapped by a transformed ancestor. */
+.welcome-help-fab {
+    position: fixed;
+    top: var(--sp-4);
+    right: var(--sp-4);
+    z-index: 10;
+    width: var(--hit-min);
+    height: var(--hit-min);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    border-color: transparent;
     color: var(--ink-3);
+    background: var(--surface-cream);
+    border: var(--line-hairline);
+    border-radius: var(--r-pill);
     text-decoration: none;
+    transition: color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
-.welcome-btn--help:hover {
+.welcome-help-fab:hover {
     color: var(--ink-1);
-    transform: none;
+    box-shadow: var(--shadow-3);
 }
 
 .welcome-btn:disabled {
@@ -262,30 +314,15 @@ body.welcome-page {
 
 .welcome-btn--primary:hover:not(:disabled) {
     background: var(--accent-strong);
-    transform: translateY(-1px);
 }
 
-.welcome-btn--ghost {
-    background: transparent;
-    border: none;
-    /* Match the primary button's width (row minus the help button + gap) so the
-       link centers under "Start a new session", not the whole action row. */
-    width: calc(100% - 56px - var(--sp-3));
-    min-height: 0;
-    padding: 0;
-    align-self: flex-start;
-    text-align: center;
-    color: var(--ink-3);
-    font-weight: 500;
-    font-size: var(--fs-sm);
-    text-decoration: underline;
-    text-decoration-color: var(--ink-4);
-    text-underline-offset: 3px;
-}
-
-.welcome-btn--ghost:hover:not(:disabled) {
+.welcome-btn--secondary {
+    background: var(--surface-cream-2);
     color: var(--ink-1);
-    text-decoration-color: var(--ink-2);
+}
+
+.welcome-btn--secondary:hover:not(:disabled) {
+    background: var(--surface-cream-3);
 }
 
 .welcome-hint {
@@ -336,27 +373,5 @@ body.welcome-page {
         width: min(78vw, 400px);
         transform: translate(-53%, -48%);
         opacity: 0.05;
-    }
-
-    /* Full-width CTA so it centers under the wordmark; float the help icon to
-       the top-right corner instead of crowding the button row. */
-    .welcome-actions-row {
-        display: block;
-    }
-
-    .welcome-btn--help {
-        position: fixed;
-        top: var(--sp-4);
-        right: var(--sp-4);
-        width: 44px;
-        min-height: 44px;
-        border: var(--line-hairline);
-        border-radius: var(--r-pill);
-        background: var(--surface-cream);
-        z-index: 5;
-    }
-
-    .welcome-btn--ghost {
-        width: 100%;
     }
 }
