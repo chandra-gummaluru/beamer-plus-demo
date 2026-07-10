@@ -1,7 +1,6 @@
-import { createSession, getLastSession, saveLastSession, sessionExists } from './session.js';
+import { createSession, saveLastSession } from './session.js';
 
 const createBtn = document.getElementById('welcome-create-btn');
-const continueBtn = document.getElementById('welcome-continue-btn');
 const statusEl = document.getElementById('welcome-status');
 
 function setStatus(msg, isError = false) {
@@ -27,27 +26,4 @@ async function handleCreate() {
     }
 }
 
-async function handleContinue() {
-    const sessionId = getLastSession();
-    if (!sessionId) return;
-    setStatus('Checking session…');
-    continueBtn.disabled = true;
-    if (!(await sessionExists(sessionId))) {
-        setStatus('That session is no longer available. Start a new one instead.', true);
-        continueBtn.hidden = true;
-        continueBtn.disabled = false;
-        return;
-    }
-    goToSession(sessionId);
-}
-
 createBtn?.addEventListener('click', handleCreate);
-continueBtn?.addEventListener('click', handleContinue);
-
-(async () => {
-    const last = getLastSession();
-    if (!last || !continueBtn) return;
-    if (await sessionExists(last)) {
-        continueBtn.hidden = false;
-    }
-})();

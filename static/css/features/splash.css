@@ -186,6 +186,8 @@ body.welcome-page {
 
 .welcome-preview {
     animation: welcome-in 0.6s var(--ease-out) 0.1s both;
+    /* Sit a touch higher than the vertical center of its grid cell. */
+    margin-top: calc(-1 * var(--sp-8));
 }
 
 .welcome-mockup {
@@ -271,34 +273,26 @@ body.welcome-page {
     transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
-.welcome-actions-row .welcome-btn {
-    flex: 1 1 0;
+.welcome-actions-row .welcome-btn--primary {
+    flex: 1 1 auto;
 }
 
-/* Help affordance pinned to the top-right corner of the viewport. Lives outside
-   the animated .welcome-copy so its fixed positioning is relative to the page,
-   not trapped by a transformed ancestor. */
-.welcome-help-fab {
-    position: fixed;
-    top: var(--sp-4);
-    right: var(--sp-4);
-    z-index: 10;
-    width: var(--hit-min);
-    height: var(--hit-min);
+.welcome-btn--help {
+    flex: 0 0 auto;
+    width: 56px;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    background: transparent;
+    border-color: transparent;
     color: var(--ink-3);
-    background: var(--surface-cream);
-    border: var(--line-hairline);
-    border-radius: var(--r-pill);
     text-decoration: none;
-    transition: color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
-.welcome-help-fab:hover {
+.welcome-btn--help:hover {
     color: var(--ink-1);
-    box-shadow: var(--shadow-3);
+    transform: none;
 }
 
 .welcome-btn:disabled {
@@ -316,14 +310,6 @@ body.welcome-page {
     background: var(--accent-strong);
 }
 
-.welcome-btn--secondary {
-    background: var(--surface-cream-2);
-    color: var(--ink-1);
-}
-
-.welcome-btn--secondary:hover:not(:disabled) {
-    background: var(--surface-cream-3);
-}
 
 .welcome-hint {
     font-size: var(--fs-sm);
