@@ -102,7 +102,7 @@ body.welcome-page {
    scales, so the line reads at a consistent thin width. */
 .welcome-watermark svg polygon {
     vector-effect: non-scaling-stroke;
-    stroke-width: 1.8;
+    stroke-width: 2.2;
 }
 
 /* Big, thin primary mark bleeding well off the bottom-left corner. */
@@ -386,10 +386,10 @@ body.welcome-page {
         top: auto;
         right: auto;
         width: min(640vw, 2394px);
-        transform: translate(-27%, 17%);
+        transform: translate(-38%, 17%);
         opacity: 0.05;
     }
     .welcome-watermark svg polygon {
-        stroke-width: 1.6;
+        stroke-width: 2;
     }
 }
