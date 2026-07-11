@@ -380,20 +380,29 @@ body.welcome-page {
         z-index: 10;
     }
 
-    /* Keep the main mark oversized on mobile too, bleeding off the bottom-left. */
+    /* Bigger, thicker main mark bleeding off the bottom-left on mobile. */
     .welcome-watermark--main {
         bottom: 0;
         left: 0;
         top: auto;
         right: auto;
-        width: min(160vw, 640px);
-        transform: translate(-28%, 32%);
+        width: min(200vw, 820px);
+        transform: translate(-26%, 34%);
         opacity: 0.05;
     }
+    .welcome-watermark--main svg polygon {
+        stroke-width: 0.4;
+    }
 
-    /* One clean oversized mark reads better than two competing ones in the
-       narrow column, so hide the secondary mark on mobile. */
+    /* Secondary mark comes down from the top, upside down. */
     .welcome-watermark--alt {
-        display: none;
+        display: block;
+        top: 0;
+        left: 0;
+        right: auto;
+        bottom: auto;
+        width: min(120vw, 520px);
+        transform: translate(6%, -28%) rotate(180deg);
+        opacity: 0.06;
     }
 }
