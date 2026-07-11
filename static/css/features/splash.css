@@ -385,11 +385,11 @@ body.welcome-page {
         left: 0;
         top: auto;
         right: auto;
-        width: min(640vw, 2394px);
-        transform: translate(-38%, 17%);
+        width: min(700vw, 2620px);
+        transform: translate(-38%, 26%);
         opacity: 0.05;
     }
     .welcome-watermark svg polygon {
-        stroke-width: 2;
+        stroke-width: 2.3;
     }
 }
