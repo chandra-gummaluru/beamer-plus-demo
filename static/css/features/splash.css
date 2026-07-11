@@ -83,23 +83,37 @@ body.welcome-page {
     background: var(--surface-paper);
 }
 
-/* Oversized logo watermark sitting behind the copy on the left half. */
+/* Oversized logo watermarks sitting behind the content. */
 .welcome-watermark {
     position: fixed;
-    top: 50%;
-    left: 0;
-    width: min(50vw, 720px);
-    max-height: 100vh;
-    transform: translateY(-50%) translateX(9%);
     z-index: 0;
     pointer-events: none;
-    opacity: 0.07;
+    overflow: visible;
 }
 
 .welcome-watermark svg {
     width: 100%;
     height: auto;
     display: block;
+    overflow: visible;
+}
+
+/* Big, thin primary mark bleeding off the bottom-left. */
+.welcome-watermark--main {
+    top: 50%;
+    left: 0;
+    width: min(78vw, 1040px);
+    transform: translateY(-46%) translateX(-8%);
+    opacity: 0.06;
+}
+
+/* Smaller, flipped mark at a different angle, up in the top-right. */
+.welcome-watermark--alt {
+    top: 0;
+    right: 0;
+    width: min(38vw, 460px);
+    transform: translate(14%, -18%);
+    opacity: 0.05;
 }
 
 .welcome-screen {
@@ -353,11 +367,32 @@ body.welcome-page {
         margin-left: 0;
     }
 
-    /* Center the watermark behind the stacked, centered content. */
-    .welcome-watermark {
+    /* Pull the help "?" out of the button row and pin it to the top-right so the
+       New Session button spans the full width and reads as centered. */
+    .welcome-btn--help {
+        position: fixed;
+        top: var(--sp-4);
+        right: var(--sp-4);
+        width: var(--hit-min);
+        height: var(--hit-min);
+        min-height: 0;
+        border-radius: var(--r-pill);
+        z-index: 10;
+    }
+
+    /* Center the main watermark behind the stacked, centered content. */
+    .welcome-watermark--main {
+        top: 50%;
         left: 50%;
-        width: min(78vw, 400px);
+        right: auto;
+        width: min(88vw, 440px);
         transform: translate(-53%, -48%);
         opacity: 0.05;
+    }
+
+    .welcome-watermark--alt {
+        width: min(50vw, 240px);
+        transform: translate(18%, -14%);
+        opacity: 0.045;
     }
 }
