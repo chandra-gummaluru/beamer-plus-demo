@@ -99,7 +99,7 @@ body.welcome-page {
 }
 
 /* Keep the stroke a constant on-screen weight regardless of how large the mark
-   scales, so both watermarks read at the same thin, consistent line width. */
+   scales, so the line reads at a consistent thin width. */
 .welcome-watermark svg polygon {
     vector-effect: non-scaling-stroke;
     stroke-width: 1.4;
@@ -112,15 +112,6 @@ body.welcome-page {
     width: min(120vw, 1500px);
     transform: translate(-22%, 34%);
     opacity: 0.06;
-}
-
-/* Smaller, flipped mark at a different angle, up in the top-right. */
-.welcome-watermark--alt {
-    top: 0;
-    right: 0;
-    width: min(64vw, 780px);
-    transform: translate(-8%, 42%);
-    opacity: 0.08;
 }
 
 .welcome-screen {
@@ -387,29 +378,17 @@ body.welcome-page {
         z-index: 10;
     }
 
-    /* Huge main mark filling almost the whole screen from the bottom-left. */
+    /* Enormous main mark that overflows the screen on every side. */
     .welcome-watermark--main {
         bottom: 0;
         left: 0;
         top: auto;
         right: auto;
-        width: min(320vw, 1240px);
-        transform: translate(-22%, 24%);
+        width: min(560vw, 2200px);
+        transform: translate(-24%, 22%);
         opacity: 0.05;
     }
     .welcome-watermark svg polygon {
-        stroke-width: 1.9;
-    }
-
-    /* Secondary mark comes down from the top, upside down. */
-    .welcome-watermark--alt {
-        display: block;
-        top: 0;
-        left: 0;
-        right: auto;
-        bottom: auto;
-        width: min(120vw, 520px);
-        transform: translate(6%, -44%) rotate(180deg);
-        opacity: 0.06;
+        stroke-width: 2.2;
     }
 }
