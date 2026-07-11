@@ -98,12 +98,12 @@ body.welcome-page {
     overflow: visible;
 }
 
-/* Big, thin primary mark bleeding off the bottom-left. */
+/* Big, thin primary mark bleeding well off the bottom-left corner. */
 .welcome-watermark--main {
-    top: 50%;
+    bottom: 0;
     left: 0;
-    width: min(78vw, 1040px);
-    transform: translateY(-46%) translateX(-8%);
+    width: min(120vw, 1500px);
+    transform: translate(-22%, 34%);
     opacity: 0.06;
 }
 
@@ -111,9 +111,9 @@ body.welcome-page {
 .welcome-watermark--alt {
     top: 0;
     right: 0;
-    width: min(38vw, 460px);
-    transform: translate(14%, -18%);
-    opacity: 0.05;
+    width: min(64vw, 780px);
+    transform: translate(-8%, 42%);
+    opacity: 0.08;
 }
 
 .welcome-screen {
@@ -380,19 +380,20 @@ body.welcome-page {
         z-index: 10;
     }
 
-    /* Center the main watermark behind the stacked, centered content. */
+    /* Keep the main mark oversized on mobile too, bleeding off the bottom-left. */
     .welcome-watermark--main {
-        top: 50%;
-        left: 50%;
+        bottom: 0;
+        left: 0;
+        top: auto;
         right: auto;
-        width: min(88vw, 440px);
-        transform: translate(-53%, -48%);
+        width: min(160vw, 640px);
+        transform: translate(-28%, 32%);
         opacity: 0.05;
     }
 
     .welcome-watermark--alt {
-        width: min(50vw, 240px);
-        transform: translate(18%, -14%);
-        opacity: 0.045;
+        width: min(104vw, 480px);
+        transform: translate(-4%, 38%);
+        opacity: 0.07;
     }
 }
