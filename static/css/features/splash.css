@@ -102,7 +102,7 @@ body.welcome-page {
    scales, so the line reads at a consistent thin width. */
 .welcome-watermark svg polygon {
     vector-effect: non-scaling-stroke;
-    stroke-width: 1.4;
+    stroke-width: 1.8;
 }
 
 /* Big, thin primary mark bleeding well off the bottom-left corner. */
@@ -378,17 +378,18 @@ body.welcome-page {
         z-index: 10;
     }
 
-    /* Enormous main mark that overflows the screen on every side. */
+    /* Enormous main mark whose strokes fill the whole screen, bleeding off every
+       side. */
     .welcome-watermark--main {
         bottom: 0;
         left: 0;
         top: auto;
         right: auto;
-        width: min(560vw, 2200px);
-        transform: translate(-24%, 22%);
+        width: min(640vw, 2394px);
+        transform: translate(-27%, 17%);
         opacity: 0.05;
     }
     .welcome-watermark svg polygon {
-        stroke-width: 2.2;
+        stroke-width: 1.6;
     }
 }
