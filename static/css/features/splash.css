@@ -387,14 +387,14 @@ body.welcome-page {
         z-index: 10;
     }
 
-    /* Bigger, thicker main mark bleeding off the bottom-left on mobile. */
+    /* Huge main mark filling almost the whole screen from the bottom-left. */
     .welcome-watermark--main {
         bottom: 0;
         left: 0;
         top: auto;
         right: auto;
-        width: min(200vw, 820px);
-        transform: translate(-26%, 34%);
+        width: min(320vw, 1240px);
+        transform: translate(-22%, 24%);
         opacity: 0.05;
     }
     .welcome-watermark svg polygon {
@@ -409,7 +409,7 @@ body.welcome-page {
         right: auto;
         bottom: auto;
         width: min(120vw, 520px);
-        transform: translate(6%, -28%) rotate(180deg);
+        transform: translate(6%, -44%) rotate(180deg);
         opacity: 0.06;
     }
 }
