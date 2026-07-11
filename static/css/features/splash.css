@@ -98,6 +98,13 @@ body.welcome-page {
     overflow: visible;
 }
 
+/* Keep the stroke a constant on-screen weight regardless of how large the mark
+   scales, so both watermarks read at the same thin, consistent line width. */
+.welcome-watermark svg polygon {
+    vector-effect: non-scaling-stroke;
+    stroke-width: 1.4;
+}
+
 /* Big, thin primary mark bleeding well off the bottom-left corner. */
 .welcome-watermark--main {
     bottom: 0;
@@ -390,8 +397,8 @@ body.welcome-page {
         transform: translate(-26%, 34%);
         opacity: 0.05;
     }
-    .welcome-watermark--main svg polygon {
-        stroke-width: 0.4;
+    .welcome-watermark svg polygon {
+        stroke-width: 1.9;
     }
 
     /* Secondary mark comes down from the top, upside down. */
