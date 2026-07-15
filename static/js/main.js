@@ -42,6 +42,7 @@ const state = {
     bookmarks: {},
     splitView: false,
     rightSlideIndex: 0,
+    currentViewIndex: null,   // deck index of the view slide driving the active split (null for manual splits)
     splitRatio: 50,
     annotationTool: 'hand',
     activePenSlot: 0,
@@ -541,7 +542,19 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     //   backward → exit split, show left pane slide (currentSlide) full-screen
     // This gives the reversible flow: A → [split A|B] → B → [back] → [split A|B] → A
     if (!isSplitPaneNav && !state.editMode && state.splitView && direction !== null) {
-        const targetIdx = direction === 'forward' ? state.rightSlideIndex : state.currentSlide;
+        let targetIdx = direction === 'forward' ? state.rightSlideIndex : state.currentSlide;
+        // Forward normally collapses to the right pane (which, for auto-inserted
+        // view slides, sits immediately after the view slide — a real, visible
+        // slide). But a hand-edited view can reference a right pane that's hidden
+        // or positioned before the view slide. Landing on it would skip forward
+        // through hidden slides straight back to the view slide and re-open the
+        // same split — trapping the user. In that case, advance past the view
+        // slide instead so navigation continues through the deck.
+        const viewIdx = state.currentViewIndex;
+        if (direction === 'forward' && viewIdx != null &&
+            (state.slideStructure[targetIdx]?.hidden || targetIdx <= viewIdx)) {
+            targetIdx = viewIdx + 1;
+        }
         await setSplitActive(false);
         // Pass direction so the hidden-slide while loop runs in the recursive call.
         // Forward: skips right-pane if hidden, continues to next visible slide.
@@ -574,6 +587,7 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
         saveCurrentAnnotations();
         const previewRatio = state.editMode ? 50 : (prelimObj.ratio ?? null);
         if (leftIdx !== rightIdx) await setSplitActive(true, rightIdx, previewRatio);
+        state.currentViewIndex = i;   // remember which view slide drives this split
         await goToSlide(leftIdx, null, true);  // isSplitPaneNav — skip auto-close
         return;
     }
@@ -625,6 +639,7 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     if (active === state.splitView && (rightIndex === null || rightIndex === state.rightSlideIndex)) return;
 
     state.splitView = active;
+    if (!active) state.currentViewIndex = null;   // split closed — no view slide drives it anymore
     document.body.classList.toggle('split-view-active', active);
     if (btn) btn.classList.toggle('btn_selected', active);
 
