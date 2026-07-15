@@ -90,7 +90,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
+
+  // Only handle same-origin requests. Cross-origin assets (e.g. the Cloudflare
+  // analytics beacon) and non-http schemes (chrome-extension://, etc.) must go
+  // straight to the network: proxying third-party hosts causes spurious
+  // "Fetch failed" errors, and the Cache API rejects unsupported schemes with
+  // "Request scheme '…' is unsupported" when cache.put() is attempted.
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // Skip WebSocket connections and Socket.IO polling
   if (url.pathname.includes('/socket.io/') ||
       request.url.includes('transport=polling') ||
