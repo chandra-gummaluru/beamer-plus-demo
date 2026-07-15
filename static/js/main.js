@@ -63,6 +63,32 @@ const state = {
 };
 window.beamerState = state;
 
+/* ─── robust file reading ─────────────────────────────────────── */
+// Reading a user-picked file can reject with NotFoundError ("A requested file
+// or directory could not be found…") when the file lives in a cloud-synced
+// folder as an "online-only" placeholder (OneDrive Files On-Demand, iCloud,
+// Google Drive) or was moved/changed after it was selected. Retry once — the
+// first read often triggers the OS to hydrate the file — then surface a clear,
+// actionable message instead of the raw DOMException.
+async function readUserFileBytes(file) {
+    try {
+        return await file.arrayBuffer();
+    } catch (err) {
+        if (err?.name !== 'NotFoundError') throw err;
+        await new Promise(r => setTimeout(r, 400));
+        try {
+            return await file.arrayBuffer();
+        } catch (_) {
+            throw new Error(
+                `Couldn't read "${file.name}". If it's stored in OneDrive, iCloud, ` +
+                `or Google Drive it may be online-only — right-click it and choose ` +
+                `"Always keep on this device" (or open it once to download it), ` +
+                `then try uploading again.`
+            );
+        }
+    }
+}
+
 /* ─── bootstrap ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
     const sessionId = getSessionId();
@@ -140,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const modal = window.BeamerModal;
         modal?.show({ kind: 'loading', title: 'Uploading…', message: 'Parsing ZIP…' });
         try {
-            const data = await file.arrayBuffer();
+            const data = await readUserFileBytes(file);
             const zip  = await JSZip.loadAsync(data);
             await uploadZipToServer(zip, modal);
         } catch (err) {
@@ -156,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const zip = new JSZip();
             for (const file of files) {
                 const rel = file.webkitRelativePath.split('/').slice(1).join('/');
-                if (rel) zip.file(rel, await file.arrayBuffer());
+                if (rel) zip.file(rel, await readUserFileBytes(file));
             }
             await uploadZipToServer(zip, modal);
         } catch (err) {
@@ -1097,7 +1123,7 @@ export async function loadZipPresentation(file) {
     modal?.show({ kind: 'loading', title: 'Loading…', message: 'Parsing presentation…' });
 
     try {
-        const data = await file.arrayBuffer();
+        const data = await readUserFileBytes(file);
         const zip  = await JSZip.loadAsync(data);
         const pdfFile = zip.file('slides.pdf');
         if (!pdfFile) throw new Error('ZIP must contain slides.pdf');
@@ -1173,7 +1199,7 @@ export async function loadPdfPresentation(file) {
     modal?.show({ kind: 'loading', title: 'Loading…', message: 'Parsing PDF…' });
 
     try {
-        const data   = await file.arrayBuffer();
+        const data   = await readUserFileBytes(file);
         // Hand pdf.js a copy: v4 transfers the buffer to its worker, which
         // detaches it, and we still need `data` for the ZIP below.
         const pdfDoc = await pdfjsLib.getDocument({ data: data.slice(0) }).promise;
