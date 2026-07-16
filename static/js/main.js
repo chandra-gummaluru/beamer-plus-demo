@@ -663,14 +663,10 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     // Capture right-pane index before any layout changes so we can detect if it shifted.
     const prevRightIndex = state.rightSlideIndex;
 
-    // Save annotations before any canvas-clearing layout changes.
-    // Skip on internal split-pane nav: the view-slide handler already saved them
-    // (line ~651) BEFORE setSplitActive() cleared the canvases. state.currentSlide
-    // here still holds the pre-navigation slide, so re-saving would capture the
-    // now-blank left canvas and overwrite that slide's annotation with a blank,
-    // wiping it. (Reproduces as: annotate a slide, enter an auto/view split with
-    // it, and the annotation vanishes.)
-    if (!isSplitPaneNav) saveCurrentAnnotations();
+    // Save annotations before any canvas-clearing layout changes. Safe to call
+    // even mid-transition: saveCurrentAnnotations() reads the last committed
+    // snapshot, not the (possibly resizeOnly-blanked) live canvas.
+    saveCurrentAnnotations();
 
     // Edit mode: if split view is active and we're navigating to a slide that
     // isn't a pane of the currently displayed view, close split view NOW — before
@@ -982,10 +978,15 @@ function syncAnnotations() {
 function saveCurrentAnnotations() {
     clearTimeout(annotationSyncTimer);
     if (!state.annCvs) return;
-    state.annotations[state.currentSlide] = state.annCvs.canvas.toDataURL('image/png');
+    // Use the last committed snapshot, not the live canvas: split/layout
+    // transitions call resizeOnly() which blanks the live bitmap before the
+    // re-render reloads it. Reading the live canvas in that window would persist
+    // a blank over the real annotation (this is what made annotations vanish
+    // when entering/leaving an auto split-view).
+    state.annotations[state.currentSlide] = state.annCvs.getCommittedSnapshot();
     // Also save the right pane when in split view
     if (state.splitView && state.annCvs2) {
-        state.annotations[state.rightSlideIndex] = state.annCvs2.canvas.toDataURL('image/png');
+        state.annotations[state.rightSlideIndex] = state.annCvs2.getCommittedSnapshot();
     }
 }
 

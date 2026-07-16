@@ -307,6 +307,15 @@ export class Canvas {
         return this.canvas.toDataURL("image/png");
     }
 
+    // The last committed annotation state. Prefer this over getSnapshot() when
+    // persisting: resizeOnly() (fired on split/layout changes) clears the live
+    // bitmap but leaves history intact, so the live canvas can be transiently
+    // blank while the real annotation still lives in the last history entry.
+    // Falls back to the live snapshot before any history exists.
+    getCommittedSnapshot() {
+        return this.history[this.history.length - 1] ?? this.getSnapshot();
+    }
+
     commitHistory() {
         const snapshot = this.getSnapshot();
         const last = this.history[this.history.length - 1];
