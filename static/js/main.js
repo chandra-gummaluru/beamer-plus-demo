@@ -56,6 +56,7 @@ const state = {
     pdfCvs: null,
     annCvs2: null,
     pdfCvs2: null,
+    activeAnnCvs: null,   // annotation pane the user last drew on (drives undo/redo/clear in split view)
     slideThumbnailCache: {},
     _pdfDocPromise: null,   // memoized parse of the current slides.pdf (see getPdfDoc)
     spotlight: { visible: false, pane: 'left', x: 0.5, y: 0.5 },
@@ -153,8 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
     wireMenuBtn();
     initSpotlight(state);
 
-    // annotation sync
-    state.annCvs.canvas.addEventListener('pointerup', () => syncAnnotations());
+    // annotation sync + active-pane tracking
+    state.activeAnnCvs = state.annCvs;
+    wireAnnCanvasActivation(state.annCvs);
 
     // load available AI models
     fetch(sessionUrl('/api/models')).then(r => r.json()).then(d => {
@@ -212,18 +214,50 @@ async function uploadZipToServer(zip, modal) {
     await loadZipPresentation(file);
 }
 
+/* ─── annotation canvas helpers ───────────────────────────────── */
+// Apply an operation to every annotation canvas (left + right pane) so tool,
+// pen, and shape selections configure whichever pane the user draws on.
+function forEachAnnCvs(fn) {
+    if (state.annCvs)  fn(state.annCvs);
+    if (state.annCvs2) fn(state.annCvs2);
+}
+
+// The annotation pane the user last drew on — drives undo/redo/clear and the
+// history-button state. Outside split view (or before any draw) this is the
+// left pane.
+function activeAnnCvs() {
+    return (state.splitView && state.activeAnnCvs) ? state.activeAnnCvs : state.annCvs;
+}
+
+// Deck index backing the active annotation pane, for persisting its strokes.
+function activeAnnSlide() {
+    return (state.splitView && state.activeAnnCvs === state.annCvs2)
+        ? state.rightSlideIndex : state.currentSlide;
+}
+
+// Mark a canvas active on pointerdown (so shared controls target it) and
+// persist its strokes on pointerup.
+function wireAnnCanvasActivation(cvs) {
+    cvs.canvas.addEventListener('pointerdown', () => {
+        state.activeAnnCvs = cvs;
+        updateHistoryBtns();
+    });
+    cvs.canvas.addEventListener('pointerup', () => syncAnnotations());
+}
+
 /* ─── history buttons ─────────────────────────────────────────── */
 function updateHistoryBtns() {
     const undo = document.getElementById('annotation-undo');
     const redo = document.getElementById('annotation-redo');
-    if (undo) undo.disabled = !state.annCvs?.canUndo();
-    if (redo) redo.disabled = !state.annCvs?.canRedo();
+    const cvs  = activeAnnCvs();
+    if (undo) undo.disabled = !cvs?.canUndo();
+    if (redo) redo.disabled = !cvs?.canRedo();
 }
 
 function applyDefaultPen() {
     const handBtn = document.querySelector('[data-tool="hand"], #hand-btn');
     state.annotationTool = 'hand';
-    state.annCvs.setPointerMode('hand');
+    forEachAnnCvs(c => c.setPointerMode('hand'));
     setShapeSidebarVisible(false);
     clearToolSelection();
     handBtn?.classList.add('btn_selected');
@@ -234,7 +268,7 @@ function wireHandButton() {
     if (!btn) return;
     btn.addEventListener('click', () => {
         state.annotationTool = 'hand';
-        state.annCvs.setPointerMode('hand');
+        forEachAnnCvs(c => c.setPointerMode('hand'));
         setShapeSidebarVisible(false);
         clearToolSelection();
         btn.classList.add('btn_selected');
@@ -247,13 +281,13 @@ function wireEraserButton() {
     let held = false;
     addHoldListener(btn, () => {
         held = true;
-        state.annCvs.clearAndCommit();
-        state.annotations[state.currentSlide] = null;
+        activeAnnCvs().clearAndCommit();
+        state.annotations[activeAnnSlide()] = null;
     }, 550);
     btn.addEventListener('click', () => {
         if (held) { held = false; return; }
         state.annotationTool = 'erase';
-        state.annCvs.setPointerMode('erase');
+        forEachAnnCvs(c => c.setPointerMode('erase'));
         setShapeSidebarVisible(false);
         clearToolSelection();
         btn.classList.add('btn_selected');
@@ -266,9 +300,11 @@ function clearToolSelection() {
 
 /* bus: pen:select from pen-slots module */
 bus.on('pen:select', (pen) => {
-    state.annCvs.setPointerMode(pen.mode === 'highlight' ? 'highlight' : 'draw');
-    state.annCvs.setStrokeColor(pen.color);
-    state.annCvs.setStrokeWidth(pen.size);
+    forEachAnnCvs(c => {
+        c.setPointerMode(pen.mode === 'highlight' ? 'highlight' : 'draw');
+        c.setStrokeColor(pen.color);
+        c.setStrokeWidth(pen.size);
+    });
     setShapeSidebarVisible(false);
 });
 
@@ -278,15 +314,17 @@ bus.on('tool:change', (tool) => {
     // Map toolbar tool names to canvas pointer modes
     const modeMap = { eraser: 'erase', laser: 'hand', select: 'hand', shape: 'shape', hand: 'hand', spotlight: 'hand' };
     const mode = modeMap[tool] || 'hand';
-    state.annCvs.setPointerMode(mode);
+    forEachAnnCvs(c => c.setPointerMode(mode));
     if (tool !== 'shape') setShapeSidebarVisible(false);
     setWidgetInteractivityForSpotlight(tool === 'spotlight');
     if (tool !== 'spotlight') hideSpotlight(true);
 });
 
 bus.on('shape:select', (shape) => {
-    state.annCvs.setShapeTool(shape);
-    state.annCvs.setPointerMode('shape');
+    forEachAnnCvs(c => {
+        c.setShapeTool(shape);
+        c.setPointerMode('shape');
+    });
 });
 
 function setShapeSidebarVisible(visible) {
@@ -298,12 +336,12 @@ function setShapeSidebarVisible(visible) {
 /* ─── undo / redo / clear ─────────────────────────────────────── */
 function wireUndoRedo() {
     document.getElementById('annotation-undo')?.addEventListener('click', async () => {
-        await state.annCvs.undo();
+        await activeAnnCvs().undo();
         syncAnnotations();
         updateHistoryBtns();
     });
     document.getElementById('annotation-redo')?.addEventListener('click', async () => {
-        await state.annCvs.redo();
+        await activeAnnCvs().redo();
         syncAnnotations();
         updateHistoryBtns();
     });
@@ -311,8 +349,8 @@ function wireUndoRedo() {
 
 function wireAnnotationClear() {
     document.getElementById('annotation-clear-btn')?.addEventListener('click', () => {
-        state.annCvs.clearAndCommit();
-        state.annotations[state.currentSlide] = null;
+        activeAnnCvs().clearAndCommit();
+        state.annotations[activeAnnSlide()] = null;
     });
 }
 
@@ -665,7 +703,10 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     if (active === state.splitView && (rightIndex === null || rightIndex === state.rightSlideIndex)) return;
 
     state.splitView = active;
-    if (!active) state.currentViewIndex = null;   // split closed — no view slide drives it anymore
+    if (!active) {
+        state.currentViewIndex = null;   // split closed — no view slide drives it anymore
+        state.activeAnnCvs = state.annCvs; // shared controls (undo/clear) go back to the sole pane
+    }
     document.body.classList.toggle('split-view-active', active);
     if (btn) btn.classList.toggle('btn_selected', active);
 
@@ -684,8 +725,16 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
         if (!state.annCvs2) {
             state.annCvs2 = new Canvas(annContainer2, true);
             state.pdfCvs2 = new Canvas(pdfContainer2, false);
-            state.annCvs2.setPointerMode('hand');
+            state.annCvs2.setHistoryChangeHandler(updateHistoryBtns);
+            wireAnnCanvasActivation(state.annCvs2);
         }
+        // Mirror the left pane's current tool so the right pane is immediately
+        // drawable with the same pen/shape/mode the user already selected.
+        state.annCvs2.setPointerMode(state.annCvs.pointer_mode);
+        state.annCvs2.setStrokeColor(state.annCvs.strokeColor);
+        state.annCvs2.setStrokeWidth(state.annCvs.strokeWidth);
+        state.annCvs2.setShapeTool(state.annCvs.shapeTool);
+        state.annCvs2.setShapeMode(state.annCvs.shapeMode);
         state.rightSlideIndex = rightIndex ?? Math.min(state.currentSlide + 1, state.slideStructure.length - 1);
         applySplitRatio(splitRatio ?? state.splitRatio);
     }
@@ -702,6 +751,7 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
     // the right slide sometimes appeared blank on first load.
     if (active) await renderLogicalSlide(state.rightSlideIndex, true);
 
+    updateHistoryBtns();   // reflect the pane the shared undo/redo now targets
     populateSlideNavigator();
 }
 
@@ -916,9 +966,10 @@ function getPdfDoc() {
 let annotationSyncTimer = null;
 function syncAnnotations() {
     clearTimeout(annotationSyncTimer);
-    const idx = state.currentSlide;
+    const cvs = activeAnnCvs();
+    const idx = activeAnnSlide();
     annotationSyncTimer = setTimeout(() => {
-        state.annotations[idx] = state.annCvs.canvas.toDataURL('image/png');
+        state.annotations[idx] = cvs.canvas.toDataURL('image/png');
     }, 100);
 }
 
