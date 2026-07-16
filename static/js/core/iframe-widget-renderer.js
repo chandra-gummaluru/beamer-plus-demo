@@ -391,9 +391,20 @@ export function renderWidgets(slideConfig, container, zipFile, viewerMode = fals
                 if (!res.ok) throw new Error(`Built-in widget not found: ${w.type} (${res.status})`);
                 htmlContent = await res.text();
             } else if (w.src && /^blob:/i.test(w.src)) {
-                const res = await fetch(w.src);
-                if (!res.ok) throw new Error('Could not load custom widget blob');
-                htmlContent = await res.text();
+                // Blob URLs are ephemeral — they only resolve within the page
+                // load that created them (via URL.createObjectURL). A deck saved
+                // with a blob src (or simply reloaded) carries a dead URL, so on
+                // failure fall back to the widget's HTML stored in the ZIP.
+                try {
+                    const res = await fetch(w.src);
+                    if (!res.ok) throw new Error('Could not load custom widget blob');
+                    htmlContent = await res.text();
+                } catch (blobErr) {
+                    const fallbackPath = resolveWidgetPath(w);
+                    const fallbackFile = findWidgetFile(zipFile, fallbackPath);
+                    if (!fallbackFile) throw blobErr;
+                    htmlContent = await fallbackFile.async('string');
+                }
             } else {
                 const widgetPath = resolveWidgetPath(w);
                 const widgetFile = findWidgetFile(zipFile, widgetPath);

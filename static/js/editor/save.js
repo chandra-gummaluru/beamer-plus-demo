@@ -4,6 +4,29 @@
 import { collectWidgetStates } from '../core/iframe-widget-renderer.js';
 import { ctx } from './context.js';
 
+// Custom widgets are added with an ephemeral `blob:` URL as their `src` (for
+// immediate in-session preview), while the .html bytes are stashed in
+// editorNewFiles as `widgets/<name>.html`. A blob URL is dead once the page is
+// reloaded or the deck is re-opened, so it must never be persisted. Rewrite any
+// blob src to the widget's ZIP-relative path so future loads resolve from disk.
+// Returns a shallow-cloned config; the live in-memory config is left untouched
+// (its blob URL is still valid for the current session).
+function normalizeWidgetSrcs(cfg) {
+    if (!Array.isArray(cfg?.widgets) || !cfg.widgets.some(w => /^blob:/i.test(w?.src || ''))) {
+        return cfg;
+    }
+    return {
+        ...cfg,
+        widgets: cfg.widgets.map(w => {
+            if (!/^blob:/i.test(w?.src || '')) return w;
+            const { src, ...rest } = w;
+            // The uploaded file is saved as `widgets/<type>.html`; the loader's
+            // path resolver looks there for a widget of this type.
+            return w.type ? { ...rest, src: `widgets/${w.type}.html` } : rest;
+        }),
+    };
+}
+
 export async function savePresentation() {
     if (!ctx.state.zipFile) {
         window.BeamerModal?.show({ kind: 'error', title: 'Nothing to save', message: 'No presentation loaded.' });
@@ -30,7 +53,7 @@ export async function savePresentation() {
         }
 
         for (const [pi, cfg] of Object.entries(ctx.state.slideConfigs)) {
-            if (cfg) newZip.file(`config/s${pi}.json`, JSON.stringify(cfg, null, 2));
+            if (cfg) newZip.file(`config/s${pi}.json`, JSON.stringify(normalizeWidgetSrcs(cfg), null, 2));
         }
 
         const isDefault = ctx.state.slideStructure.every((obj, i) => obj.type === 'pdf' && obj.pdfIndex === i);
