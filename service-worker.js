@@ -1,6 +1,6 @@
-const CACHE_NAME = 'beamer-plus-v18';
-const STATIC_CACHE_NAME = 'beamer-plus-static-v18';
-const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v18';
+const CACHE_NAME = 'beamer-plus-v19';
+const STATIC_CACHE_NAME = 'beamer-plus-static-v19';
+const DYNAMIC_CACHE_NAME = 'beamer-plus-dynamic-v19';
 
 // The app shell — just enough to boot the presenter offline. These are the real
 // Flask route / entry-point assets; everything they pull in (the ES-module tree

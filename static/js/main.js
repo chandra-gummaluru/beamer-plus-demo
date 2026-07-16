@@ -663,8 +663,14 @@ async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     // Capture right-pane index before any layout changes so we can detect if it shifted.
     const prevRightIndex = state.rightSlideIndex;
 
-    // Save annotations before any canvas-clearing layout changes
-    saveCurrentAnnotations();
+    // Save annotations before any canvas-clearing layout changes.
+    // Skip on internal split-pane nav: the view-slide handler already saved them
+    // (line ~651) BEFORE setSplitActive() cleared the canvases. state.currentSlide
+    // here still holds the pre-navigation slide, so re-saving would capture the
+    // now-blank left canvas and overwrite that slide's annotation with a blank,
+    // wiping it. (Reproduces as: annotate a slide, enter an auto/view split with
+    // it, and the annotation vanishes.)
+    if (!isSplitPaneNav) saveCurrentAnnotations();
 
     // Edit mode: if split view is active and we're navigating to a slide that
     // isn't a pane of the currently displayed view, close split view NOW — before
