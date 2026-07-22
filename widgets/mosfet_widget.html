@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script id="widget-schema" type="application/json">
+{
+  "label": "MOSFET — Gate Voltage & Channel",
+  "category": "Engineering",
+  "fields": [
+    { "key": "vgs", "label": "Gate-source voltage (Vgs)", "type": "number",
+      "default": 0.55, "min": 0, "max": 1, "step": 0.05 },
+    { "key": "vth", "label": "Threshold voltage (Vth)", "type": "number",
+      "default": 0.4, "min": 0.1, "max": 0.9, "step": 0.05 }
+  ]
+}
+</script>
+<meta charset="utf-8"/>
+<title>MOSFET — Beamer+</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+:root {
+  --high: #f59e0b;
+  --mono: 'JetBrains Mono','Fira Code',ui-monospace,monospace;
+  --ui:   'DM Sans',system-ui,-apple-system,sans-serif;
+}
+*,*::before,*::after { box-sizing:border-box; }
+html,body { height:100%; margin:0; }
+body { font-family:var(--font-ui,var(--ui)); color:var(--text,#1a1a18);
+       background:var(--bg,#fff); overflow:hidden; font-size:13px; }
+.app { height:100%; display:flex; flex-direction:column; }
+.stage { flex:1; position:relative; min-height:0; }
+#c { display:block; width:100%; height:100%; touch-action:none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage">
+    <canvas id="c"></canvas>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ═══ World geometry ═════════════════════════════════════════════════════════
+// An n-channel MOSFET cross-section: p-type substrate, two n+ diffusions
+// (source / drain) with an insulated gate sitting over the gap between them.
+// The gate never carries current — it's a capacitor plate that fields the
+// silicon underneath it into (or out of) a conductive channel. Whether that
+// channel forms is a pure function of Vgs vs Vth; whether current actually
+// *flows* also needs the external drain-source loop (battery+switch+bulb)
+// closed. Keeping those two facts visually separable is the whole point.
+const W=760, H=470;
+const VMAX=1, TH=0.06;
+
+const BODY = {x:130, y:268, w:500, h:150};                 // p-substrate
+const SOURCE_WIN = {x:160, y:280, w:130, h:106};            // n+ source
+const DRAIN_WIN  = {x:470, y:280, w:130, h:106};            // n+ drain
+
+const CH_X0 = SOURCE_WIN.x+SOURCE_WIN.w, CH_X1 = DRAIN_WIN.x;
+const CHANNEL = {x:CH_X0, y:268, w:CH_X1-CH_X0, h:24};      // shallow surface strip
+const OXIDE   = {x:CH_X0-14, y:250, w:(CH_X1-CH_X0)+28, h:18};
+const GATE    = {x:CH_X0-4,  y:224, w:(CH_X1-CH_X0)+8,  h:26};
+
+const SOURCE_C = {x:SOURCE_WIN.x+SOURCE_WIN.w/2, y:SOURCE_WIN.y+SOURCE_WIN.h/2};
+const DRAIN_C  = {x:DRAIN_WIN.x+DRAIN_WIN.w/2,  y:DRAIN_WIN.y+DRAIN_WIN.h/2};
+const CH_MID_Y = CHANNEL.y+CHANNEL.h/2;
+const CH_ENTRANCE={x:CHANNEL.x+CHANNEL.w, y:CH_MID_Y};       // drain-side mouth
+const CH_EXIT    ={x:CHANNEL.x,           y:CH_MID_Y};       // source-side mouth
+
+// external drain-source loop: leads straight up off the top of each
+// diffusion (that's where the metal contacts actually sit on a real die),
+// over to a small fixed-EMF battery, a knife switch, and a lamp — same cast
+// as a simple flashlight circuit, just with the MOSFET's channel standing in
+// for the mechanical switch that circuit doesn't have.
+const WIRE_Y=58;
+const LEAD_SOURCE_X=SOURCE_C.x, LEAD_DRAIN_X=DRAIN_C.x;
+const BATTERY={x:255,y:WIRE_Y-16,w:60,h:32};
+const SWITCH={x:398,y:WIRE_Y,gap:34};
+const BULB={x:460,y:WIRE_Y};
+
+// gate control: a rotary dial, same mechanism as a real knob — pivot fixed,
+// handle sweeps left→top→right as Vgs goes 0→1. It sits directly above the
+// gate plate, connected by its own short lead that never joins the main
+// loop — a visual reminder that the gate is DC-isolated from the channel.
+const DIAL={x:(CH_X0+CH_X1)/2, y:150, R:24, a0:Math.PI, a1:Math.PI*2};
+const GATE_LEAD_TOP={x:DIAL.x, y:DIAL.y+DIAL.R+6};
+
+function polySample(pts){ const cum=[0];
+  for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  return {pts,cum,total:cum[cum.length-1]}; }
+function pointAt(sm,frac){ const target=Math.max(0,Math.min(1,frac))*sm.total;
+  let i=1; while(i<sm.cum.length-1 && sm.cum[i]<target) i++;
+  const segLen=(sm.cum[i]-sm.cum[i-1])||1, lt=(target-sm.cum[i-1])/segLen;
+  const p0=sm.pts[i-1], p1=sm.pts[i];
+  return {x:p0[0]+(p1[0]-p0[0])*lt, y:p0[1]+(p1[1]-p0[1])*lt}; }
+
+// the whole drain-source path — external wire AND the internal channel — is
+// one closed loop that a fixed population of electrons rides forever. Unlike
+// a battery's internal chemistry, nothing here consumes or replenishes
+// anything; in a real resistive loop the current is simply uniform all the
+// way around, so every particle advances at the SAME rate regardless of
+// which leg it's on. Near zero current they all just idle in place.
+const LOOP_PTS=[
+  [SOURCE_C.x,SOURCE_C.y],                          //0
+  [LEAD_SOURCE_X,WIRE_Y],                            //1 lead, source side
+  [BATTERY.x,WIRE_Y],                                //2 battery –
+  [BATTERY.x+BATTERY.w,WIRE_Y],                       //3 battery +
+  [SWITCH.x-SWITCH.gap/2,WIRE_Y],                     //4 switch post L
+  [SWITCH.x+SWITCH.gap/2,WIRE_Y],                     //5 switch post R
+  [LEAD_DRAIN_X,WIRE_Y],                              //6 lead, drain side
+  [DRAIN_C.x,DRAIN_C.y],                              //7 drain pool center
+  [CH_ENTRANCE.x,CH_ENTRANCE.y],                      //8 channel mouth, drain side
+  [CH_EXIT.x,CH_EXIT.y],                              //9 channel mouth, source side
+  [SOURCE_C.x,SOURCE_C.y]                             //10 close loop
+];
+const LOOP_S=polySample(LOOP_PTS);
+const IDX_LEAD_SOURCE=1, IDX_SW_L=4, IDX_SW_R=5, IDX_LEAD_DRAIN=6,
+      IDX_DRAIN_C=7, IDX_CH_IN=8, IDX_CH_OUT=9;
+const F_LEAD_SOURCE=LOOP_S.cum[IDX_LEAD_SOURCE]/LOOP_S.total;
+const F_LEAD_DRAIN =LOOP_S.cum[IDX_LEAD_DRAIN]/LOOP_S.total;
+const F_CH_IN=LOOP_S.cum[IDX_CH_IN]/LOOP_S.total;
+const F_CH_OUT=LOOP_S.cum[IDX_CH_OUT]/LOOP_S.total;
+const F_CH_MID=(F_CH_IN+F_CH_OUT)/2;
+const SEAM_A=LOOP_S.cum[IDX_SW_L]/LOOP_S.total, SEAM_B=LOOP_S.cum[IDX_SW_R]/LOOP_S.total;
+const K_LOOP=0.42;
+
+function legRamp(u,u0,u1,edgeFrac){
+  const lt=(u-u0)/(u1-u0), edge=Math.min(lt,1-lt);
+  return Math.max(0,Math.min(1,edge/(edgeFrac||0.15)));
+}
+function noiseX(pt){
+  return Math.sin(t*pt.freq2*1.4+pt.phase2*1.3+1.5)*0.6+Math.sin(t*pt.freq2*2.9+pt.phase2*0.6)*0.3;
+}
+const CH_WOBBLE_AMP=8;
+function loopPos(u,pt){
+  const p=pointAt(LOOP_S,u);
+  if(u>F_CH_IN && u<F_CH_OUT){
+    const ramp=legRamp(u,F_CH_IN,F_CH_OUT,0.2);
+    return {x:p.x, y:p.y+pt.wob*CH_WOBBLE_AMP*ramp};
+  }
+  return p;
+}
+const POOL_WOBBLE_AMP=32;
+function wobbleY(u,pt,u0,u1,amp){ return pt.wob*amp*legRamp(u,u0,u1,0.15); }
+function clampWinY(win,y){ return Math.max(win.y+4,Math.min(win.y+win.h-4,y)); }
+
+// ═══ State ══════════════════════════════════════════════════════════════════
+// vgs is the user's gate-voltage control; vth is fixed per-session (also
+// exposed to the editor). channelG is how open the channel is right now —
+// zero until vgs clears vth, then ramps up — and is the ONLY thing that
+// depends on the gate. current additionally needs switchOn (a closed
+// external loop) — that product is what actually moves electrons anywhere.
+const VTH=0.4;
+const S={ vgs:0.55, switchOn:1, glow:0 };
+let channelG=0, chGVis=0, current=0, t=0, switchVis=1;
+
+// ═══ Canvas / DPR ═══════════════════════════════════════════════════════════
+const cvs=document.getElementById('c'), ctx=cvs.getContext('2d');
+let scale=1, offx=0, offy=0, dpr=1;
+function fit(){ dpr=Math.min(window.devicePixelRatio||1,2);
+  const r=cvs.getBoundingClientRect();
+  cvs.width=Math.max(1,Math.round(r.width*dpr)); cvs.height=Math.max(1,Math.round(r.height*dpr));
+  scale=Math.min(r.width/W,r.height/H); offx=(r.width-W*scale)/2; offy=(r.height-H*scale)/2; }
+new ResizeObserver(fit).observe(cvs); window.addEventListener('resize',fit); fit();
+
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function amberCol(){ return css('--high')||'#f59e0b'; }
+
+// ═══ Particles ══════════════════════════════════════════════════════════════
+const LOOP_N=110;
+const loopParts=[];
+for(let i=0;i<LOOP_N;i++) loopParts.push({
+  u:(i+Math.random()*0.6)/LOOP_N, jphase:Math.random()*6.28, jr:0.9+Math.random()*0.9,
+  wob:(Math.random()*2-1), wobV:(Math.random()<0.5?-1:1)*(0.7+Math.random()*1.1),
+  freq2:0.7+Math.random()*1.6, phase2:Math.random()*6.28 });
+
+function mkCloud(n,win){ const a=[]; for(let i=0;i<n;i++) a.push({
+  x:win.x+4+Math.random()*(win.w-8), y:win.y+4+Math.random()*(win.h-8),
+  vx:(Math.random()-0.5)*10, vy:(Math.random()-0.5)*10 }); return a; }
+const SRC_MAX=70, DRN_MAX=70, CH_MAX=16;
+const srcParts=mkCloud(SRC_MAX,SOURCE_WIN), drnParts=mkCloud(DRN_MAX,DRAIN_WIN);
+const chParts=mkCloud(CH_MAX,{x:CHANNEL.x+6,y:CHANNEL.y+2,w:CHANNEL.w-12,h:CHANNEL.h-4});
+
+// ═══ Physics ════════════════════════════════════════════════════════════════
+function step(dt){
+  // channel conduction is a pure field effect: zero until Vgs clears Vth,
+  // then ramps up smoothly. Nothing about the external circuit affects this.
+  const margin=Math.max(0,Math.min(1,(S.vgs-VTH)/(1-VTH)));
+  channelG=margin*margin*(3-2*margin); // smoothstep, reads like a soft turn-on knee
+  chGVis+=(channelG-chGVis)*Math.min(1,dt*4);
+
+  // current requires BOTH the channel open AND the external loop closed —
+  // series circuit, so it's the same single value everywhere on the loop.
+  const G=S.switchOn*S.switchOn;
+  current=G*channelG;
+
+  const flowMag=current, flowing=S.switchOn>0.02;
+  const margin2=flowing?Math.max(0,flowMag-TH)/(VMAX-TH):0;
+  S.glow+=(margin2-S.glow)*Math.min(1,dt*5);
+  switchVis+=(S.switchOn-switchVis)*Math.min(1,dt*9);
+
+  loopParts.forEach(pt=>{
+    const spd=current*K_LOOP;
+    pt.u=(((pt.u+spd*dt)%1)+1)%1;
+    const act=pt.u>F_CH_IN&&pt.u<F_CH_OUT ? chGVis : Math.min(1,current*2.5);
+    if(act>0.01){
+      pt.wob+=pt.wobV*dt*act;
+      if(pt.wob>1){ pt.wob=1; pt.wobV=-Math.abs(pt.wobV); }
+      else if(pt.wob<-1){ pt.wob=-1; pt.wobV=Math.abs(pt.wobV); }
+      pt.wobV+=(Math.random()-0.5)*1.6*dt*act;
+      if(Math.abs(pt.wobV)<0.5) pt.wobV+=(pt.wobV<0?-1:1)*0.6*dt*10;
+      pt.wobV=Math.max(-2.4,Math.min(2.4,pt.wobV));
+    }
+  });
+
+  const agit=Math.min(1.6,current*3);
+  const bounce=(arr,win,spread)=>{ arr.forEach(b=>{
+    b.x+=b.vx*(0.5+agit*spread)*dt; b.y+=b.vy*(0.5+agit*spread)*dt;
+    if(b.x<win.x+3||b.x>win.x+win.w-3) b.vx*=-1;
+    if(b.y<win.y+3||b.y>win.y+win.h-3) b.vy*=-1;
+    b.x=Math.max(win.x+3,Math.min(win.x+win.w-3,b.x));
+    b.y=Math.max(win.y+3,Math.min(win.y+win.h-3,b.y));
+  }); };
+  bounce(srcParts,SOURCE_WIN,0.6); bounce(drnParts,DRAIN_WIN,0.6);
+  bounce(chParts,{x:CHANNEL.x+6,y:CHANNEL.y+2,w:CHANNEL.w-12,h:CHANNEL.h-4},1);
+}
+
+// ═══ Draw helpers ═══════════════════════════════════════════════════════════
+function roundRectPath(x,y,w,h,r){ ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function drawElectron(x,y,r,alpha){
+  const a=alpha===undefined?1:alpha; if(a<=0) return;
+  ctx.save(); ctx.globalAlpha*=a;
+  ctx.fillStyle='#f7d525'; ctx.beginPath(); ctx.arc(x,y,r,0,6.28); ctx.fill();
+  ctx.fillStyle='rgba(255,255,235,0.75)'; ctx.beginPath(); ctx.arc(x-r*0.3,y-r*0.3,r*0.4,0,6.28); ctx.fill();
+  ctx.restore();
+}
+
+// ── copper wire, stroked-tube style ─────────────────────────────────────────
+function tracePath(pts,r){ ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length-1;i++) ctx.arcTo(pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],r);
+  const L=pts[pts.length-1]; ctx.lineTo(L[0],L[1]); }
+function drawWire(pts){
+  const r=10; ctx.lineCap='round'; ctx.lineJoin='round';
+  tracePath(pts,r); ctx.lineWidth=13; ctx.strokeStyle='#5a3016'; ctx.stroke();
+  tracePath(pts,r); ctx.lineWidth=9;  ctx.strokeStyle='#c97a3d'; ctx.stroke();
+  tracePath(pts,r); ctx.lineWidth=3;  ctx.strokeStyle='rgba(255,215,170,0.6)'; ctx.stroke();
+}
+
+// ── loop population, rendered per-zone as it crosses each landmark ─────────
+function drawWireLoopElectrons(){
+  loopParts.forEach(pt=>{
+    if(pt.u<F_LEAD_SOURCE||pt.u>F_LEAD_DRAIN) return;
+    if(pt.u>=SEAM_A && pt.u<=SEAM_B && switchVis<0.5) return;
+    const p=pointAt(LOOP_S,pt.u);
+    const jx=Math.sin(t*1.6+pt.jphase)*1.3, jy=Math.cos(t*1.3+pt.jphase*1.4)*1.3;
+    drawElectron(p.x+jx, p.y+jy, pt.jr);
+  });
+}
+function drawSourcePoolLoopElectrons(){
+  ctx.save(); roundRectPath(SOURCE_WIN.x,SOURCE_WIN.y,SOURCE_WIN.w,SOURCE_WIN.h,7); ctx.clip();
+  loopParts.forEach(pt=>{
+    if(pt.u<F_LEAD_SOURCE){
+      const p=pointAt(LOOP_S,pt.u);
+      if(p.x>=SOURCE_WIN.x) drawElectron(p.x+noiseX(pt)*3,clampWinY(SOURCE_WIN,p.y+wobbleY(pt.u,pt,0,F_LEAD_SOURCE,POOL_WOBBLE_AMP)),pt.jr);
+    } else if(pt.u>F_CH_OUT){
+      const p=pointAt(LOOP_S,pt.u);
+      drawElectron(p.x+noiseX(pt)*3,clampWinY(SOURCE_WIN,p.y+wobbleY(pt.u,pt,F_CH_OUT,1,POOL_WOBBLE_AMP)),pt.jr);
+    }
+  });
+  ctx.restore();
+}
+function drawDrainPoolLoopElectrons(){
+  ctx.save(); roundRectPath(DRAIN_WIN.x,DRAIN_WIN.y,DRAIN_WIN.w,DRAIN_WIN.h,7); ctx.clip();
+  loopParts.forEach(pt=>{
+    if(pt.u>F_LEAD_DRAIN && pt.u<F_CH_IN){
+      const p=pointAt(LOOP_S,pt.u);
+      if(p.x<=DRAIN_WIN.x+DRAIN_WIN.w) drawElectron(p.x+noiseX(pt)*3,clampWinY(DRAIN_WIN,p.y+wobbleY(pt.u,pt,F_LEAD_DRAIN,F_CH_IN,POOL_WOBBLE_AMP)),pt.jr);
+    }
+  });
+  ctx.restore();
+}
+function drawChannelLoopElectrons(){
+  const pad=3;
+  ctx.save(); roundRectPath(CHANNEL.x+pad,CHANNEL.y+pad,CHANNEL.w-pad*2,CHANNEL.h-pad*2,4); ctx.clip();
+  loopParts.forEach(pt=>{
+    if(pt.u<=F_CH_IN||pt.u>=F_CH_OUT) return;
+    const p=loopPos(pt.u,pt);
+    drawElectron(p.x,p.y,pt.jr);
+  });
+  ctx.restore();
+}
+
+// ── knife switch (external Vds loop) ────────────────────────────────────────
+function drawSwitch(hot){
+  const {x,y,gap}=SWITCH;
+  const postL={x:x-gap/2,y}, postR={x:x+gap/2,y};
+  [postL,postR].forEach(p=>{
+    ctx.fillStyle='#3d4448'; ctx.beginPath(); ctx.arc(p.x,p.y,6,0,6.28); ctx.fill();
+    ctx.fillStyle='#8b939a'; ctx.beginPath(); ctx.arc(p.x,p.y,3.2,0,6.28); ctx.fill();
+  });
+  const ang=-((1-switchVis)*0.55);
+  ctx.save(); ctx.translate(postL.x,postL.y); ctx.rotate(ang);
+  ctx.strokeStyle=hot?amberCol():'#5b6369'; ctx.lineWidth=5; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(gap,0); ctx.stroke();
+  ctx.restore();
+  if(hot){ ctx.strokeStyle=amberCol(); ctx.globalAlpha=0.45; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x,y,gap*0.7,0,6.28); ctx.stroke(); ctx.globalAlpha=1; }
+}
+
+// ── bulb, glows with actual current ─────────────────────────────────────────
+function drawBulb(){
+  const tapX=BULB.x, tapY=BULB.y, R=16, glow=S.glow;
+  const leadLen=10, sockH=6;
+  const socketBottom=tapY-leadLen, cy=socketBottom-sockH-R;
+  ctx.strokeStyle='#5a3016'; ctx.lineWidth=9; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(tapX,tapY); ctx.lineTo(tapX,socketBottom); ctx.stroke();
+  ctx.strokeStyle='#c97a3d'; ctx.lineWidth=5; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(tapX,tapY); ctx.lineTo(tapX,socketBottom); ctx.stroke();
+  if(glow>0.01){
+    const g=ctx.createRadialGradient(tapX,cy,2,tapX,cy,R*2.4);
+    g.addColorStop(0,`rgba(255,235,140,${0.55*glow})`);
+    g.addColorStop(1,'rgba(255,235,140,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(tapX,cy,R*2.4,0,6.28); ctx.fill();
+  }
+  ctx.beginPath(); ctx.arc(tapX,cy,R,0,6.28);
+  ctx.fillStyle=`rgba(255,${250-40*(1-glow)},${210-90*(1-glow)},0.18)`; ctx.fill();
+  ctx.strokeStyle='rgba(160,170,178,0.8)'; ctx.lineWidth=1.6; ctx.stroke();
+  ctx.strokeStyle=glow>0.03?`rgba(255,${Math.round(210+30*glow)},${Math.round(90+80*glow)},${0.6+0.4*glow})`:'rgba(120,128,135,0.8)';
+  ctx.lineWidth=1.6; ctx.beginPath();
+  ctx.moveTo(tapX-6,cy+7); ctx.lineTo(tapX-3,cy-5); ctx.lineTo(tapX,cy+5); ctx.lineTo(tapX+3,cy-5); ctx.lineTo(tapX+6,cy+7);
+  ctx.stroke();
+  ctx.fillStyle='#8b939a'; ctx.fillRect(tapX-7,socketBottom-sockH,14,sockH);
+  ctx.strokeStyle='#5b6369'; ctx.lineWidth=1;
+  for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(tapX-7,socketBottom-sockH+1+i*2); ctx.lineTo(tapX+7,socketBottom-sockH+1+i*2); ctx.stroke(); }
+}
+
+// ── small fixed-EMF battery sitting inline in the external loop ────────────
+function drawBattery(){
+  const {x,y,w,h}=BATTERY;
+  roundRectPath(x,y,w,h,7);
+  const bg=ctx.createLinearGradient(x,0,x+w,0);
+  bg.addColorStop(0,'#5f676d'); bg.addColorStop(0.15,'#9aa2a8'); bg.addColorStop(0.5,'#7d858c');
+  bg.addColorStop(0.85,'#9aa2a8'); bg.addColorStop(1,'#4d545a');
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle='#454b50'; roundRectPath(x,y,w,h,7); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='700 13px var(--ui)'; ctx.textAlign='center';
+  ctx.fillText('–', x+11, y+h/2+5);
+  ctx.fillText('+', x+w-11, y+h/2+5);
+  ctx.textAlign='start';
+}
+
+// ── substrate, diffusions, oxide + gate, channel ────────────────────────────
+function drawSubstrate(){
+  roundRectPath(BODY.x,BODY.y,BODY.w,BODY.h,14);
+  const bg=ctx.createLinearGradient(0,BODY.y,0,BODY.y+BODY.h);
+  bg.addColorStop(0,'#4a5a68'); bg.addColorStop(1,'#333f4a');
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.lineWidth=2.5; ctx.strokeStyle='#252d34'; roundRectPath(BODY.x,BODY.y,BODY.w,BODY.h,14); ctx.stroke();
+  ctx.fillStyle='rgba(220,230,238,0.55)'; ctx.font='600 11px var(--mono)'; ctx.textAlign='center';
+  ctx.fillText('p-type silicon (body)', BODY.x+BODY.w/2, BODY.y+BODY.h-14);
+  ctx.textAlign='start';
+}
+function drawPoolWindowBezel(win){
+  roundRectPath(win.x-6,win.y-6,win.w+12,win.h+12,10); ctx.fillStyle='#232a30'; ctx.fill();
+}
+function drawPoolGlassBack(win){
+  ctx.save(); roundRectPath(win.x,win.y,win.w,win.h,7); ctx.clip();
+  ctx.fillStyle='rgba(120,170,220,0.10)'; ctx.fillRect(win.x,win.y,win.w,win.h);
+  const gg=ctx.createLinearGradient(win.x,0,win.x+win.w,0);
+  gg.addColorStop(0,'rgba(255,255,255,0.08)'); gg.addColorStop(0.5,'rgba(210,230,240,0.02)');
+  gg.addColorStop(1,'rgba(160,190,205,0.08)'); ctx.fillStyle=gg; ctx.fillRect(win.x,win.y,win.w,win.h); ctx.restore();
+}
+function drawPoolElectrons(win,arr,level){
+  const n=Math.round(arr.length*Math.max(0,Math.min(1,level)));
+  ctx.save(); roundRectPath(win.x,win.y,win.w,win.h,7); ctx.clip();
+  for(let i=0;i<n;i++) drawElectron(arr[i].x,arr[i].y,1.4+Math.random()*0.3);
+  ctx.restore();
+}
+function drawPoolLabel(win,label){
+  ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font='700 11px var(--mono)'; ctx.textAlign='left';
+  ctx.fillText(label, win.x+6, win.y+14);
+  ctx.textAlign='start';
+}
+function drawPoolGlassFront(win){
+  ctx.save(); roundRectPath(win.x,win.y,win.w,win.h,7); ctx.clip();
+  let s=ctx.createLinearGradient(win.x,0,win.x+14,0);
+  s.addColorStop(0,'rgba(255,255,255,0.35)'); s.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=s; ctx.fillRect(win.x+1,win.y+3,11,win.h-6);
+  ctx.restore();
+  roundRectPath(win.x-6,win.y-6,win.w+12,win.h+12,10); ctx.lineWidth=5; ctx.strokeStyle='#5b6369'; ctx.stroke();
+  roundRectPath(win.x-6,win.y-6,win.w+12,win.h+12,10); ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.stroke();
+  roundRectPath(win.x,win.y,win.w,win.h,7); ctx.lineWidth=2; ctx.strokeStyle='rgba(20,26,30,0.5)'; ctx.stroke();
+}
+
+// oxide + gate: the insulator physically separates the metal gate from the
+// silicon — no conduction path exists between them, ever. Only the field
+// gets through. A soft glow under the oxide, scaled by Vgs itself (not the
+// threshold), shows that field building up continuously — the channel
+// "pops" into a visibly conductive strip only once that field is strong
+// enough to invert the surface (past Vth).
+function drawFieldGlow(){
+  const v=Math.max(0,Math.min(1,S.vgs));
+  if(v<0.02) return;
+  ctx.save(); roundRectPath(CHANNEL.x-6,CHANNEL.y-2,CHANNEL.w+12,CHANNEL.h+10,6); ctx.clip();
+  const g=ctx.createLinearGradient(0,CHANNEL.y-2,0,CHANNEL.y+CHANNEL.h+8);
+  g.addColorStop(0,`rgba(120,200,255,${0.35*v})`); g.addColorStop(1,'rgba(120,200,255,0)');
+  ctx.fillStyle=g; ctx.fillRect(CHANNEL.x-6,CHANNEL.y-2,CHANNEL.w+12,CHANNEL.h+10);
+  ctx.restore();
+}
+function drawChannel(){
+  const cv=Math.max(0,Math.min(1,chGVis));
+  ctx.save(); roundRectPath(CHANNEL.x,CHANNEL.y,CHANNEL.w,CHANNEL.h,4); ctx.clip();
+  // background: neutral p-Si when off, glowing n-type inversion layer when on
+  const mix=(lo,hi)=>lo+(hi-lo)*cv;
+  const bgc=`rgba(${Math.round(mix(58,60))},${Math.round(mix(70,170))},${Math.round(mix(84,220))},${(0.35+0.4*cv).toFixed(3)})`;
+  ctx.fillStyle=bgc; ctx.fillRect(CHANNEL.x,CHANNEL.y,CHANNEL.w,CHANNEL.h);
+  if(cv>0.02){
+    ctx.fillStyle=`rgba(150,225,255,${0.5*cv})`;
+    ctx.fillRect(CHANNEL.x,CHANNEL.y,CHANNEL.w,2+2*cv);
+  }
+  const n=Math.round(chParts.length*cv);
+  for(let i=0;i<n;i++) drawElectron(chParts[i].x,chParts[i].y,1.3);
+  drawChannelLoopElectrons();
+  ctx.restore();
+  roundRectPath(CHANNEL.x,CHANNEL.y,CHANNEL.w,CHANNEL.h,4); ctx.lineWidth=1.4; ctx.strokeStyle='rgba(15,20,24,0.55)'; ctx.stroke();
+}
+function drawOxideAndGate(){
+  roundRectPath(OXIDE.x,OXIDE.y,OXIDE.w,OXIDE.h,4);
+  ctx.fillStyle='#e8e2cf'; ctx.fill();
+  ctx.lineWidth=1.2; ctx.strokeStyle='#b8b19a'; roundRectPath(OXIDE.x,OXIDE.y,OXIDE.w,OXIDE.h,4); ctx.stroke();
+  ctx.fillStyle='rgba(90,80,50,0.6)'; ctx.font='600 9px var(--mono)'; ctx.textAlign='center';
+  ctx.fillText('SiO₂', OXIDE.x+OXIDE.w/2, OXIDE.y+OXIDE.h-5);
+
+  roundRectPath(GATE.x,GATE.y,GATE.w,GATE.h,5);
+  const gg=ctx.createLinearGradient(0,GATE.y,0,GATE.y+GATE.h);
+  gg.addColorStop(0,'#aab2b8'); gg.addColorStop(1,'#7d858c');
+  ctx.fillStyle=gg; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle='#565d63'; roundRectPath(GATE.x,GATE.y,GATE.w,GATE.h,5); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='700 11px var(--mono)'; ctx.textAlign='center';
+  ctx.fillText('GATE', GATE.x+GATE.w/2, GATE.y+GATE.h/2+4);
+  ctx.textAlign='start';
+
+  // gate lead: deliberately drawn thin and isolated, not the thick copper
+  // used for the current-carrying leads, and it stops short of the main
+  // loop entirely.
+  ctx.strokeStyle='#8b939a'; ctx.lineWidth=3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(DIAL.x,GATE.y); ctx.lineTo(DIAL.x,GATE_LEAD_TOP.y); ctx.stroke();
+}
+
+// ── gate-voltage dial, with a marked threshold ──────────────────────────────
+function drawVgsDial(hot){
+  const {x:cx,y:cy,R,a0,a1}=DIAL;
+  const angV=a0+(a1-a0)*S.vgs, angTh=a0+(a1-a0)*VTH;
+  ctx.beginPath(); ctx.arc(cx,cy+2,R+4,0,6.28); ctx.fillStyle='rgba(20,30,40,0.16)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx,cy,R+4,0,6.28); ctx.fillStyle='#4d545a'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx,cy,R+1,0,6.28); ctx.fillStyle='#20262a'; ctx.fill();
+  // dead zone (below Vth) in muted gray, active zone in amber
+  ctx.strokeStyle='#565d63'; ctx.lineWidth=5; ctx.lineCap='butt';
+  ctx.beginPath(); ctx.arc(cx,cy,R,a0,angTh); ctx.stroke();
+  ctx.strokeStyle=amberCol(); ctx.globalAlpha=0.65; ctx.lineWidth=3.5;
+  ctx.beginPath(); ctx.arc(cx,cy,R,a0,Math.max(angTh,angV)); ctx.stroke(); ctx.globalAlpha=1;
+  // threshold tick
+  ctx.strokeStyle='#e8e2cf'; ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(cx+Math.cos(angTh)*(R-3),cy+Math.sin(angTh)*(R-3));
+  ctx.lineTo(cx+Math.cos(angTh)*(R+3),cy+Math.sin(angTh)*(R+3));
+  ctx.stroke();
+  ctx.strokeStyle='#8b939a'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){ const a=a0+(a1-a0)*i/4;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a)*(R-2.5),cy+Math.sin(a)*(R-2.5));
+    ctx.lineTo(cx+Math.cos(a)*(R+2.5),cy+Math.sin(a)*(R+2.5));
+    ctx.stroke(); }
+  const innerR=R*0.4;
+  const hx=cx+Math.cos(angV)*R, hy=cy+Math.sin(angV)*R;
+  const ix=cx+Math.cos(angV)*innerR, iy=cy+Math.sin(angV)*innerR;
+  ctx.strokeStyle='#2b3236'; ctx.lineWidth=2.6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(ix,iy); ctx.lineTo(hx,hy); ctx.stroke();
+  const on=S.vgs>=VTH;
+  ctx.fillStyle=hot?amberCol():(on?'#9fd8ff':'#9aa2a8'); ctx.beginPath(); ctx.arc(hx,hy,hot?6:5,0,6.28); ctx.fill();
+  ctx.strokeStyle=hot?amberCol():'#565d63'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(hx,hy,hot?6:5,0,6.28); ctx.stroke();
+  ctx.textAlign='center';
+  ctx.fillStyle=hot?amberCol():'#eef1f3'; ctx.font='700 9px var(--mono)';
+  ctx.fillText(S.vgs.toFixed(2), cx, cy+4);
+  ctx.font='600 9px var(--mono)'; ctx.fillStyle='rgba(238,241,243,0.65)';
+  ctx.fillText('Vgs', cx, cy+R+15);
+  ctx.textAlign='start';
+}
+
+// ═══ Frame ══════════════════════════════════════════════════════════════════
+let hoverSwitch=false, hoverDial=false;
+function frameDraw(){
+  const r=cvs.getBoundingClientRect();
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,r.width,r.height);
+  ctx.setTransform(dpr*scale,0,0,dpr*scale,offx*dpr,offy*dpr);
+
+  // external loop wire
+  drawWire([[LEAD_SOURCE_X,SOURCE_C.y],[LEAD_SOURCE_X,WIRE_Y],[BATTERY.x,WIRE_Y]]);
+  drawWire([[BATTERY.x+BATTERY.w,WIRE_Y],[SWITCH.x-SWITCH.gap/2,WIRE_Y]]);
+  drawWire([[SWITCH.x+SWITCH.gap/2,WIRE_Y],[LEAD_DRAIN_X,WIRE_Y],[LEAD_DRAIN_X,DRAIN_C.y]]);
+  drawWireLoopElectrons();
+
+  drawSubstrate();
+  drawFieldGlow();
+  drawChannel();
+  drawOxideAndGate();
+
+  drawPoolWindowBezel(SOURCE_WIN); drawPoolWindowBezel(DRAIN_WIN);
+  drawPoolGlassBack(SOURCE_WIN); drawPoolGlassBack(DRAIN_WIN);
+  drawPoolElectrons(SOURCE_WIN,srcParts,0.9);
+  drawSourcePoolLoopElectrons();
+  drawPoolElectrons(DRAIN_WIN,drnParts,0.9);
+  drawDrainPoolLoopElectrons();
+  drawPoolGlassFront(SOURCE_WIN); drawPoolGlassFront(DRAIN_WIN);
+  drawPoolLabel(SOURCE_WIN,'SOURCE (n+)'); drawPoolLabel(DRAIN_WIN,'DRAIN (n+)');
+
+  drawBattery();
+  drawSwitch(hoverSwitch);
+  drawBulb();
+  drawVgsDial(hoverDial);
+}
+let last=performance.now();
+function tick(now){ let dt=(now-last)/1000; last=now; dt=Math.min(dt,0.05); step(dt); t+=dt; frameDraw(); }
+function loop(now){ tick(now); requestAnimationFrame(loop); }
+tick(performance.now()); requestAnimationFrame(loop);
+setInterval(()=>{ if(document.hidden) tick(performance.now()); }, 120);
+try{ if(location.hash==='#dev'){ window.__tick=tick; window.__S=S; } }catch(e){}
+
+// ═══ Interaction ════════════════════════════════════════════════════════════
+function toWorld(e){ const r=cvs.getBoundingClientRect();
+  return { x:(e.clientX-r.left-offx)/scale, y:(e.clientY-r.top-offy)/scale }; }
+function onSwitch(p){ return Math.hypot(p.x-SWITCH.x,p.y-SWITCH.y)<26; }
+function onDial(p){ return Math.hypot(p.x-DIAL.x,p.y-DIAL.y)<DIAL.R+14; }
+function setVgs(p){
+  const dx=p.x-DIAL.x, dy=p.y-DIAL.y;
+  let frac;
+  if(dy<=0){
+    let phi=Math.atan2(dy,dx);
+    if(phi>0) phi-=Math.PI*2;
+    frac=phi/Math.PI+1;
+  } else {
+    frac=dx<0?0:1;
+  }
+  S.vgs=Math.max(0,Math.min(1,frac));
+}
+let drag=null;
+cvs.addEventListener('pointermove',e=>{ const p=toWorld(e);
+  if(drag==='dial'){ setVgs(p); }
+  else { hoverSwitch=onSwitch(p); hoverDial=onDial(p);
+    cvs.style.cursor=hoverSwitch?'pointer':hoverDial?'grab':'default'; }
+});
+cvs.addEventListener('pointerdown',e=>{ const p=toWorld(e); cvs.setPointerCapture(e.pointerId);
+  if(onSwitch(p)){ S.switchOn=S.switchOn>0.5?0:1; }
+  else if(onDial(p)){ drag='dial'; setVgs(p); }
+});
+window.addEventListener('pointerup',()=>{ drag=null; });
+
+// ═══ Reset / Beamer+ integration ════════════════════════════════════════════
+function doReset(all){ if(all!==false){ S.switchOn=1; S.vgs=0.55; }
+  S.glow=0; switchVis=S.switchOn; chGVis=0;
+  loopParts.forEach((pt,i)=>{ pt.u=(i+Math.random()*0.6)/LOOP_N; });
+}
+function applyConfig(cfg){ if(!cfg) return;
+  if(typeof cfg.vgs==='number') S.vgs=cfg.vgs;
+  doReset(false);
+}
+applyConfig(window.WIDGET_CONFIG);
+window.addEventListener('message',e=>{ const d=e.data; if(!d) return;
+  const wid=(window.WIDGET_CONFIG&&window.WIDGET_CONFIG.id)||'mosfet-widget';
+  if(d.type==='widget-config') applyConfig(d.config);
+  else if(d.type==='widget-get-state')
+    window.parent.postMessage({type:'widget-state',widgetId:wid,state:{
+      vgs:S.vgs,switchOn:S.switchOn}},'*');
+  else if(d.type==='widget-set-state'&&d.state){ const s=d.state;
+    if(typeof s.vgs==='number')S.vgs=s.vgs;
+    if(typeof s.switchOn==='number')S.switchOn=s.switchOn;
+  }
+});
+})();
+</script>
+</body>
+</html>

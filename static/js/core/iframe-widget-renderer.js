@@ -60,7 +60,45 @@ const _WIDGET_BASE_INJECT = `<link rel="preconnect" href="https://fonts.googleap
     --accent-bg:  #2a2a28;
   }
 }
-</style>`;
+</style>
+<script id="widget-nav-bridge">
+(function () {
+  // Forwards ArrowLeft/ArrowRight/PageUp/PageDown to the parent frame so the
+  // presentation can advance slides even when a widget iframe has focus.
+  // Native DOM events don't bubble across an iframe boundary, so this can't
+  // be done by the parent's own document-level keydown listener — each
+  // widget has to opt back out itself.
+  //
+  // A widget that wants to own these keys for its own purposes (paging,
+  // seeking, etc.) just needs to call e.preventDefault() in its own keydown
+  // handler; we check e.defaultPrevented (via a deferred callback, so it
+  // doesn't matter whether the widget's handler was registered before or
+  // after this one) and skip forwarding if so.
+  var NAV_KEYS = { ArrowLeft: 1, ArrowRight: 1, PageUp: 1, PageDown: 1 };
+
+  function isEditable(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (!NAV_KEYS[e.key]) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Defer: let any other keydown listener on this event (regardless of
+    // registration order) run first and call preventDefault() if it wants
+    // to handle the key itself.
+    setTimeout(function () {
+      if (e.defaultPrevented) return;
+      if (isEditable(document.activeElement)) return;
+      try { parent.postMessage({ type: 'widget-nav', key: e.key }, '*'); } catch (_) {}
+    }, 0);
+  });
+})();
+</script>`;
 
 // ── Widget schema protocol ─────────────────────────────────────────────────
 // Each widget HTML file may declare its own editable fields via:

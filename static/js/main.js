@@ -390,6 +390,16 @@ function wireKeyboardNav() {
             if (key && e.key === key) document.querySelectorAll('#pen-slots .pen-slot-btn')[i]?.click();
         });
     });
+
+    // Widget iframes can't bubble keydown events out to this document, so
+    // widgets forward unhandled nav keys via postMessage instead (see
+    // widget-nav-bridge injected in iframe-widget-renderer.js).
+    window.addEventListener('message', (e) => {
+        if (e.data?.type !== 'widget-nav') return;
+        const key = e.data.key;
+        if (key === 'ArrowLeft'  || key === 'PageUp')   goToSlide(state.currentSlide - 1, 'back');
+        if (key === 'ArrowRight' || key === 'PageDown') goToSlide(state.currentSlide + 1, 'forward');
+    });
 }
 
 function wireMenuBtn() {

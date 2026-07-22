@@ -241,10 +241,14 @@ function App() {
   useEffect(() => {
     if (!stepMode || target === null || !steps.length) return;
     const fn = e => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown')
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
         setStepIdx(i => { const n = Math.min(i + 1, steps.length - 1); setAnim(Object.assign({}, steps[n])); return n; });
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
         setStepIdx(i => { const n = Math.max(i - 1, 0); setAnim(Object.assign({}, steps[n])); return n; });
+      }
     };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);

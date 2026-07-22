@@ -414,8 +414,8 @@ function nextSummary() { if (currentResults && currentIdx < currentResults.summa
 
 document.addEventListener('keydown', e => {
   if (phase !== 'results') return;
-  if (e.key === 'ArrowLeft') prevSummary();
-  if (e.key === 'ArrowRight') nextSummary();
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); prevSummary(); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); nextSummary(); }
 });
 
 async function updateConfig(c) {
