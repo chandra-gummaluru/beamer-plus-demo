@@ -400,6 +400,44 @@ export function initTextAnnotations(state) {
         // whatever tool/pen was active before Text was selected.
         closeActiveEditor(state, true, true);
     }, true);
+
+    // Clicking an existing text box with the Hand tool reopens it for editing
+    // too — you shouldn't have to reselect the Text tool just to fix a typo.
+    // The annotation canvas has pointer-events:none in Hand mode (so clicks
+    // pass through to widgets/video underneath), so this can't just be a
+    // canvas click listener — it has to check every hand-mode pointerdown
+    // against the known box positions itself, before anything under it reacts.
+    document.addEventListener('pointerdown', (e) => {
+        if (state.annotationTool !== 'hand' || state._textEditor) return;
+
+        const panes = [
+            { cvs: state.annCvs,  pdf: document.getElementById('pdf-canvas') },
+            { cvs: state.annCvs2, pdf: document.getElementById('pdf-canvas-2') },
+        ];
+        for (const { cvs, pdf } of panes) {
+            if (!cvs || !pdf) continue;
+            const rect = pdf.getBoundingClientRect();
+            if (!rect.width || !rect.height) continue;
+            if (e.clientX < rect.left || e.clientX > rect.right ||
+                e.clientY < rect.top  || e.clientY > rect.bottom) continue;
+
+            const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            const slideIdx = slideIndexForCvs(cvs, state);
+            const hit = findBoxAt(state, slideIdx, pos);
+            if (!hit) continue;
+
+            // Keep whatever's underneath (a widget, a video) from also
+            // reacting to this same click.
+            e.preventDefault();
+            e.stopPropagation();
+            // Switch into the Text tool so all the usual editing machinery —
+            // size sidebar, widget click-through, revert-to-Hand on close —
+            // applies exactly as if the user had selected Text themselves.
+            document.querySelector('#tool-container .tool-btn[data-tool="text"]')?.click();
+            openTextEditor(cvs, state, pos);
+            return;
+        }
+    }, true);
 }
 
 // Wires a single annotation Canvas instance (left or right pane) so a click
