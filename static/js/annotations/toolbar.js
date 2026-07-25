@@ -14,9 +14,10 @@ export function initToolbar(state) {
             const shapeSidebar = document.getElementById('shape-sidebar');
             if (shapeSidebar) shapeSidebar.style.display =
                 btn.dataset.tool === 'shape' ? 'flex' : 'none';
-            const textSidebar = document.getElementById('text-size-sidebar');
-            if (textSidebar) textSidebar.style.display =
-                btn.dataset.tool === 'text' ? 'flex' : 'none';
+            // Note: the text-size sidebar is deliberately NOT shown here —
+            // it only appears once a textbox is actually open (see
+            // main.js's textbox:opened/closed listeners), not just because
+            // the Text tool got selected.
             bus.emit('tool:change', btn.dataset.tool);
         });
     });

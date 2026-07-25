@@ -263,7 +263,7 @@ function applyDefaultPen() {
     state.annotationTool = 'hand';
     forEachAnnCvs(c => c.setPointerMode('hand'));
     setShapeSidebarVisible(false);
-    setTextSidebarVisible(false);
+    setTextToolActive(false);
     clearToolSelection();
     handBtn?.classList.add('btn_selected');
     // Applied directly (not via a button click) since wireHandButton() hasn't
@@ -283,7 +283,7 @@ function wireHandButton() {
         state.annotationTool = 'hand';
         forEachAnnCvs(c => c.setPointerMode('hand'));
         setShapeSidebarVisible(false);
-        setTextSidebarVisible(false);
+        setTextToolActive(false);
         clearToolSelection();
         btn.classList.add('btn_selected');
     });
@@ -305,7 +305,7 @@ function wireEraserButton() {
         state.annotationTool = 'erase';
         forEachAnnCvs(c => c.setPointerMode('erase'));
         setShapeSidebarVisible(false);
-        setTextSidebarVisible(false);
+        setTextToolActive(false);
         clearToolSelection();
         btn.classList.add('btn_selected');
     });
@@ -324,7 +324,7 @@ bus.on('pen:select', (pen) => {
         c.setStrokeWidth(pen.size);
     });
     setShapeSidebarVisible(false);
-    setTextSidebarVisible(false);
+    setTextToolActive(false);
 });
 
 /* bus: tool:change from toolbar module */
@@ -336,7 +336,7 @@ bus.on('tool:change', (tool) => {
     const mode = modeMap[tool] || 'hand';
     forEachAnnCvs(c => c.setPointerMode(mode));
     if (tool !== 'shape') setShapeSidebarVisible(false);
-    if (tool !== 'text') setTextSidebarVisible(false);
+    setTextToolActive(tool === 'text');
     setWidgetInteractivityForSpotlight(tool === 'spotlight');
     if (tool !== 'spotlight') hideSpotlight(true);
 });
@@ -354,15 +354,23 @@ function setShapeSidebarVisible(visible) {
     document.body.classList.toggle('shape-tools-visible', visible);
 }
 
-function setTextSidebarVisible(visible) {
+// While the text tool is active, the annotation canvas needs to sit above
+// widgets/video/model-viewer so a tap over them places text instead of
+// interacting with the widget (see annotations.css for the z-index rule).
+// This tracks tool selection, not whether a box is actually open.
+function setTextToolActive(active) {
+    document.body.classList.toggle('text-tool-active', active);
+}
+
+// The size-dot sidebar, by contrast, should only show once a box is actually
+// open for editing — not just because the Text tool is selected.
+function setTextSizeSidebarVisible(visible) {
     const sidebar = document.getElementById('text-size-sidebar');
     if (sidebar) sidebar.style.display = visible ? 'flex' : 'none';
     document.body.classList.toggle('text-tool-visible', visible);
-    // While the text tool is active, the annotation canvas needs to sit above
-    // widgets/video/model-viewer so a tap over them places text instead of
-    // interacting with the widget (see annotations.css for the z-index rule).
-    document.body.classList.toggle('text-tool-active', visible);
 }
+bus.on('textbox:opened', () => setTextSizeSidebarVisible(true));
+bus.on('textbox:closed', () => setTextSizeSidebarVisible(false));
 
 /* ─── undo / redo / clear ─────────────────────────────────────── */
 function wireUndoRedo() {

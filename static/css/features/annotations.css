@@ -284,11 +284,37 @@ body.text-tool-active #ann-canvas-2 {
 /* ============================================================
    Text annotation editor — transient DOM textarea shown on click
    with the text tool active; baked onto the canvas bitmap on commit.
+   Wrapper holds both the drag handle and the textarea so the two move
+   together, and is what actually carries the on-canvas position.
    ============================================================ */
-.text-annotation-editor {
+.text-annotation-wrapper {
     position: absolute;
     z-index: 50;
     pointer-events: auto;
+}
+
+.text-annotation-drag-handle {
+    position: absolute;
+    top: -24px;
+    left: 0;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: var(--line-hairline);
+    border-radius: var(--r-sm);
+    background: var(--accent);
+    color: var(--ink-on-accent);
+    cursor: grab;
+    touch-action: none;
+    box-shadow: var(--shadow-1);
+}
+.text-annotation-drag-handle:active { cursor: grabbing; }
+.text-annotation-drag-handle svg { width: 13px; height: 13px; }
+
+.text-annotation-editor {
+    display: block;
     min-width: 120px;
     min-height: 1.4em;
     margin: 0;

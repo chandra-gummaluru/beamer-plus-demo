@@ -199,6 +199,8 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox) {
 }
 
 /* ─── the floating DOM editor ──────────────────────────────────────────── */
+const MOVE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>`;
+
 function autoGrow(box) {
     box.style.height = 'auto';
     box.style.height = `${box.scrollHeight}px`;
@@ -212,6 +214,14 @@ function autoGrow(box) {
     document.body.appendChild(probe);
     box.style.width = `${Math.max(120, probe.offsetWidth + 24)}px`;
     probe.remove();
+}
+
+function clampPos(cvs, x, y) {
+    const rect = cvs.canvas.getBoundingClientRect();
+    return {
+        x: Math.max(0, Math.min(x, Math.max(0, rect.width - 130))),
+        y: Math.max(0, Math.min(y, Math.max(0, rect.height - 32))),
+    };
 }
 
 function openTextEditor(cvs, state, pos) {
@@ -229,28 +239,43 @@ function openTextEditor(cvs, state, pos) {
     const editingBox = findBoxAt(state, slideIdx, pos);
 
     const size = editingBox ? editingBox.size : (state.textSize || 'regular');
-    const startX = editingBox ? editingBox.x : pos.x;
-    const startY = editingBox ? editingBox.y : pos.y;
+    const start = clampPos(cvs, editingBox ? editingBox.x : pos.x, editingBox ? editingBox.y : pos.y);
+
+    // Editing an existing box: lift its current pixels out immediately so the
+    // live textarea (which shows the text being retyped) isn't rendered on
+    // top of a still-visible copy underneath it — that's what made it look
+    // like the text had doubled. Keep the snapshot so Escape can put it back
+    // exactly as it was, since nothing is committed to canvas history here.
+    let restoreSnapshot = null;
+    if (editingBox) {
+        const ctx = cvs.ctx;
+        restoreSnapshot = ctx.getImageData(editingBox.x, editingBox.y, editingBox.w, editingBox.h);
+        ctx.clearRect(editingBox.x, editingBox.y, editingBox.w, editingBox.h);
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'text-annotation-wrapper';
+    wrapper.style.left = `${start.x}px`;
+    wrapper.style.top = `${start.y}px`;
+
+    const handle = document.createElement('div');
+    handle.className = 'text-annotation-drag-handle';
+    handle.title = 'Drag to move';
+    handle.innerHTML = MOVE_ICON;
 
     const box = document.createElement('textarea');
     box.className = 'text-annotation-editor';
     box.rows = 1;
     box.spellcheck = false;
     box.placeholder = 'Type… $$x^2$$ for math';
+    box.style.fontSize = `${SIZE_PX[size] || SIZE_PX.regular}px`;
     if (editingBox) box.value = editingBox.text;
 
-    // Keep the box from opening mostly off the edge of the slide when the
-    // user clicks near the right/bottom border.
-    const rect = cvs.canvas.getBoundingClientRect();
-    const clampedX = Math.max(0, Math.min(startX, Math.max(0, rect.width - 130)));
-    const clampedY = Math.max(0, Math.min(startY, Math.max(0, rect.height - 32)));
-    box.style.left = `${clampedX}px`;
-    box.style.top = `${clampedY}px`;
-    box.style.fontSize = `${SIZE_PX[size] || SIZE_PX.regular}px`;
+    wrapper.appendChild(handle);
+    wrapper.appendChild(box);
+    container.appendChild(wrapper);
 
-    container.appendChild(box);
-
-    const entry = { box, cvs, size, editingBox, slideIdx };
+    const entry = { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot };
     state._textEditor = entry;
 
     autoGrow(box);
@@ -284,6 +309,34 @@ function openTextEditor(cvs, state, pos) {
         if (state._textEditor === entry) closeActiveEditor(state, true, true);
     });
 
+    // Drag handle — repositions the whole wrapper while editing. Position is
+    // read back straight off the wrapper's style when the box closes, so a
+    // drag just before committing/cancelling behaves exactly like any other
+    // placement.
+    let dragOffset = null;
+    handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        const canvasRect = cvs.canvas.getBoundingClientRect();
+        const wrapX = parseFloat(wrapper.style.left) || 0;
+        const wrapY = parseFloat(wrapper.style.top) || 0;
+        dragOffset = { x: e.clientX - canvasRect.left - wrapX, y: e.clientY - canvasRect.top - wrapY };
+    });
+    handle.addEventListener('pointermove', (e) => {
+        if (!dragOffset) return;
+        const canvasRect = cvs.canvas.getBoundingClientRect();
+        const next = clampPos(cvs, e.clientX - canvasRect.left - dragOffset.x, e.clientY - canvasRect.top - dragOffset.y);
+        wrapper.style.left = `${next.x}px`;
+        wrapper.style.top = `${next.y}px`;
+    });
+    const endDrag = (e) => {
+        if (!dragOffset) return;
+        dragOffset = null;
+        handle.releasePointerCapture(e.pointerId);
+    };
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+
     bus.emit('textbox:opened');
 }
 
@@ -303,15 +356,20 @@ function closeActiveEditor(state, commit, revert = false) {
     if (!entry) return Promise.resolve();
     state._textEditor = null;
 
-    const { box, cvs, size, editingBox, slideIdx } = entry;
+    const { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot } = entry;
     const text = box.value;
-    const x = parseFloat(box.style.left) || 0;
-    const y = parseFloat(box.style.top) || 0;
-    box.remove();
+    const x = parseFloat(wrapper.style.left) || 0;
+    const y = parseFloat(wrapper.style.top) || 0;
+    wrapper.remove();
+    bus.emit('textbox:closed');
 
-    // Cancelling an edit (Escape) leaves the original box exactly as it was —
-    // nothing was drawn or cleared yet, so there's nothing to undo.
+    // Cancelling an edit (Escape): put the original pixels we lifted out back
+    // exactly as they were — nothing was committed to canvas history in the
+    // meantime, so there's nothing else to undo.
     if (!commit) {
+        if (editingBox && restoreSnapshot) {
+            cvs.ctx.putImageData(restoreSnapshot, editingBox.x, editingBox.y);
+        }
         if (revert) restorePreviousSelection();
         return Promise.resolve();
     }
@@ -393,7 +451,7 @@ export function initTextAnnotations(state) {
     document.addEventListener('pointerdown', (e) => {
         const entry = state._textEditor;
         if (!entry) return;
-        if (e.target === entry.box) return;
+        if (entry.wrapper.contains(e.target)) return;   // the box itself, or its drag handle
         if (e.target.closest && e.target.closest('#text-size-sidebar')) return;
         // Text is a one-shot tool: any click away from the box — the canvas,
         // a toolbar button, anywhere — commits it and hands control back to
