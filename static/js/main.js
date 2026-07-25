@@ -143,6 +143,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initUploader(state);
     initEditor(state);
     initSettings();
+    // Must run before applyDefaultPen(): that call emits a 'tool:change' to
+    // sync other modules' tracked "previous tool" state (see below), and
+    // spotlight.js's own 'tool:change' handler dereferences state that only
+    // exists once initSpotlight(state) has run.
+    initSpotlight(state);
 
     // pen + hand defaults
     applyDefaultPen();
@@ -156,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
     wireKeyboardNav();
     wireResizeAndFullscreen();
     wireMenuBtn();
-    initSpotlight(state);
 
     // annotation sync + active-pane tracking
     state.activeAnnCvs = state.annCvs;
