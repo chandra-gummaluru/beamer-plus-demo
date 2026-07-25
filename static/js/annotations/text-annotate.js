@@ -278,7 +278,13 @@ function openTextEditor(cvs, state, pos) {
         // click handler refocuses the box right after.
         const next = e.relatedTarget;
         if (next && next.closest && next.closest('#text-size-sidebar')) return;
-        if (state._textEditor === entry) closeActiveEditor(state, true);
+        // Only fires here if the pointerdown-capture listener below didn't
+        // already handle this (e.g. Tab-key or programmatic focus changes,
+        // rather than a click) — the canvas isn't a focus target, so if we
+        // get here it's a genuine "away" case, not a same-canvas continuation.
+        if (state._textEditor === entry) {
+            closeActiveEditor(state, true).then(() => restorePreviousSelection());
+        }
     });
 
     bus.emit('textbox:opened');
@@ -314,6 +320,32 @@ function closeActiveEditor(state, commit) {
         }
         bus.emit('textbox:committed');
     });
+}
+
+/* ─── remember the tool/pen active before Text was selected ──────────── */
+// Text is a "place one box and you're done" tool (like Spotlight — see
+// slides/spotlight.js for the same pattern): once you click away from it,
+// switch back automatically instead of leaving Text selected. Pens don't fire
+// 'tool:change' (only 'pen:select'), so both are tracked to restore whichever
+// was really active, not just a generic fallback.
+let _prevSelection = { kind: 'tool', value: 'hand' };
+
+bus.on('tool:change', (tool) => {
+    if (tool !== 'text') _prevSelection = { kind: 'tool', value: tool };
+});
+bus.on('pen:select', (pen) => {
+    _prevSelection = { kind: 'pen', value: pen.slot };
+});
+
+// Re-clicks the actual button/pen-slot so its own click handler runs exactly
+// as if the user had picked it themselves (selection highlight, canvas mode,
+// sidebar visibility, etc. all stay in sync automatically).
+function restorePreviousSelection() {
+    if (_prevSelection.kind === 'pen') {
+        document.querySelectorAll('#pen-slots .pen-slot-btn')[_prevSelection.value]?.click();
+    } else {
+        document.querySelector(`#tool-container .tool-btn[data-tool="${_prevSelection.value}"]`)?.click();
+    }
 }
 
 /* ─── public API ────────────────────────────────────────────────────── */
@@ -355,7 +387,16 @@ export function initTextAnnotations(state) {
         if (!entry) return;
         if (e.target === entry.box) return;
         if (e.target.closest && e.target.closest('#text-size-sidebar')) return;
-        closeActiveEditor(state, true);
+
+        // A click elsewhere on the same annotation canvas (either pane) is
+        // still "using the text tool" — placing the next box, or reopening an
+        // existing one — so stay in Text for that. Anywhere else means the
+        // user is done, so commit and switch back to whatever was active
+        // before Text was selected.
+        const onAnnCanvas = e.target === state.annCvs?.canvas || e.target === state.annCvs2?.canvas;
+        closeActiveEditor(state, true).then(() => {
+            if (!onAnnCanvas) restorePreviousSelection();
+        });
     }, true);
 }
 
