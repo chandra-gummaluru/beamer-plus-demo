@@ -224,14 +224,26 @@ function clampPos(cvs, x, y) {
     };
 }
 
+// The wrapper is positioned with `position: fixed` (viewport coordinates), not
+// `position: absolute` relative to whatever DOM ancestor it happens to sit
+// under. That ancestor's own box (padding, centering, containing-block rules)
+// is otherwise easy to get subtly wrong — and that's exactly what caused the
+// editor to show up in the wrong spot (see the #text-size-sidebar fix
+// earlier). `pos` is always canvas-relative CSS px; this just projects it to
+// screen space fresh, every time, off the canvas's actual current rect.
+function applyWrapperPos(cvs, wrapper, pos) {
+    const rect = cvs.canvas.getBoundingClientRect();
+    wrapper.style.left = `${rect.left + pos.x}px`;
+    wrapper.style.top = `${rect.top + pos.y}px`;
+}
+
 function openTextEditor(cvs, state, pos) {
     // Starting a new box while one is already open commits the old one first
     // (rather than discarding it) — clicking around to drop several text
     // boxes shouldn't lose whatever was already typed.
     closeActiveEditor(state, true);
 
-    const container = cvs.canvas.parentElement;
-    if (!container) return;
+    const container = document.body;
 
     // Tapping inside an existing box's footprint reopens it for editing
     // (pre-filled) instead of stamping a new box on top of it.
@@ -255,8 +267,6 @@ function openTextEditor(cvs, state, pos) {
 
     const wrapper = document.createElement('div');
     wrapper.className = 'text-annotation-wrapper';
-    wrapper.style.left = `${start.x}px`;
-    wrapper.style.top = `${start.y}px`;
 
     const handle = document.createElement('div');
     handle.className = 'text-annotation-drag-handle';
@@ -275,9 +285,14 @@ function openTextEditor(cvs, state, pos) {
     wrapper.appendChild(box);
     container.appendChild(wrapper);
 
-    const entry = { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot };
+    // entry.pos is the single source of truth for where the box lives, always
+    // in canvas-relative CSS px — the wrapper's actual on-screen (fixed)
+    // position is just a projection of it, recomputed on open and on every
+    // drag move rather than read back out of computed style.
+    const entry = { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot, pos: { ...start } };
     state._textEditor = entry;
 
+    applyWrapperPos(cvs, wrapper, entry.pos);
     autoGrow(box);
     box.focus();
     if (editingBox) {
@@ -309,8 +324,9 @@ function openTextEditor(cvs, state, pos) {
         if (state._textEditor === entry) closeActiveEditor(state, true, true);
     });
 
-    // Drag handle — repositions the whole wrapper while editing. Position is
-    // read back straight off the wrapper's style when the box closes, so a
+    // Drag handle — repositions the whole wrapper while editing. Everything
+    // is computed in canvas-relative space (matching entry.pos, the source of
+    // truth), then projected to screen coordinates via applyWrapperPos — a
     // drag just before committing/cancelling behaves exactly like any other
     // placement.
     let dragOffset = null;
@@ -318,16 +334,17 @@ function openTextEditor(cvs, state, pos) {
         e.preventDefault();
         handle.setPointerCapture(e.pointerId);
         const canvasRect = cvs.canvas.getBoundingClientRect();
-        const wrapX = parseFloat(wrapper.style.left) || 0;
-        const wrapY = parseFloat(wrapper.style.top) || 0;
-        dragOffset = { x: e.clientX - canvasRect.left - wrapX, y: e.clientY - canvasRect.top - wrapY };
+        const clickX = e.clientX - canvasRect.left;
+        const clickY = e.clientY - canvasRect.top;
+        dragOffset = { x: clickX - entry.pos.x, y: clickY - entry.pos.y };
     });
     handle.addEventListener('pointermove', (e) => {
         if (!dragOffset) return;
         const canvasRect = cvs.canvas.getBoundingClientRect();
-        const next = clampPos(cvs, e.clientX - canvasRect.left - dragOffset.x, e.clientY - canvasRect.top - dragOffset.y);
-        wrapper.style.left = `${next.x}px`;
-        wrapper.style.top = `${next.y}px`;
+        const clickX = e.clientX - canvasRect.left;
+        const clickY = e.clientY - canvasRect.top;
+        entry.pos = clampPos(cvs, clickX - dragOffset.x, clickY - dragOffset.y);
+        applyWrapperPos(cvs, wrapper, entry.pos);
     });
     const endDrag = (e) => {
         if (!dragOffset) return;
@@ -356,10 +373,9 @@ function closeActiveEditor(state, commit, revert = false) {
     if (!entry) return Promise.resolve();
     state._textEditor = null;
 
-    const { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot } = entry;
+    const { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot, pos } = entry;
     const text = box.value;
-    const x = parseFloat(wrapper.style.left) || 0;
-    const y = parseFloat(wrapper.style.top) || 0;
+    const { x, y } = pos;
     wrapper.remove();
     bus.emit('textbox:closed');
 

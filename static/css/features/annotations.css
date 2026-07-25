@@ -288,8 +288,15 @@ body.text-tool-active #ann-canvas-2 {
    together, and is what actually carries the on-canvas position.
    ============================================================ */
 .text-annotation-wrapper {
-    position: absolute;
-    z-index: 50;
+    /* Fixed (viewport) coordinates, not absolute-relative-to-ancestor — the
+       JS recomputes left/top off the canvas's actual getBoundingClientRect()
+       every time it (re)positions this, so there's no dependence on which
+       element happens to be its nearest positioned ancestor. It's appended
+       to <body> (see openTextEditor), so it also needs its own z-index high
+       enough to clear the text tool's z-index:550 boost on #ann-canvas —
+       just under the toolbar/sidebar (560) so those stay clickable. */
+    position: fixed;
+    z-index: 555;
     pointer-events: auto;
 }
 
