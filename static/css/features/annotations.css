@@ -176,6 +176,105 @@ body.split-view-active #annotation-undo-redo {
 #shape-sidebar svg { color: currentColor; }
 
 /* ============================================================
+   Text-size sidebar (small / regular / large dots)
+   Slides out next to the main toolbar when the text tool is active —
+   same flyout treatment as the shape sidebar.
+   ============================================================ */
+#text-size-sidebar {
+    display: none;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: oklch(99% 0.003 80 / 0.86);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    border: var(--line-hairline);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-3);
+    position: fixed;
+    top: 50%;
+    right: calc(var(--sp-3) + var(--toolbar-w) + var(--sp-3));
+    transform: translateY(-50%);
+    z-index: 229;
+    align-items: center;
+}
+
+#text-size-sidebar .btn {
+    width: var(--hit-min);
+    height: var(--hit-min);
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    border-radius: var(--r-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#text-size-sidebar .btn:hover {
+    background: var(--surface-cream-2);
+    border-color: oklch(82% 0.005 260);
+}
+
+#text-size-sidebar .btn.btn_selected {
+    background: var(--accent);
+    border-color: var(--accent-strong);
+}
+
+.text-size-dot {
+    display: block;
+    border-radius: 50%;
+    background: var(--ink-1);
+}
+#text-size-sidebar .btn.btn_selected .text-size-dot { background: var(--ink-on-accent); }
+.text-size-dot--small   { width: 6px;  height: 6px; }
+.text-size-dot--regular { width: 11px; height: 11px; }
+.text-size-dot--large   { width: 17px; height: 17px; }
+
+body.split-view-active #text-size-sidebar {
+    top: calc(var(--sp-3) + var(--hit-min) + var(--sp-3));
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: row;
+}
+
+@media (max-width: 1024px) {
+    #text-size-sidebar {
+        top: auto;
+        bottom: calc(100px + var(--sp-3) + var(--hit-min) + var(--sp-3) + 8px);
+        right: 50%;
+        transform: translateX(50%);
+        flex-direction: row;
+    }
+}
+
+/* ============================================================
+   Text annotation editor — transient DOM textarea shown on click
+   with the text tool active; baked onto the canvas bitmap on commit.
+   ============================================================ */
+.text-annotation-editor {
+    position: absolute;
+    z-index: 50;
+    pointer-events: auto;
+    min-width: 120px;
+    min-height: 1.4em;
+    margin: 0;
+    padding: 2px 4px;
+    box-sizing: content-box;
+    resize: none;
+    overflow: hidden;
+    border: 1px dashed var(--accent);
+    border-radius: var(--r-sm);
+    background: oklch(99% 0.003 80 / 0.55);
+    color: var(--ink-1);
+    font-family: Arial, Helvetica, sans-serif;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    outline: none;
+}
+
+/* ============================================================
    Spotlight overlay
    ============================================================ */
 .spotlight-overlay {

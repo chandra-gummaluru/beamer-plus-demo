@@ -10,6 +10,9 @@ export function initToolbar(state) {
             const shapeSidebar = document.getElementById('shape-sidebar');
             if (shapeSidebar) shapeSidebar.style.display =
                 btn.dataset.tool === 'shape' ? 'flex' : 'none';
+            const textSidebar = document.getElementById('text-size-sidebar');
+            if (textSidebar) textSidebar.style.display =
+                btn.dataset.tool === 'text' ? 'flex' : 'none';
             bus.emit('tool:change', btn.dataset.tool);
         });
     });

@@ -13,6 +13,7 @@ import { updateWidgetPositions,
 import { initToolbar } from './annotations/toolbar.js';
 import { initPenSlots } from './annotations/pen-slots.js';
 import { initShapeTools } from './annotations/shape-tools.js';
+import { initTextAnnotations, wireTextCanvas, commitOpenTextEditor } from './annotations/text-annotate.js';
 
 import { initNavigator } from './slides/navigator.js';
 import { initThumbnails } from './slides/thumbnails.js';
@@ -116,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     state.annCvs = new Canvas(annContainer, true);
     state.pdfCvs = new Canvas(pdfContainer, false);
+    wireTextCanvas(state.annCvs, state);
     state.annCvs.setHistoryChangeHandler(updateHistoryBtns);
     updateHistoryBtns();
     sizeSlideCanvases();   // set pixel-exact 4:3 dimensions before any render
@@ -136,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initToolbar(state);
     initPenSlots(state);
     initShapeTools(state);
+    initTextAnnotations(state);
     initUploader(state);
     initEditor(state);
     initSettings();
@@ -259,6 +262,7 @@ function applyDefaultPen() {
     state.annotationTool = 'hand';
     forEachAnnCvs(c => c.setPointerMode('hand'));
     setShapeSidebarVisible(false);
+    setTextSidebarVisible(false);
     clearToolSelection();
     handBtn?.classList.add('btn_selected');
 }
@@ -267,9 +271,11 @@ function wireHandButton() {
     const btn = document.querySelector('[data-tool="hand"], #hand-btn');
     if (!btn) return;
     btn.addEventListener('click', () => {
+        commitOpenTextEditor(state);
         state.annotationTool = 'hand';
         forEachAnnCvs(c => c.setPointerMode('hand'));
         setShapeSidebarVisible(false);
+        setTextSidebarVisible(false);
         clearToolSelection();
         btn.classList.add('btn_selected');
     });
@@ -286,9 +292,11 @@ function wireEraserButton() {
     }, 550);
     btn.addEventListener('click', () => {
         if (held) { held = false; return; }
+        commitOpenTextEditor(state);
         state.annotationTool = 'erase';
         forEachAnnCvs(c => c.setPointerMode('erase'));
         setShapeSidebarVisible(false);
+        setTextSidebarVisible(false);
         clearToolSelection();
         btn.classList.add('btn_selected');
     });
@@ -300,22 +308,26 @@ function clearToolSelection() {
 
 /* bus: pen:select from pen-slots module */
 bus.on('pen:select', (pen) => {
+    commitOpenTextEditor(state);
     forEachAnnCvs(c => {
         c.setPointerMode(pen.mode === 'highlight' ? 'highlight' : 'draw');
         c.setStrokeColor(pen.color);
         c.setStrokeWidth(pen.size);
     });
     setShapeSidebarVisible(false);
+    setTextSidebarVisible(false);
 });
 
 /* bus: tool:change from toolbar module */
 bus.on('tool:change', (tool) => {
+    if (tool !== 'text') commitOpenTextEditor(state);
     state.annotationTool = tool;
     // Map toolbar tool names to canvas pointer modes
-    const modeMap = { eraser: 'erase', laser: 'hand', select: 'hand', shape: 'shape', hand: 'hand', spotlight: 'hand' };
+    const modeMap = { eraser: 'erase', laser: 'hand', select: 'hand', shape: 'shape', hand: 'hand', spotlight: 'hand', text: 'text' };
     const mode = modeMap[tool] || 'hand';
     forEachAnnCvs(c => c.setPointerMode(mode));
     if (tool !== 'shape') setShapeSidebarVisible(false);
+    if (tool !== 'text') setTextSidebarVisible(false);
     setWidgetInteractivityForSpotlight(tool === 'spotlight');
     if (tool !== 'spotlight') hideSpotlight(true);
 });
@@ -331,6 +343,12 @@ function setShapeSidebarVisible(visible) {
     const sidebar = document.getElementById('shape-sidebar');
     if (sidebar) sidebar.style.display = visible ? 'flex' : 'none';
     document.body.classList.toggle('shape-tools-visible', visible);
+}
+
+function setTextSidebarVisible(visible) {
+    const sidebar = document.getElementById('text-size-sidebar');
+    if (sidebar) sidebar.style.display = visible ? 'flex' : 'none';
+    document.body.classList.toggle('text-tool-visible', visible);
 }
 
 /* ─── undo / redo / clear ─────────────────────────────────────── */
@@ -466,6 +484,7 @@ function wireSplitViewButton(annContainer2, pdfContainer2) {
     const btn = document.getElementById('split-toggle');
     if (!btn) return;
     btn.addEventListener('click', async () => {
+        await commitOpenTextEditor(state);
         const enteringSplit = !state.splitView;
         // Save before setSplitActive — resizeOnly() inside it clears the canvas
         saveCurrentAnnotations();
@@ -588,6 +607,7 @@ bus.on('slide:next', () => goToSlide(state.currentSlide + 1, 'forward'));
 bus.on('slide:prev', () => goToSlide(state.currentSlide - 1, 'back'));
 bus.on('slide:goto-right', async (i) => {
     if (!state.splitView || i === state.currentSlide) return;
+    await commitOpenTextEditor(state);
     saveCurrentAnnotations();
     _slideOverlay(true)?.classList.add('visible');
     state.rightSlideIndex = i;
@@ -598,6 +618,7 @@ bus.on('slide:goto-right', async (i) => {
 
 async function goToSlide(i, direction = null, isSplitPaneNav = false) {
     if (i < 0 || i >= state.slideStructure.length) return;
+    await commitOpenTextEditor(state);
 
     // A direct jump (bookmark, thumbnail click, tour, etc.) that targets the
     // slide already showing in the right pane would put the same slide on
@@ -737,6 +758,7 @@ async function setSplitActive(active, rightIndex = null, splitRatio = null) {
         if (!state.annCvs2) {
             state.annCvs2 = new Canvas(annContainer2, true);
             state.pdfCvs2 = new Canvas(pdfContainer2, false);
+            wireTextCanvas(state.annCvs2, state);
             state.annCvs2.setHistoryChangeHandler(updateHistoryBtns);
             wireAnnCanvasActivation(state.annCvs2);
         }

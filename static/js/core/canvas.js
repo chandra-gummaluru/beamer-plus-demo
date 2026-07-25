@@ -150,6 +150,14 @@ export class Canvas {
             document.addEventListener('pointerup', this._onUp);
             document.addEventListener('pointercancel', this._onUp);
             this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Text tool: a plain click (no drag) places a textbox. Kept separate
+            // from the draw pipeline above — 'text' mode is a no-op there.
+            this.canvas.addEventListener('click', e => {
+                if (this.pointer_mode === 'text' && this.onTextPlace) {
+                    this.onTextPlace(this.getPos(e));
+                }
+            });
         }
     }
 
@@ -391,7 +399,7 @@ export class Canvas {
     }
 
     startDraw(e) {
-        if (this.pointer_mode === "hand") return;
+        if (this.pointer_mode === "hand" || this.pointer_mode === "text") return;
         if (!e.isPrimary) return;
         e.preventDefault();
 
@@ -517,7 +525,7 @@ export class Canvas {
     }
 
     draw(e) {
-        if (this.pointer_mode === "hand") return;
+        if (this.pointer_mode === "hand" || this.pointer_mode === "text") return;
         if (!e.isPrimary || !this.drawing) return;
         e.preventDefault();
 
@@ -571,7 +579,7 @@ export class Canvas {
     }
 
     stopDraw(e) {
-        if (this.pointer_mode === "hand") return;
+        if (this.pointer_mode === "hand" || this.pointer_mode === "text") return;
         if (!this.drawing) return;
 
         this.drawing = false;
