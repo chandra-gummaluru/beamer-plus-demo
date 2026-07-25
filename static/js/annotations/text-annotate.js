@@ -186,8 +186,14 @@ function openTextEditor(cvs, state, pos) {
     box.rows = 1;
     box.spellcheck = false;
     box.placeholder = 'Type… $$x^2$$ for math';
-    box.style.left = `${pos.x}px`;
-    box.style.top = `${pos.y}px`;
+
+    // Keep the box from opening mostly off the edge of the slide when the
+    // user clicks near the right/bottom border.
+    const rect = cvs.canvas.getBoundingClientRect();
+    const clampedX = Math.max(0, Math.min(pos.x, Math.max(0, rect.width - 130)));
+    const clampedY = Math.max(0, Math.min(pos.y, Math.max(0, rect.height - 32)));
+    box.style.left = `${clampedX}px`;
+    box.style.top = `${clampedY}px`;
     box.style.fontSize = `${SIZE_PX[size] || SIZE_PX.regular}px`;
 
     container.appendChild(box);

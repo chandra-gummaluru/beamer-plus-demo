@@ -24,7 +24,18 @@
     gap: var(--sp-2);
     box-shadow: var(--shadow-3);
     pointer-events: auto;
-    overflow: visible;
+    /* More tool groups than fit a short viewport should scroll internally
+       rather than spill past the screen edge (this rail is vertically
+       centered, so it has equal room to grow above and below). */
+    max-height: 92vh;
+    overflow-y: auto;
+    overflow-x: visible;
+    scrollbar-width: thin;
+}
+#floating-annotation-toolbar::-webkit-scrollbar { width: 4px; }
+#floating-annotation-toolbar::-webkit-scrollbar-thumb {
+    background: oklch(70% 0.005 260 / 0.4);
+    border-radius: var(--r-pill);
 }
 
 #tool-container,

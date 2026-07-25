@@ -150,14 +150,6 @@ export class Canvas {
             document.addEventListener('pointerup', this._onUp);
             document.addEventListener('pointercancel', this._onUp);
             this.canvas.addEventListener('contextmenu', e => e.preventDefault());
-
-            // Text tool: a plain click (no drag) places a textbox. Kept separate
-            // from the draw pipeline above — 'text' mode is a no-op there.
-            this.canvas.addEventListener('click', e => {
-                if (this.pointer_mode === 'text' && this.onTextPlace) {
-                    this.onTextPlace(this.getPos(e));
-                }
-            });
         }
     }
 
@@ -399,8 +391,19 @@ export class Canvas {
     }
 
     startDraw(e) {
-        if (this.pointer_mode === "hand" || this.pointer_mode === "text") return;
+        if (this.pointer_mode === "hand") return;
         if (!e.isPrimary) return;
+
+        // Text tool: track the down point/time ourselves rather than relying on
+        // the browser's synthetic 'click' event (which pointer-capture / touch-
+        // action interactions can suppress). stopDraw() below turns this into a
+        // textbox placement if the pointer didn't move much before releasing.
+        if (this.pointer_mode === "text") {
+            this._textDownPos = this.getPos(e);
+            this._textDownTime = Date.now();
+            return;
+        }
+
         e.preventDefault();
 
         // Capture pointer so events keep flowing even if pointer leaves canvas
@@ -579,7 +582,21 @@ export class Canvas {
     }
 
     stopDraw(e) {
-        if (this.pointer_mode === "hand" || this.pointer_mode === "text") return;
+        if (this.pointer_mode === "hand") return;
+
+        if (this.pointer_mode === "text") {
+            const down = this._textDownPos;
+            this._textDownPos = null;
+            this._textDownTime = null;
+            if (!down || !this.onTextPlace) return;
+            // Only a small pointer movement between down and up counts as a tap —
+            // a longer drag (e.g. panning) shouldn't drop a textbox.
+            const up = (e.clientX !== 0 || e.clientY !== 0) ? this.getPos(e) : down;
+            const moved = this.distance(down, up);
+            if (moved < 8) this.onTextPlace(down);
+            return;
+        }
+
         if (!this.drawing) return;
 
         this.drawing = false;
