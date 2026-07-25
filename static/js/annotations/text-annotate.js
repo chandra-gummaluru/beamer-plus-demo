@@ -268,7 +268,7 @@ function openTextEditor(cvs, state, pos) {
         e.stopPropagation();
         if (e.key === 'Escape') {
             e.preventDefault();
-            closeActiveEditor(state, false);
+            closeActiveEditor(state, false, true);
         }
     });
 
@@ -280,11 +280,8 @@ function openTextEditor(cvs, state, pos) {
         if (next && next.closest && next.closest('#text-size-sidebar')) return;
         // Only fires here if the pointerdown-capture listener below didn't
         // already handle this (e.g. Tab-key or programmatic focus changes,
-        // rather than a click) — the canvas isn't a focus target, so if we
-        // get here it's a genuine "away" case, not a same-canvas continuation.
-        if (state._textEditor === entry) {
-            closeActiveEditor(state, true).then(() => restorePreviousSelection());
-        }
+        // rather than a click).
+        if (state._textEditor === entry) closeActiveEditor(state, true, true);
     });
 
     bus.emit('textbox:opened');
@@ -294,7 +291,14 @@ function openTextEditor(cvs, state, pos) {
 // been rasterized and committed to the canvas's history — callers that read
 // a snapshot right after (goToSlide, split-view toggle, …) need to wait for
 // this, since LaTeX segments render asynchronously (MathJax load + typeset).
-function closeActiveEditor(state, commit) {
+//
+// `revert`, when true, switches back to whichever tool/pen was active before
+// Text was selected — Text is a one-shot "place a box, you're done" tool, so
+// finishing one (by committing or cancelling) hands control back automatically.
+// Internal callers that are about to open another editor right away (e.g.
+// re-clicking to place the next box while the previous one is still open)
+// pass revert=false so that in-progress hand-off isn't interrupted.
+function closeActiveEditor(state, commit, revert = false) {
     const entry = state._textEditor;
     if (!entry) return Promise.resolve();
     state._textEditor = null;
@@ -307,7 +311,10 @@ function closeActiveEditor(state, commit) {
 
     // Cancelling an edit (Escape) leaves the original box exactly as it was —
     // nothing was drawn or cleared yet, so there's nothing to undo.
-    if (!commit) return Promise.resolve();
+    if (!commit) {
+        if (revert) restorePreviousSelection();
+        return Promise.resolve();
+    }
 
     return commitTextAnnotation(cvs, x, y, text, size, editingBox).then((dims) => {
         const boxes = boxesForSlide(state, slideIdx);
@@ -319,6 +326,7 @@ function closeActiveEditor(state, commit) {
             boxes.push({ x, y, w: dims.width, h: dims.height, size, text });
         }
         bus.emit('textbox:committed');
+        if (revert) restorePreviousSelection();
     });
 }
 
@@ -387,16 +395,10 @@ export function initTextAnnotations(state) {
         if (!entry) return;
         if (e.target === entry.box) return;
         if (e.target.closest && e.target.closest('#text-size-sidebar')) return;
-
-        // A click elsewhere on the same annotation canvas (either pane) is
-        // still "using the text tool" — placing the next box, or reopening an
-        // existing one — so stay in Text for that. Anywhere else means the
-        // user is done, so commit and switch back to whatever was active
-        // before Text was selected.
-        const onAnnCanvas = e.target === state.annCvs?.canvas || e.target === state.annCvs2?.canvas;
-        closeActiveEditor(state, true).then(() => {
-            if (!onAnnCanvas) restorePreviousSelection();
-        });
+        // Text is a one-shot tool: any click away from the box — the canvas,
+        // a toolbar button, anywhere — commits it and hands control back to
+        // whatever tool/pen was active before Text was selected.
+        closeActiveEditor(state, true, true);
     }, true);
 }
 

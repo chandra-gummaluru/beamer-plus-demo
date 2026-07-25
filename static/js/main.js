@@ -266,6 +266,13 @@ function applyDefaultPen() {
     setTextSidebarVisible(false);
     clearToolSelection();
     handBtn?.classList.add('btn_selected');
+    // Applied directly (not via a button click) since wireHandButton() hasn't
+    // registered its listener yet at this point in bootstrap — but still
+    // announce it on the bus so modules that track "the last real tool"
+    // (text-annotate's revert-on-commit, spotlight's restore-on-click) see
+    // 'hand' as the true starting point rather than whatever initPenSlots'
+    // one-time default-pen click happened to leave behind.
+    bus.emit('tool:change', 'hand');
 }
 
 function wireHandButton() {
