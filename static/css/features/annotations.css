@@ -17,7 +17,11 @@
     border: var(--line-hairline);
     border-radius: var(--r-lg);
     padding: var(--sp-2);
-    z-index: 230;
+    /* Above the text tool's z-index:550 boost on #ann-canvas (below) — the
+       toolbar itself must stay clickable even while that boost is active,
+       including on the mobile layout where the (horizontal) toolbar bar can
+       sit over the bottom edge of the slide. */
+    z-index: 560;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -206,7 +210,9 @@ body.split-view-active #annotation-undo-redo {
     top: 50%;
     right: calc(var(--sp-3) + var(--toolbar-w) + var(--sp-3));
     transform: translateY(-50%);
-    z-index: 229;
+    /* Only ever shown while the text tool's z-index:550 canvas boost (below)
+       is also active, so it needs to clear that too. */
+    z-index: 560;
     align-items: center;
 }
 
@@ -258,6 +264,21 @@ body.split-view-active #text-size-sidebar {
         transform: translateX(50%);
         flex-direction: row;
     }
+}
+
+/* ============================================================
+   Text tool — let it reach through widgets
+   With the text tool active, the annotation canvas needs to sit above any
+   widget/video/model-viewer on the slide so a tap over them places text
+   instead of interacting with the widget. model-viewer forces its own
+   pointer-events:auto (!important) so this can't be solved by toggling
+   pointer-events on the widgets themselves — raising the annotation canvas
+   above the highest widget z-index (500, see iframe-widget-renderer.js /
+   media.js) wins the hit-test regardless of the widget's own pointer-events.
+   ============================================================ */
+body.text-tool-active #ann-canvas,
+body.text-tool-active #ann-canvas-2 {
+    z-index: 550;
 }
 
 /* ============================================================

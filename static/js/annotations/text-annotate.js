@@ -87,6 +87,34 @@ async function texToImage(tex, fontSizePx) {
     });
 }
 
+/* ─── per-slide box bookkeeping (for "reclick to edit") ───────────────── */
+// The rendered pixels for a committed box live only in the canvas bitmap (same
+// as every other annotation tool), but we keep lightweight metadata — where it
+// is, how big, and its raw text — so a later tap in that spot can reopen it
+// instead of stamping a new box on top. This is in-memory only (not part of
+// the saved ZIP), so it survives navigation within a session but a box is no
+// longer separately editable after a fresh reload — it's just baked-in ink at
+// that point, like anything else drawn on the canvas.
+function boxesForSlide(state, slideIdx) {
+    if (!state.textBoxes) state.textBoxes = {};
+    if (!state.textBoxes[slideIdx]) state.textBoxes[slideIdx] = [];
+    return state.textBoxes[slideIdx];
+}
+
+function slideIndexForCvs(cvs, state) {
+    return cvs === state.annCvs2 ? state.rightSlideIndex : state.currentSlide;
+}
+
+function findBoxAt(state, slideIdx, pos) {
+    const boxes = boxesForSlide(state, slideIdx);
+    // Search newest-first so overlapping boxes resolve to the most recent one.
+    for (let i = boxes.length - 1; i >= 0; i--) {
+        const b = boxes[i];
+        if (pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) return b;
+    }
+    return null;
+}
+
 /* ─── $$...$$ parsing ──────────────────────────────────────────────────── */
 function parseLineSegments(line) {
     const segments = [];
@@ -103,9 +131,20 @@ function parseLineSegments(line) {
 }
 
 /* ─── rasterize the finished box onto the annotation canvas ──────────── */
-async function commitTextAnnotation(cvs, x, y, rawText, size) {
+// If `oldBox` is given (editing an existing box), its old footprint is erased
+// first. Returns the new box's measured {width, height} so the caller can
+// update the hit-test metadata, or null if nothing was drawn (empty text).
+async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox) {
+    const ctx = cvs.ctx;
     const text = rawText.replace(/\r\n/g, '\n');
-    if (!text.trim()) return;
+
+    if (oldBox) {
+        ctx.clearRect(oldBox.x, oldBox.y, oldBox.w, oldBox.h);
+    }
+    if (!text.trim()) {
+        if (oldBox) cvs.commitHistory();   // editing down to empty = delete
+        return null;
+    }
 
     const fontSizePx = SIZE_PX[size] || SIZE_PX.regular;
     const lineHeight = fontSizePx * 1.35;
@@ -121,10 +160,10 @@ async function commitTextAnnotation(cvs, x, y, rawText, size) {
         }
     }
 
-    const ctx = cvs.ctx;
     ctx.save();
     ctx.textBaseline = 'alphabetic';
 
+    let maxWidth = 0;
     let baselineY = y + fontSizePx * 0.95;
     for (const segs of linesSegments) {
         let cursorX = x;
@@ -149,10 +188,14 @@ async function commitTextAnnotation(cvs, x, y, rawText, size) {
                 cursorX += ctx.measureText(fallback).width;
             }
         }
+        maxWidth = Math.max(maxWidth, cursorX - x);
         baselineY += lineHeight;
     }
     ctx.restore();
     cvs.commitHistory();
+
+    const totalHeight = linesSegments.length * lineHeight + fontSizePx * 0.4;
+    return { width: Math.max(1, maxWidth), height: Math.max(1, totalHeight) };
 }
 
 /* ─── the floating DOM editor ──────────────────────────────────────────── */
@@ -180,29 +223,42 @@ function openTextEditor(cvs, state, pos) {
     const container = cvs.canvas.parentElement;
     if (!container) return;
 
-    const size = state.textSize || 'regular';
+    // Tapping inside an existing box's footprint reopens it for editing
+    // (pre-filled) instead of stamping a new box on top of it.
+    const slideIdx = slideIndexForCvs(cvs, state);
+    const editingBox = findBoxAt(state, slideIdx, pos);
+
+    const size = editingBox ? editingBox.size : (state.textSize || 'regular');
+    const startX = editingBox ? editingBox.x : pos.x;
+    const startY = editingBox ? editingBox.y : pos.y;
+
     const box = document.createElement('textarea');
     box.className = 'text-annotation-editor';
     box.rows = 1;
     box.spellcheck = false;
     box.placeholder = 'Type… $$x^2$$ for math';
+    if (editingBox) box.value = editingBox.text;
 
     // Keep the box from opening mostly off the edge of the slide when the
     // user clicks near the right/bottom border.
     const rect = cvs.canvas.getBoundingClientRect();
-    const clampedX = Math.max(0, Math.min(pos.x, Math.max(0, rect.width - 130)));
-    const clampedY = Math.max(0, Math.min(pos.y, Math.max(0, rect.height - 32)));
+    const clampedX = Math.max(0, Math.min(startX, Math.max(0, rect.width - 130)));
+    const clampedY = Math.max(0, Math.min(startY, Math.max(0, rect.height - 32)));
     box.style.left = `${clampedX}px`;
     box.style.top = `${clampedY}px`;
     box.style.fontSize = `${SIZE_PX[size] || SIZE_PX.regular}px`;
 
     container.appendChild(box);
 
-    const entry = { box, cvs, size };
+    const entry = { box, cvs, size, editingBox, slideIdx };
     state._textEditor = entry;
 
     autoGrow(box);
     box.focus();
+    if (editingBox) {
+        const len = box.value.length;
+        box.setSelectionRange(len, len);   // cursor at end, ready to append/fix
+    }
 
     box.addEventListener('input', () => autoGrow(box));
 
@@ -237,16 +293,27 @@ function closeActiveEditor(state, commit) {
     if (!entry) return Promise.resolve();
     state._textEditor = null;
 
-    const { box, cvs, size } = entry;
+    const { box, cvs, size, editingBox, slideIdx } = entry;
     const text = box.value;
     const x = parseFloat(box.style.left) || 0;
     const y = parseFloat(box.style.top) || 0;
     box.remove();
 
-    if (commit && text.trim()) {
-        return commitTextAnnotation(cvs, x, y, text, size).then(() => bus.emit('textbox:committed'));
-    }
-    return Promise.resolve();
+    // Cancelling an edit (Escape) leaves the original box exactly as it was —
+    // nothing was drawn or cleared yet, so there's nothing to undo.
+    if (!commit) return Promise.resolve();
+
+    return commitTextAnnotation(cvs, x, y, text, size, editingBox).then((dims) => {
+        const boxes = boxesForSlide(state, slideIdx);
+        if (editingBox) {
+            const i = boxes.indexOf(editingBox);
+            if (i !== -1) boxes.splice(i, 1);
+        }
+        if (dims) {
+            boxes.push({ x, y, w: dims.width, h: dims.height, size, text });
+        }
+        bus.emit('textbox:committed');
+    });
 }
 
 /* ─── public API ────────────────────────────────────────────────────── */
@@ -307,4 +374,16 @@ export function wireTextCanvas(cvs, state) {
 // Returns a promise — await it before reading/saving a canvas snapshot.
 export function commitOpenTextEditor(state) {
     return closeActiveEditor(state, true);
+}
+
+// Forget the reclick-to-edit metadata for one slide — call wherever the
+// annotation bitmap itself gets wiped (Clear All, eraser hold-to-clear) so a
+// later tap doesn't "find" a box that no longer has any pixels.
+export function clearTextBoxes(state, slideIdx) {
+    if (state.textBoxes) state.textBoxes[slideIdx] = [];
+}
+
+// Forget every slide's metadata — call when a new/different presentation loads.
+export function resetAllTextBoxes(state) {
+    state.textBoxes = {};
 }

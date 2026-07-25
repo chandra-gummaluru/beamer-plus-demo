@@ -13,7 +13,8 @@ import { updateWidgetPositions,
 import { initToolbar } from './annotations/toolbar.js';
 import { initPenSlots } from './annotations/pen-slots.js';
 import { initShapeTools } from './annotations/shape-tools.js';
-import { initTextAnnotations, wireTextCanvas, commitOpenTextEditor } from './annotations/text-annotate.js';
+import { initTextAnnotations, wireTextCanvas, commitOpenTextEditor,
+         clearTextBoxes, resetAllTextBoxes } from './annotations/text-annotate.js';
 
 import { initNavigator } from './slides/navigator.js';
 import { initThumbnails } from './slides/thumbnails.js';
@@ -289,6 +290,7 @@ function wireEraserButton() {
         held = true;
         activeAnnCvs().clearAndCommit();
         state.annotations[activeAnnSlide()] = null;
+        clearTextBoxes(state, activeAnnSlide());
     }, 550);
     btn.addEventListener('click', () => {
         if (held) { held = false; return; }
@@ -349,6 +351,10 @@ function setTextSidebarVisible(visible) {
     const sidebar = document.getElementById('text-size-sidebar');
     if (sidebar) sidebar.style.display = visible ? 'flex' : 'none';
     document.body.classList.toggle('text-tool-visible', visible);
+    // While the text tool is active, the annotation canvas needs to sit above
+    // widgets/video/model-viewer so a tap over them places text instead of
+    // interacting with the widget (see annotations.css for the z-index rule).
+    document.body.classList.toggle('text-tool-active', visible);
 }
 
 /* ─── undo / redo / clear ─────────────────────────────────────── */
@@ -369,6 +375,7 @@ function wireAnnotationClear() {
     document.getElementById('annotation-clear-btn')?.addEventListener('click', () => {
         activeAnnCvs().clearAndCommit();
         state.annotations[activeAnnSlide()] = null;
+        clearTextBoxes(state, activeAnnSlide());
     });
 }
 
@@ -1249,6 +1256,7 @@ export async function loadZipPresentation(file) {
         state.currentSlide   = 0;
         state.slideConfigs   = {}; resetMediaCache();
         state.annotations    = {};
+        resetAllTextBoxes(state);
         state.bookmarks      = {};
         if (state.editorNewFiles) state.editorNewFiles = {};
 
@@ -1307,6 +1315,7 @@ export async function loadPdfPresentation(file) {
         state.currentSlide   = 0;
         state.slideConfigs   = {}; resetMediaCache();
         state.annotations    = {};
+        resetAllTextBoxes(state);
         state.bookmarks      = {};
 
         await renderLogicalSlide(0);

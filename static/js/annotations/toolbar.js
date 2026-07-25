@@ -5,7 +5,11 @@ export function initToolbar(state) {
     const tools = document.querySelectorAll('#tool-container .tool-btn');
     tools.forEach(btn => {
         btn.addEventListener('click', () => {
-            tools.forEach(b => b.classList.toggle('btn_selected', b === btn));
+            // Clear selection across the whole rail, not just the buttons this
+            // module queried at init — pen slots are added afterwards (by
+            // initPenSlots) and have their own 'btn_selected' class to clear too.
+            document.querySelectorAll('#tool-container .btn').forEach(b => b.classList.remove('btn_selected'));
+            btn.classList.add('btn_selected');
             state.annotationTool = btn.dataset.tool;
             const shapeSidebar = document.getElementById('shape-sidebar');
             if (shapeSidebar) shapeSidebar.style.display =
