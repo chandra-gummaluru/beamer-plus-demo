@@ -22,6 +22,9 @@ const MATHJAX_SRC = '/static/vendor/mathjax/tex-svg.js';
 // text) needs this same offset, or the committed ink lands to the left of
 // where it visually sat while editing. Keep in sync with the CSS.
 const EDITOR_INSET = { x: 5, y: 3 };   // border(1) + padding-left(4) / padding-top(2)
+// Must match .text-annotation-editor's line-height in annotations.css — the
+// canvas has to stack its lines on exactly the same rhythm the textarea used.
+const LINE_HEIGHT_RATIO = 1.35;
 
 /* ─── MathJax (lazy-loaded, offline, SVG output) ──────────────────────── */
 // SVG output is used (rather than KaTeX's HTML+webfont output) specifically
@@ -115,12 +118,20 @@ function slideIndexForCvs(cvs, state) {
     return cvs === state.annCvs2 ? state.rightSlideIndex : state.currentSlide;
 }
 
+// A box's `rect` is the footprint of its painted ink (what to hit-test and
+// what to erase); its `x`/`y` is the text origin (where to re-anchor the
+// editor). They're deliberately separate — rendered math can spill outside
+// the editor box that produced it.
+function eraseRect(box) {
+    return box.rect || { x: box.x, y: box.y, w: box.w || 1, h: box.h || 1 };
+}
+
 function findBoxAt(state, slideIdx, pos) {
     const boxes = boxesForSlide(state, slideIdx);
     // Search newest-first so overlapping boxes resolve to the most recent one.
     for (let i = boxes.length - 1; i >= 0; i--) {
-        const b = boxes[i];
-        if (pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) return b;
+        const r = eraseRect(boxes[i]);
+        if (pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h) return boxes[i];
     }
     return null;
 }
@@ -140,16 +151,40 @@ function parseLineSegments(line) {
     return segments;
 }
 
+/* ─── matching the textarea's line box exactly ───────────────────────── */
+// A CSS line box puts the baseline at half-leading + ascent from its top:
+// the font's content area (ascent+descent) is centered inside line-height,
+// and the glyphs sit on the baseline within it. Reproducing that formula —
+// with the real font metrics the browser itself reports, rather than a
+// hand-tuned fudge factor — is what makes the committed ink land on the same
+// pixel row the text occupied while it was being typed.
+function firstBaselineOffset(ctx, fontSizePx, lineHeight) {
+    let ascent = fontSizePx * 0.905;    // Arial fallbacks, used only if the
+    let descent = fontSizePx * 0.212;   // browser doesn't report the metrics
+    try {
+        const m = ctx.measureText('Hxg');
+        if (m.fontBoundingBoxAscent != null && m.fontBoundingBoxDescent != null) {
+            ascent = m.fontBoundingBoxAscent;
+            descent = m.fontBoundingBoxDescent;
+        }
+    } catch { /* keep the fallbacks */ }
+    return { ascent, descent, baseline: (lineHeight - (ascent + descent)) / 2 + ascent };
+}
+
 /* ─── rasterize the finished box onto the annotation canvas ──────────── */
 // If `oldBox` is given (editing an existing box), its old footprint is erased
-// first. Returns the new box's measured {width, height} so the caller can
-// update the hit-test metadata, or null if nothing was drawn (empty text).
+// first. Returns the drawn ink's bounding {x, y, w, h} so the caller can
+// update the hit-test/erase metadata, or null if nothing was drawn (empty
+// text). Note this rect is *not* the same as the (x, y) origin passed in:
+// rendered math can be wider than the editor box was, so the ink can extend
+// past the box on either side.
 async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox, boxWidth) {
     const ctx = cvs.ctx;
     const text = rawText.replace(/\r\n/g, '\n');
 
     if (oldBox) {
-        ctx.clearRect(oldBox.x, oldBox.y, oldBox.w, oldBox.h);
+        const r = eraseRect(oldBox);
+        ctx.clearRect(r.x, r.y, r.w, r.h);
     }
     if (!text.trim()) {
         if (oldBox) cvs.commitHistory();   // editing down to empty = delete
@@ -157,7 +192,7 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox, boxWidth) 
     }
 
     const fontSizePx = SIZE_PX[size] || SIZE_PX.regular;
-    const lineHeight = fontSizePx * 1.35;
+    const lineHeight = fontSizePx * LINE_HEIGHT_RATIO;
     const linesSegments = text.split('\n').map(parseLineSegments);
 
     // Pre-render every math segment before touching the canvas — drawImage
@@ -189,31 +224,47 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox, boxWidth) 
         }
         return w;
     });
-    // Center within the editor box's own width when we have it, not just the
-    // tightest-fit measurement of the rendered content — see the comment at
-    // the closeActiveEditor() call site for why these can legitimately differ.
-    const maxWidth = Math.max(1, boxWidth || 0, ...lineWidths);
+    // Center within the *editor box's* own width — the exact box the user
+    // watched their text sit centered inside — rather than a width re-derived
+    // from the rendered content. The two legitimately differ (a math image is
+    // a different width than the "$…$" source that was typed), and centering
+    // in the re-derived one is what visibly slid the text sideways on commit.
+    const layoutWidth = Math.max(1, boxWidth || 0, ...(boxWidth ? [] : lineWidths));
 
-    let baselineY = y + fontSizePx * 0.95;
+    const metrics = firstBaselineOffset(ctx, fontSizePx, lineHeight);
+    let baselineY = y + metrics.baseline;
+
+    // Track what was actually painted so the erase/hit rect covers the ink
+    // even where it overflows the editor box (wide math, descenders).
+    let minX = x, maxX = x + layoutWidth;
+    let minY = y, maxY = y + linesSegments.length * lineHeight;
+    const mark = (x0, x1, y0, y1) => {
+        if (x0 < minX) minX = x0;
+        if (x1 > maxX) maxX = x1;
+        if (y0 < minY) minY = y0;
+        if (y1 > maxY) maxY = y1;
+    };
+
     linesSegments.forEach((segs, i) => {
-        let cursorX = x + (maxWidth - lineWidths[i]) / 2;
+        let cursorX = x + (layoutWidth - lineWidths[i]) / 2;
         for (const seg of segs) {
-            if (seg.type === 'text') {
-                if (!seg.value) continue;
+            if (seg.type === 'text' || !seg.rendered) {
+                // Plain text, or a math segment MathJax couldn't render — in
+                // that case fall back to the raw markup rather than silently
+                // dropping it.
+                const value = seg.type === 'text' ? seg.value : `$${seg.value}$`;
+                if (!value) continue;
                 ctx.fillStyle = TEXT_COLOR;
-                ctx.fillText(seg.value, cursorX, baselineY);
-                cursorX += ctx.measureText(seg.value).width;
-            } else if (seg.rendered) {
+                ctx.fillText(value, cursorX, baselineY);
+                const w = ctx.measureText(value).width;
+                mark(cursorX, cursorX + w, baselineY - metrics.ascent, baselineY + metrics.descent);
+                cursorX += w;
+            } else {
                 const { img, width, height, baselineFromTop } = seg.rendered;
-                ctx.drawImage(img, cursorX, baselineY - baselineFromTop, width, height);
+                const top = baselineY - baselineFromTop;
+                ctx.drawImage(img, cursorX, top, width, height);
+                mark(cursorX, cursorX + width, top, top + height);
                 cursorX += width + 2;
-            } else if (seg.value) {
-                // MathJax failed to load/parse — fall back to the raw markup
-                // rather than silently dropping it.
-                const fallback = `$${seg.value}$`;
-                ctx.fillStyle = TEXT_COLOR;
-                ctx.fillText(fallback, cursorX, baselineY);
-                cursorX += ctx.measureText(fallback).width;
             }
         }
         baselineY += lineHeight;
@@ -221,26 +272,39 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox, boxWidth) 
     ctx.restore();
     cvs.commitHistory();
 
-    const totalHeight = linesSegments.length * lineHeight + fontSizePx * 0.4;
-    return { width: Math.max(1, maxWidth), height: Math.max(1, totalHeight) };
+    const pad = 2;
+    return {
+        x: Math.max(0, minX - pad),
+        y: Math.max(0, minY - pad),
+        w: Math.max(1, maxX - minX + pad * 2),
+        h: Math.max(1, maxY - minY + pad * 2),
+    };
 }
 
 /* ─── the floating DOM editor ──────────────────────────────────────────── */
 const MOVE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>`;
 
 function autoGrow(box) {
-    box.style.height = 'auto';
-    box.style.height = `${box.scrollHeight}px`;
-
-    const lines = box.value.split('\n');
-    const longest = lines.reduce((a, b) => (b.length > a.length ? b : a), '');
     const probe = document.createElement('span');
     probe.style.cssText = 'visibility:hidden;position:fixed;left:-9999px;white-space:pre;';
     probe.style.font = `${box.style.fontSize} ${FONT_FAMILY}`;
-    probe.textContent = longest || box.placeholder || '';
     document.body.appendChild(probe);
-    box.style.width = `${Math.max(120, probe.offsetWidth + 24)}px`;
+
+    // Measure every line, not just the one with the most characters — narrow
+    // characters can make a longer string physically shorter, and any line
+    // wider than the box would soft-wrap, which the committed render (which
+    // never wraps) wouldn't reproduce.
+    let widest = 0;
+    for (const line of (box.value || box.placeholder || '').split('\n')) {
+        probe.textContent = line;
+        if (probe.offsetWidth > widest) widest = probe.offsetWidth;
+    }
     probe.remove();
+    box.style.width = `${Math.max(120, widest + 24)}px`;
+
+    // Height after width — scrollHeight depends on the width just set.
+    box.style.height = 'auto';
+    box.style.height = `${box.scrollHeight}px`;
 }
 
 function clampPos(cvs, x, y) {
@@ -294,8 +358,15 @@ function openTextEditor(cvs, state, pos) {
     let restoreSnapshot = null;
     if (editingBox) {
         const ctx = cvs.ctx;
-        restoreSnapshot = ctx.getImageData(editingBox.x, editingBox.y, editingBox.w, editingBox.h);
-        ctx.clearRect(editingBox.x, editingBox.y, editingBox.w, editingBox.h);
+        const r = eraseRect(editingBox);
+        // getImageData works in device pixels; the context is scaled by dpr,
+        // so convert before reading (and put it back the same way on cancel).
+        const dpr = cvs.dpr || 1;
+        const dx = Math.floor(r.x * dpr), dy = Math.floor(r.y * dpr);
+        const dw = Math.max(1, Math.ceil(r.w * dpr) + 1), dh = Math.max(1, Math.ceil(r.h * dpr) + 1);
+        restoreSnapshot = ctx.getImageData(dx, dy, dw, dh);
+        restoreSnapshot._at = { x: dx, y: dy };
+        ctx.clearRect(r.x, r.y, r.w, r.h);
     }
 
     const wrapper = document.createElement('div');
@@ -430,20 +501,21 @@ function closeActiveEditor(state, commit, revert = false) {
     // meantime, so there's nothing else to undo.
     if (!commit) {
         if (editingBox && restoreSnapshot) {
-            cvs.ctx.putImageData(restoreSnapshot, editingBox.x, editingBox.y);
+            const at = restoreSnapshot._at || { x: editingBox.x, y: editingBox.y };
+            cvs.ctx.putImageData(restoreSnapshot, at.x, at.y);
         }
         if (revert) restorePreviousSelection();
         return Promise.resolve();
     }
 
-    return commitTextAnnotation(cvs, x, y, text, size, editingBox, boxWidth).then((dims) => {
+    return commitTextAnnotation(cvs, x, y, text, size, editingBox, boxWidth).then((rect) => {
         const boxes = boxesForSlide(state, slideIdx);
         if (editingBox) {
             const i = boxes.indexOf(editingBox);
             if (i !== -1) boxes.splice(i, 1);
         }
-        if (dims) {
-            boxes.push({ x, y, w: dims.width, h: dims.height, size, text });
+        if (rect) {
+            boxes.push({ x, y, rect, size, text });
         }
         bus.emit('textbox:committed');
         if (revert) restorePreviousSelection();
@@ -521,14 +593,27 @@ export function initTextAnnotations(state) {
         closeActiveEditor(state, true, true);
     }, true);
 
-    // Clicking an existing text box with the Hand tool reopens it for editing
-    // too — you shouldn't have to reselect the Text tool just to fix a typo.
+    // Reopening an existing box without reselecting the Text tool.
+    //
+    //  • Hand tool  — a single tap on a box opens it (there's nothing else a
+    //    tap on ink would mean in Hand mode).
+    //  • Any drawing tool (pen, highlighter, eraser, shape) — a *double* click
+    //    opens it, since single clicks there legitimately draw.
+    //
+    // The mode is read off the canvas itself (cvs.pointer_mode), not
+    // state.annotationTool: picking a pen slot emits 'pen:select' and changes
+    // the canvas mode to 'draw'/'highlight' without touching annotationTool,
+    // which therefore still reads 'hand' while a pen is active.
+    //
     // The annotation canvas has pointer-events:none in Hand mode (so clicks
     // pass through to widgets/video underneath), so this can't just be a
-    // canvas click listener — it has to check every hand-mode pointerdown
-    // against the known box positions itself, before anything under it reacts.
+    // canvas listener — it checks every pointerdown against the known box
+    // positions itself, in the capture phase, before anything under it reacts.
+    const DBL_MS = 450, DBL_SLOP = 14;
+    let lastTap = { t: 0, x: 0, y: 0, historyLen: 0 };
+
     document.addEventListener('pointerdown', (e) => {
-        if (state.annotationTool !== 'hand' || state._textEditor) return;
+        if (state._textEditor || !e.isPrimary) return;
 
         const panes = [
             { cvs: state.annCvs,  pdf: document.getElementById('pdf-canvas') },
@@ -541,22 +626,57 @@ export function initTextAnnotations(state) {
             if (e.clientX < rect.left || e.clientX > rect.right ||
                 e.clientY < rect.top  || e.clientY > rect.bottom) continue;
 
+            // The Text tool reopens boxes on a single click already, via
+            // openTextEditor's own hit test — leave it alone.
+            if (cvs.pointer_mode === 'text') return;
+
             const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
             const slideIdx = slideIndexForCvs(cvs, state);
             const hit = findBoxAt(state, slideIdx, pos);
-            if (!hit) continue;
+            if (!hit) break;
 
-            // Keep whatever's underneath (a widget, a video) from also
-            // reacting to this same click.
+            const drawing = cvs.pointer_mode !== 'hand';
+            // Spotlight / laser / select also run in 'hand' pointer mode but
+            // have their own meaning for a click — don't hijack it.
+            if (!drawing && state.annotationTool !== 'hand') return;
+
+            const now = Date.now();
+            const isSecondClick =
+                now - lastTap.t < DBL_MS &&
+                Math.abs(e.clientX - lastTap.x) < DBL_SLOP &&
+                Math.abs(e.clientY - lastTap.y) < DBL_SLOP;
+
+            if (drawing && !isSecondClick) {
+                // First click of a possible double — let it draw as usual, but
+                // remember where the undo stack was so the second click can
+                // take that stray mark back off.
+                lastTap = { t: now, x: e.clientX, y: e.clientY, historyLen: cvs.history?.length ?? 0 };
+                return;
+            }
+
+            // Keep whatever's underneath (a widget, a video, the canvas's own
+            // draw handler) from also reacting to this same click.
             e.preventDefault();
             e.stopPropagation();
+
+            // If the first click of the double left a dot (pen) or took a bite
+            // out of the text (eraser), roll it back — the user meant "edit
+            // this", not "draw on it".
+            const strayMark = drawing && (cvs.history?.length ?? 0) === lastTap.historyLen + 1;
+            lastTap = { t: 0, x: 0, y: 0, historyLen: 0 };
+
             // Switch into the Text tool so all the usual editing machinery —
-            // size sidebar, widget click-through, revert-to-Hand on close —
-            // applies exactly as if the user had selected Text themselves.
+            // size sidebar, widget click-through, revert-to-previous-tool on
+            // close — applies exactly as if the user had selected Text.
             document.querySelector('#tool-container .tool-btn[data-tool="text"]')?.click();
-            openTextEditor(cvs, state, pos);
+
+            // undo() repaints from a snapshot asynchronously; the editor has to
+            // wait for it, since opening lifts the box's pixels off the canvas.
+            if (strayMark) cvs.undo().then(() => openTextEditor(cvs, state, pos));
+            else openTextEditor(cvs, state, pos);
             return;
         }
+        lastTap = { t: 0, x: 0, y: 0, historyLen: 0 };
     }, true);
 }
 
