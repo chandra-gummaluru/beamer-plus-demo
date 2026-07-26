@@ -134,7 +134,7 @@ function parseLineSegments(line) {
 // If `oldBox` is given (editing an existing box), its old footprint is erased
 // first. Returns the new box's measured {width, height} so the caller can
 // update the hit-test metadata, or null if nothing was drawn (empty text).
-async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox) {
+async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox, boxWidth) {
     const ctx = cvs.ctx;
     const text = rawText.replace(/\r\n/g, '\n');
 
@@ -179,7 +179,10 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox) {
         }
         return w;
     });
-    const maxWidth = Math.max(1, ...lineWidths);
+    // Center within the editor box's own width when we have it, not just the
+    // tightest-fit measurement of the rendered content — see the comment at
+    // the closeActiveEditor() call site for why these can legitimately differ.
+    const maxWidth = Math.max(1, boxWidth || 0, ...lineWidths);
 
     let baselineY = y + fontSizePx * 0.95;
     linesSegments.forEach((segs, i) => {
@@ -390,6 +393,15 @@ function closeActiveEditor(state, commit, revert = false) {
     const { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot, pos } = entry;
     const text = box.value;
     const { x, y } = pos;
+    // The textarea's own (content-box) width is what the user actually saw
+    // centered text sit inside while editing — autoGrow() picked it based on
+    // raw typed characters (including "$…$" markup), which rarely matches
+    // what commitTextAnnotation would measure from the *rendered* content
+    // (a math image is a different width than its source). Passing this
+    // through makes the canvas center within the same box the user watched,
+    // instead of independently re-deriving a (slightly different) width and
+    // visibly shifting the text sideways on commit.
+    const boxWidth = parseFloat(box.style.width) || 0;
     wrapper.remove();
     bus.emit('textbox:closed');
 
@@ -404,7 +416,7 @@ function closeActiveEditor(state, commit, revert = false) {
         return Promise.resolve();
     }
 
-    return commitTextAnnotation(cvs, x, y, text, size, editingBox).then((dims) => {
+    return commitTextAnnotation(cvs, x, y, text, size, editingBox, boxWidth).then((dims) => {
         const boxes = boxesForSlide(state, slideIdx);
         if (editingBox) {
             const i = boxes.indexOf(editingBox);
