@@ -3,7 +3,7 @@
 // Click anywhere on the slide with the text tool active and a small,
 // borderless textbox opens right there. Font is fixed (one simple sans),
 // size is one of three dots (small/regular/large) in the flyout sidebar.
-// Segments wrapped in $$...$$ are rendered as LaTeX (via a vendored,
+// Segments wrapped in $...$ are rendered as LaTeX (via a vendored,
 // offline copy of MathJax's SVG output) and baked onto the annotation
 // canvas bitmap alongside the plain text when the box is committed.
 import { bus } from '../core/events.js';
@@ -23,7 +23,7 @@ function ensureMathJax() {
     if (_mjReadyPromise) return _mjReadyPromise;
 
     window.MathJax = {
-        tex: { inlineMath: [['$$', '$$']] },
+        tex: { inlineMath: [['$', '$']] },
         svg: { fontCache: 'local' },   // each <svg> carries its own glyph defs
         startup: { typeset: false },
     };
@@ -115,10 +115,10 @@ function findBoxAt(state, slideIdx, pos) {
     return null;
 }
 
-/* ─── $$...$$ parsing ──────────────────────────────────────────────────── */
+/* ─── $...$ parsing ──────────────────────────────────────────────────── */
 function parseLineSegments(line) {
     const segments = [];
-    const re = /\$\$([\s\S]+?)\$\$/g;
+    const re = /\$([^$\n]+?)\$/g;
     let lastIndex = 0, m;
     while ((m = re.exec(line))) {
         if (m.index > lastIndex) segments.push({ type: 'text', value: line.slice(lastIndex, m.index) });
@@ -162,15 +162,31 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox) {
 
     ctx.save();
     ctx.textBaseline = 'alphabetic';
+    ctx.font = `${fontSizePx}px ${FONT_FAMILY}`;
 
-    let maxWidth = 0;
+    // Measure each line before drawing anything, so every line can be
+    // centered under the widest one instead of all left-aligned to `x`.
+    const lineWidths = linesSegments.map((segs) => {
+        let w = 0;
+        for (const seg of segs) {
+            if (seg.type === 'text') {
+                if (seg.value) w += ctx.measureText(seg.value).width;
+            } else if (seg.rendered) {
+                w += seg.rendered.width + 2;
+            } else if (seg.value) {
+                w += ctx.measureText(`$${seg.value}$`).width;
+            }
+        }
+        return w;
+    });
+    const maxWidth = Math.max(1, ...lineWidths);
+
     let baselineY = y + fontSizePx * 0.95;
-    for (const segs of linesSegments) {
-        let cursorX = x;
+    linesSegments.forEach((segs, i) => {
+        let cursorX = x + (maxWidth - lineWidths[i]) / 2;
         for (const seg of segs) {
             if (seg.type === 'text') {
                 if (!seg.value) continue;
-                ctx.font = `${fontSizePx}px ${FONT_FAMILY}`;
                 ctx.fillStyle = TEXT_COLOR;
                 ctx.fillText(seg.value, cursorX, baselineY);
                 cursorX += ctx.measureText(seg.value).width;
@@ -181,16 +197,14 @@ async function commitTextAnnotation(cvs, x, y, rawText, size, oldBox) {
             } else if (seg.value) {
                 // MathJax failed to load/parse — fall back to the raw markup
                 // rather than silently dropping it.
-                const fallback = `$$${seg.value}$$`;
-                ctx.font = `${fontSizePx}px ${FONT_FAMILY}`;
+                const fallback = `$${seg.value}$`;
                 ctx.fillStyle = TEXT_COLOR;
                 ctx.fillText(fallback, cursorX, baselineY);
                 cursorX += ctx.measureText(fallback).width;
             }
         }
-        maxWidth = Math.max(maxWidth, cursorX - x);
         baselineY += lineHeight;
-    }
+    });
     ctx.restore();
     cvs.commitHistory();
 
@@ -277,7 +291,7 @@ function openTextEditor(cvs, state, pos) {
     box.className = 'text-annotation-editor';
     box.rows = 1;
     box.spellcheck = false;
-    box.placeholder = 'Type… $$x^2$$ for math';
+    box.placeholder = 'Type… $x^2$ for math';
     box.style.fontSize = `${SIZE_PX[size] || SIZE_PX.regular}px`;
     if (editingBox) box.value = editingBox.text;
 

@@ -336,6 +336,7 @@ body.text-tool-active #ann-canvas-2 {
     font-family: Arial, Helvetica, sans-serif;
     line-height: 1.35;
     white-space: pre-wrap;
+    text-align: center;
     outline: none;
 }
 
