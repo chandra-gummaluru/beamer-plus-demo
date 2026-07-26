@@ -13,6 +13,16 @@ const SIZE_PX = { small: 16, regular: 22, large: 32 };
 const TEXT_COLOR = '#242424';
 const MATHJAX_SRC = '/static/vendor/mathjax/tex-svg.js';
 
+// The editor textarea (.text-annotation-editor, in annotations.css) has a
+// 1px border and "2px 4px" padding, which insets its actual text content box
+// from its wrapper's top-left corner — where text-align:center really does
+// its centering, not the wrapper's own edge. Every place that converts
+// between "wrapper anchor" (used for placing/dragging the DOM box) and
+// "content-box origin" (used for measuring/drawing/storing the rendered
+// text) needs this same offset, or the committed ink lands to the left of
+// where it visually sat while editing. Keep in sync with the CSS.
+const EDITOR_INSET = { x: 5, y: 3 };   // border(1) + padding-left(4) / padding-top(2)
+
 /* ─── MathJax (lazy-loaded, offline, SVG output) ──────────────────────── */
 // SVG output is used (rather than KaTeX's HTML+webfont output) specifically
 // because it's self-contained vector paths — no font metrics/loading race to
@@ -268,7 +278,13 @@ function openTextEditor(cvs, state, pos) {
     const editingBox = findBoxAt(state, slideIdx, pos);
 
     const size = editingBox ? editingBox.size : (state.textSize || 'regular');
-    const start = clampPos(cvs, editingBox ? editingBox.x : pos.x, editingBox ? editingBox.y : pos.y);
+    // editingBox.x/y (like pos) is a content-box origin — where the rendered
+    // ink actually starts — so back it out to the wrapper anchor the DOM box
+    // is placed at; applyWrapperPos() re-adds the same inset implicitly via
+    // the textarea's own border/padding when it's rendered.
+    const targetX = editingBox ? editingBox.x - EDITOR_INSET.x : pos.x;
+    const targetY = editingBox ? editingBox.y - EDITOR_INSET.y : pos.y;
+    const start = clampPos(cvs, targetX, targetY);
 
     // Editing an existing box: lift its current pixels out immediately so the
     // live textarea (which shows the text being retyped) isn't rendered on
@@ -392,7 +408,11 @@ function closeActiveEditor(state, commit, revert = false) {
 
     const { wrapper, box, cvs, size, editingBox, slideIdx, restoreSnapshot, pos } = entry;
     const text = box.value;
-    const { x, y } = pos;
+    // pos is the wrapper's anchor; shift by the same border+padding inset the
+    // textarea itself has, so the canvas draws starting from where the text
+    // content actually visually began, not the wrapper's outer edge.
+    const x = pos.x + EDITOR_INSET.x;
+    const y = pos.y + EDITOR_INSET.y;
     // The textarea's own (content-box) width is what the user actually saw
     // centered text sit inside while editing — autoGrow() picked it based on
     // raw typed characters (including "$…$" markup), which rarely matches
