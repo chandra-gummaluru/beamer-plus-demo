@@ -96,6 +96,56 @@ function buildOneFieldRow(field, item) {
         </div>`;
 }
 
+/* ─── custom (schema-less) widget fields ────────────────────── */
+
+// The value types a user can pick in the add-field modal. `id` is also what
+// gets written to data-custom-type on the rendered row, so applyCustom… knows
+// how to read the control back without re-guessing.
+export const CUSTOM_FIELD_TYPES = [
+    { id: 'string',    label: 'String' },
+    { id: 'formatted', label: 'Formatted string (multi-line)' },
+    { id: 'integer',   label: 'Integer' },
+    { id: 'float',     label: 'Float' },
+    { id: 'boolean',   label: 'Boolean' },
+    { id: 'json',      label: 'JSON (list / object)' },
+];
+
+// Infer which control to render for an existing value. JSON round-trips
+// numbers as a single type, so int/float is decided by Number.isInteger.
+export function customFieldType(v) {
+    if (typeof v === 'boolean') return 'boolean';
+    if (typeof v === 'number')  return Number.isInteger(v) ? 'integer' : 'float';
+    if (v !== null && typeof v === 'object') return 'json';
+    return String(v ?? '').includes('\n') ? 'formatted' : 'string';
+}
+
+// Coerce a raw control value into the type the field was declared as.
+// Returns { ok, value, error } so the modal can refuse to close on bad input.
+export function coerceCustomValue(type, raw) {
+    switch (type) {
+        case 'boolean':
+            return { ok: true, value: raw === true || raw === 'true' };
+        case 'integer': {
+            const n = parseInt(String(raw).trim(), 10);
+            if (isNaN(n)) return { ok: false, error: 'Enter a whole number.' };
+            return { ok: true, value: n };
+        }
+        case 'float': {
+            const n = parseFloat(String(raw).trim());
+            if (isNaN(n)) return { ok: false, error: 'Enter a number.' };
+            return { ok: true, value: n };
+        }
+        case 'json': {
+            const s = String(raw).trim();
+            if (s === '') return { ok: false, error: 'Enter some JSON.' };
+            try { return { ok: true, value: JSON.parse(s) }; }
+            catch (e) { return { ok: false, error: 'Invalid JSON: ' + e.message }; }
+        }
+        default:
+            return { ok: true, value: String(raw ?? '') };
+    }
+}
+
 function buildCustomWidgetFieldsHTML(item) {
     let html = '';
     const entries = Object.entries(item).filter(([k]) => !WIDGET_RESERVED.has(k));
@@ -104,37 +154,50 @@ function buildCustomWidgetFieldsHTML(item) {
         html += `<p class="editor-prop-note">No extra fields yet.</p>`;
     }
     for (const [k, v] of entries) {
-        const fid    = fieldId(k);
-        const isBool = typeof v === 'boolean';
-        const isNum  = typeof v === 'number';
-        if (isBool) {
-            html += `
-                <div class="editor-prop-row editor-prop-custom-row" data-custom-key="${escAttr(k)}">
+        const fid  = fieldId(k);
+        const type = customFieldType(v);
+        const head = `<div class="editor-prop-row editor-prop-custom-row"
+                           data-custom-key="${escAttr(k)}" data-custom-type="${type}">`;
+        const rm   = `<button class="editor-prop-rm-field" data-key="${escAttr(k)}" title="Remove field">✕</button>`;
+
+        if (type === 'boolean') {
+            html += `${head}
                     <div class="editor-prop-custom-bool-row">
                         <label class="editor-prop-checkbox-row">
                             <input type="checkbox" id="${fid}" ${v ? 'checked' : ''}>
                             <span>${escHtml(k)}</span>
                         </label>
-                        <button class="editor-prop-rm-field" data-key="${escAttr(k)}" title="Remove field">✕</button>
+                        ${rm}
                     </div>
                 </div>`;
+        } else if (type === 'formatted' || type === 'json') {
+            const text = type === 'json' ? JSON.stringify(v, null, 2) : String(v ?? '');
+            const rows = Math.min(12, Math.max(3, text.split('\n').length + 1));
+            html += `${head}
+                    <div class="editor-prop-custom-label-row">
+                        <div class="editor-prop-label">${escHtml(k)}</div>
+                        ${rm}
+                    </div>
+                    <textarea class="editor-prop-input editor-prop-custom-textarea" id="${fid}"
+                              rows="${rows}" spellcheck="false">${escHtml(text)}</textarea>
+                </div>`;
         } else {
-            html += `
-                <div class="editor-prop-row editor-prop-custom-row" data-custom-key="${escAttr(k)}">
+            const step = type === 'integer' ? '1' : 'any';
+            html += `${head}
                     <div class="editor-prop-label">${escHtml(k)}</div>
                     <div class="editor-prop-custom-val-row">
-                        <input class="editor-prop-input" type="${isNum ? 'number' : 'text'}" id="${fid}" value="${escAttr(String(v))}">
-                        <button class="editor-prop-rm-field" data-key="${escAttr(k)}" title="Remove field">✕</button>
+                        <input class="editor-prop-input" id="${fid}"
+                               type="${type === 'string' ? 'text' : 'number'}"
+                               ${type === 'string' ? '' : `step="${step}"`}
+                               value="${escAttr(String(v))}">
+                        ${rm}
                     </div>
                 </div>`;
         }
     }
-    // Add-field UI
+    // Add-field UI — opens the typed add-field modal (see add-field-modal.js)
     html += `
         <div class="editor-prop-add-field-block">
-            <div class="editor-prop-label">Add custom field</div>
-            <input class="editor-prop-input" type="text" id="prop-custom-new-key" placeholder="Key" autocomplete="off">
-            <input class="editor-prop-input" type="text" id="prop-custom-new-val" placeholder="Value" autocomplete="off">
             <button class="btn editor-prop-add-field-btn" id="prop-custom-add-btn">+ Add field</button>
         </div>`;
     return html;
@@ -178,18 +241,24 @@ function applyCustomWidgetFieldValues(item) {
         if (!WIDGET_RESERVED.has(k)) delete item[k];
     }
     document.querySelectorAll('.editor-prop-custom-row').forEach(row => {
-        const k  = row.dataset.customKey;
+        const k = row.dataset.customKey;
         if (!k) return;
         const el = document.getElementById(fieldId(k));
         if (!el) return;
-        if (el.type === 'checkbox') {
+        const type = row.dataset.customType || customFieldType(el.value);
+
+        if (type === 'boolean') {
             item[k] = el.checked;
-        } else if (el.type === 'number') {
-            const v = parseFloat(el.value);
-            if (!isNaN(v)) item[k] = v;
-        } else {
-            const v = el.value.trim();
-            if (v !== '') item[k] = v;
+            return;
         }
+        // Formatted strings keep their whitespace verbatim; everything else is trimmed.
+        const raw = type === 'formatted' ? el.value : el.value.trim();
+        if (raw === '') {
+            // Keep the key alive as an empty formatted string; drop otherwise.
+            if (type === 'formatted') item[k] = '';
+            return;
+        }
+        const { ok, value } = coerceCustomValue(type, raw);
+        if (ok) item[k] = value;
     });
 }

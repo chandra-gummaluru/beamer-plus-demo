@@ -358,6 +358,21 @@ body.edit-mode #editor-panel { display: flex; }
     min-width: 0;
 }
 
+/* Label + remove button on its own line (textarea-backed custom fields) */
+.editor-prop-custom-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-1);
+}
+
+.editor-prop-custom-textarea {
+    width: 100%;
+    resize: vertical;
+    font-family: var(--font-mono, monospace);
+    line-height: 1.45;
+}
+
 /* Row for a custom boolean field (checkbox + label + remove) */
 .editor-prop-custom-bool-row {
     display: flex;

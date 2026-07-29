@@ -4,6 +4,7 @@
 import { ctx, getSlideEl, getOrCreateConfig, escAttr, escHtml, pickFile } from './context.js';
 import { loadWidgetSchema } from '../core/iframe-widget-renderer.js';
 import { WIDGET_RESERVED, buildWidgetFieldsHTML, applyWidgetFieldValues } from './fields.js';
+import { openAddFieldModal } from './add-field-modal.js';
 import { cleanupEditOverlays, renderEditOverlays, positionOverlay } from './overlays.js';
 import { WIDGET_LABELS } from './widget-picker.js';
 import { sessionUrl, widgetSessionConfig } from '../app/session.js';
@@ -74,17 +75,13 @@ export async function updatePropertiesPanel() {
         });
         document.getElementById('prop-custom-add-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
-            const keyEl = document.getElementById('prop-custom-new-key');
-            const valEl = document.getElementById('prop-custom-new-val');
-            const k = keyEl?.value.trim();
-            const v = valEl?.value.trim() ?? '';
-            if (!k || WIDGET_RESERVED.has(k)) return;
-            // Auto-detect boolean / number / string
-            if      (v === 'true')                              item[k] = true;
-            else if (v === 'false')                             item[k] = false;
-            else if (v !== '' && !isNaN(Number(v)))             item[k] = Number(v);
-            else                                                item[k] = v;
-            updatePropertiesPanel();
+            openAddFieldModal({
+                existingKeys: Object.keys(item).filter(k => !WIDGET_RESERVED.has(k)),
+                onAdd: ({ key, value }) => {
+                    item[key] = value;
+                    updatePropertiesPanel();
+                },
+            });
         });
     }
 

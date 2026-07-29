@@ -253,6 +253,49 @@
 }
 .upload-option-btn i { font-size: 20px; color: var(--accent); width: 24px; }
 
+/* Add-field modal (widget editor) — name / type / value form */
+.custom-modal-content:has(.add-field-form) { max-width: 620px; }
+
+.add-field-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    text-align: left;
+}
+
+.add-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+.add-field-label {
+    font-family: var(--font-sans);
+    font-size: var(--fs-sm);
+    color: var(--ink-3);
+    font-weight: 500;
+}
+
+.add-field-form .editor-prop-input,
+.add-field-form .editor-prop-select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.add-field-textarea {
+    resize: vertical;
+    min-height: 160px;
+    font-family: var(--font-mono, monospace);
+    line-height: 1.5;
+}
+
+.add-field-error {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--fs-sm);
+    color: oklch(48% 0.17 25);
+}
+
 @media (max-width: 768px) {
     .custom-modal-content { max-width: 92%; padding: var(--sp-5); }
     .custom-modal-buttons { flex-direction: column-reverse; }
