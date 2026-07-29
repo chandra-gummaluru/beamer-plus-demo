@@ -113,12 +113,12 @@ function buildOneFieldRow(field, item) {
 // gets written to data-custom-type on the rendered row, so applyCustom… knows
 // how to read the control back without re-guessing.
 export const CUSTOM_FIELD_TYPES = [
-    { id: 'string',    label: 'String' },
-    { id: 'formatted', label: 'Formatted string (multi-line)' },
-    { id: 'integer',   label: 'Integer' },
-    { id: 'float',     label: 'Float' },
-    { id: 'boolean',   label: 'Boolean' },
-    { id: 'json',      label: 'JSON (list / object)' },
+    { id: 'string',    label: 'String'    },
+    { id: 'formatted', label: 'Formatted' },
+    { id: 'integer',   label: 'Integer'   },
+    { id: 'float',     label: 'Float'     },
+    { id: 'boolean',   label: 'Boolean'   },
+    { id: 'json',      label: 'JSON'      },
 ];
 
 // Infer which control to render for an existing value. JSON round-trips

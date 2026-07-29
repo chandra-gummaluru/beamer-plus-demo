@@ -1,7 +1,6 @@
-// "Add field" modal for schema-less widgets — asks for a field name, a value
-// type, and then a type-appropriate value control (checkbox-style True/False
-// for booleans, number inputs for integer/float, a large textarea for
-// formatted strings and JSON).
+// "Add field" modal for widget config — field name, value type, and a
+// type-appropriate value control. Styled with the shared custom-modal-*
+// classes so it reads as part of Beamer+ rather than a transplanted form.
 import { escAttr, escHtml } from './context.js';
 import { WIDGET_RESERVED, CUSTOM_FIELD_TYPES, coerceCustomValue } from './fields.js';
 
@@ -11,32 +10,35 @@ export function openAddFieldModal({ existingKeys = [], onAdd } = {}) {
     const modal = window.BeamerModal;
     if (!modal) return;
 
-    const typeOpts = CUSTOM_FIELD_TYPES
-        .map(t => `<option value="${escAttr(t.id)}">${escHtml(t.label)}</option>`).join('');
+    // Types as a segmented button row (like the pen-settings modal) rather than
+    // a <select> — all six are visible at a glance.
+    const typeBtns = CUSTOM_FIELD_TYPES.map((t, i) => `
+        <button type="button" class="custom-modal-btn custom-modal-tool-btn add-field-type-btn${i === 0 ? ' is-selected' : ''}"
+                data-type="${escAttr(t.id)}">${escHtml(t.label)}</button>`).join('');
 
     const body = document.createElement('div');
     body.className = 'add-field-form';
     body.innerHTML = `
-        <label class="add-field-group">
-            <span class="add-field-label">Field name</span>
-            <input class="editor-prop-input" type="text" id="add-field-key"
-                   placeholder="e.g. caption" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="add-field-group">
-            <span class="add-field-label">Type</span>
-            <select class="editor-prop-select" id="add-field-type">${typeOpts}</select>
-        </label>
-        <div class="add-field-group">
-            <span class="add-field-label">Value</span>
+        <div class="custom-modal-setting-group">
+            <span class="custom-modal-setting-label">Field name</span>
+            <input class="add-field-input" type="text" id="add-field-key"
+                   autocomplete="off" spellcheck="false" placeholder="caption">
+        </div>
+        <div class="custom-modal-setting-group">
+            <span class="custom-modal-setting-label">Type</span>
+            <div class="custom-modal-button-group add-field-type-row">${typeBtns}</div>
+        </div>
+        <div class="custom-modal-setting-group">
+            <span class="custom-modal-setting-label">Value</span>
             <div id="add-field-value-slot"></div>
         </div>
         <p class="add-field-error" id="add-field-error" hidden></p>
     `;
 
-    const keyEl   = body.querySelector('#add-field-key');
-    const typeEl  = body.querySelector('#add-field-type');
-    const slot    = body.querySelector('#add-field-value-slot');
-    const errEl   = body.querySelector('#add-field-error');
+    const keyEl = body.querySelector('#add-field-key');
+    const slot  = body.querySelector('#add-field-value-slot');
+    const errEl = body.querySelector('#add-field-error');
+    let type    = CUSTOM_FIELD_TYPES[0].id;
 
     const showError = (msg) => {
         errEl.textContent = msg || '';
@@ -45,32 +47,52 @@ export function openAddFieldModal({ existingKeys = [], onAdd } = {}) {
 
     // Rebuild the value control whenever the type changes.
     function renderValueControl() {
-        const type = typeEl.value;
         if (type === 'boolean') {
             slot.innerHTML = `
-                <select class="editor-prop-select" id="add-field-value">
-                    <option value="true">True</option>
-                    <option value="false" selected>False</option>
-                </select>`;
+                <div class="custom-modal-button-group add-field-bool-row">
+                    <button type="button" class="custom-modal-btn custom-modal-tool-btn add-field-bool-btn" data-bool="true">True</button>
+                    <button type="button" class="custom-modal-btn custom-modal-tool-btn add-field-bool-btn is-selected" data-bool="false">False</button>
+                </div>`;
+            slot.querySelectorAll('.add-field-bool-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    slot.querySelectorAll('.add-field-bool-btn')
+                        .forEach(b => b.classList.toggle('is-selected', b === btn));
+                });
+            });
         } else if (type === 'integer' || type === 'float') {
-            slot.innerHTML = `<input class="editor-prop-input" type="number" id="add-field-value"
+            slot.innerHTML = `<input class="add-field-input" type="number" id="add-field-value"
                                      step="${type === 'integer' ? '1' : 'any'}" value="0">`;
         } else if (type === 'formatted') {
-            slot.innerHTML = `<textarea class="editor-prop-input add-field-textarea" id="add-field-value"
-                                        rows="10" spellcheck="false"
-                                        placeholder="Type your formatted text here — newlines are preserved."></textarea>`;
+            slot.innerHTML = `<textarea class="add-field-input add-field-textarea" id="add-field-value"
+                                        rows="10" spellcheck="false"></textarea>`;
         } else if (type === 'json') {
-            slot.innerHTML = `<textarea class="editor-prop-input add-field-textarea" id="add-field-value"
-                                        rows="10" spellcheck="false"
-                                        placeholder='e.g. ["a", "b"] or { "x": 1 }'></textarea>`;
+            slot.innerHTML = `<textarea class="add-field-input add-field-textarea" id="add-field-value"
+                                        rows="10" spellcheck="false" placeholder='["a", "b"]'></textarea>`;
         } else {
-            slot.innerHTML = `<input class="editor-prop-input" type="text" id="add-field-value"
-                                     autocomplete="off" placeholder="Value">`;
+            slot.innerHTML = `<input class="add-field-input" type="text" id="add-field-value" autocomplete="off">`;
         }
         showError('');
     }
-    typeEl.addEventListener('change', renderValueControl);
+
+    body.querySelectorAll('.add-field-type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            type = btn.dataset.type;
+            body.querySelectorAll('.add-field-type-btn')
+                .forEach(b => b.classList.toggle('is-selected', b === btn));
+            renderValueControl();
+        });
+    });
     renderValueControl();
+
+    // Read the current value control back as a raw string.
+    const readRaw = () => {
+        if (type === 'boolean') {
+            return slot.querySelector('.add-field-bool-btn.is-selected')?.dataset.bool ?? 'false';
+        }
+        const el = slot.querySelector('#add-field-value');
+        // Formatted strings keep their whitespace verbatim.
+        return type === 'formatted' ? (el?.value ?? '') : (el?.value ?? '').trim();
+    };
 
     // Validation gate — returning false keeps the modal open.
     const guard = () => {
@@ -82,9 +104,7 @@ export function openAddFieldModal({ existingKeys = [], onAdd } = {}) {
         if (existingKeys.includes(key)) {
             showError(`"${key}" already exists on this widget.`); return false;
         }
-        const valEl = slot.querySelector('#add-field-value');
-        const raw   = typeEl.value === 'formatted' ? (valEl?.value ?? '') : (valEl?.value ?? '').trim();
-        const { ok, value, error } = coerceCustomValue(typeEl.value, raw);
+        const { ok, value, error } = coerceCustomValue(type, readRaw());
         if (!ok) { showError(error); return false; }
         guard._result = { key, value };
         return true;
@@ -97,7 +117,7 @@ export function openAddFieldModal({ existingKeys = [], onAdd } = {}) {
         buttons: [
             { label: 'Cancel', kind: 'cancel' },
             {
-                label: 'Add', kind: 'ok', guard,
+                label: 'Add field', kind: 'ok', guard,
                 onClick: () => { if (guard._result) onAdd?.(guard._result); },
             },
         ],
