@@ -46,6 +46,10 @@ export async function updatePropertiesPanel() {
     const body = document.getElementById('editor-properties-body');
     if (!body) return;
     body.innerHTML = buildPropsHTML(arrKey, item, schemaFields);
+    // Stamp what the body currently shows, so applyPropertiesQuiet can refuse
+    // to read fields back off a panel built for a different widget (this
+    // function is async — a fast re-selection can interleave).
+    body.dataset.widgetType = arrKey === 'widgets' ? String(item.type ?? '') : '';
 
     // Populate ai-model selects from the server's loaded model list
     const aiModelSelects = body.querySelectorAll('[data-ai-model-select]');
@@ -64,8 +68,10 @@ export async function updatePropertiesPanel() {
     // Delete button
     body.querySelector('#prop-delete')?.addEventListener('click', () => deleteItem(arrKey, index));
 
-    // Custom widget (no schema declared): add / remove extra fields
-    if (arrKey === 'widgets' && _currentWidgetSchema === null) {
+    // Widgets: add / remove extra fields. Available whether or not the widget
+    // declares a schema — schema fields keep their own controls, and anything
+    // the user adds on top is listed below them.
+    if (arrKey === 'widgets') {
         body.querySelectorAll('.editor-prop-rm-field').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -73,7 +79,7 @@ export async function updatePropertiesPanel() {
                 if (k) { delete item[k]; updatePropertiesPanel(); }
             });
         });
-        document.getElementById('prop-custom-add-btn')?.addEventListener('click', (e) => {
+        body.querySelector('#prop-custom-add-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             openAddFieldModal({
                 existingKeys: Object.keys(item).filter(k => !WIDGET_RESERVED.has(k)),
@@ -300,7 +306,10 @@ export function applyPropertiesQuiet() {
         item.animate       = get('prop-animate')?.checked ?? true;
         item.animationName = get('prop-animName')?.value || undefined;
     } else if (arrKey === 'widgets') {
-        applyWidgetFieldValues(item, _currentWidgetSchema?.fields ?? null);
+        const body = document.getElementById('editor-properties-body');
+        if (body?.dataset.widgetType === String(item.type ?? '')) {
+            applyWidgetFieldValues(item, _currentWidgetSchema?.fields ?? null);
+        }
     }
 
     const container = getSlideEl();

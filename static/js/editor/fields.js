@@ -13,15 +13,26 @@ export const WIDGET_RESERVED = new Set([
 
 /* ─── build ─────────────────────────────────────────────────── */
 
+// Keys the schema already owns — those get their declared control, and are
+// never offered as add/removable custom fields.
+export function schemaKeySet(schemaFields) {
+    return new Set((schemaFields || []).map(f => f.key));
+}
+
+// Keys on the item that are neither reserved nor schema-declared. These are
+// the user's own additions and are always editable/removable.
+export function customKeys(item, schemaFields) {
+    const owned = schemaKeySet(schemaFields);
+    return Object.keys(item).filter(k => !WIDGET_RESERVED.has(k) && !owned.has(k));
+}
+
 // schemaFields: the .fields array from the widget's own schema declaration,
-// or null if the widget has no schema (→ fall back to custom key-value editor).
+// or null if the widget has no schema. Either way the custom field editor is
+// appended, so extra fields can be added to any widget.
 export function buildWidgetFieldsHTML(item, schemaFields) {
-    if (schemaFields === null || schemaFields === undefined) {
-        return buildCustomWidgetFieldsHTML(item);
-    }
     let html = '';
-    for (const field of schemaFields) html += buildOneFieldRow(field, item);
-    return html;
+    for (const field of (schemaFields || [])) html += buildOneFieldRow(field, item);
+    return html + buildCustomWidgetFieldsHTML(item, schemaFields);
 }
 
 function buildOneFieldRow(field, item) {
@@ -146,13 +157,10 @@ export function coerceCustomValue(type, raw) {
     }
 }
 
-function buildCustomWidgetFieldsHTML(item) {
-    let html = '';
-    const entries = Object.entries(item).filter(([k]) => !WIDGET_RESERVED.has(k));
+function buildCustomWidgetFieldsHTML(item, schemaFields) {
+    let html = (schemaFields || []).length ? `<div class="editor-prop-divider"></div>` : '';
+    const entries = customKeys(item, schemaFields).map(k => [k, item[k]]);
 
-    if (entries.length === 0) {
-        html += `<p class="editor-prop-note">No extra fields yet.</p>`;
-    }
     for (const [k, v] of entries) {
         const fid  = fieldId(k);
         const type = customFieldType(v);
@@ -208,12 +216,7 @@ function buildCustomWidgetFieldsHTML(item) {
 export function applyWidgetFieldValues(item, schemaFields) {
     const get = id => document.getElementById(id);
 
-    if (schemaFields === null || schemaFields === undefined) {
-        applyCustomWidgetFieldValues(item);
-        return;
-    }
-
-    for (const field of schemaFields) {
+    for (const field of (schemaFields || [])) {
         const el = get('prop-widget-' + field.key);
         if (!el) continue;
         if (field.type === 'checkbox') {
@@ -233,14 +236,18 @@ export function applyWidgetFieldValues(item, schemaFields) {
             else delete item[field.key];
         }
     }
+
+    applyCustomWidgetFieldValues(item, schemaFields);
 }
 
-function applyCustomWidgetFieldValues(item) {
-    // Clear existing non-reserved keys, then re-populate from visible rows
-    for (const k of Object.keys(item)) {
-        if (!WIDGET_RESERVED.has(k)) delete item[k];
-    }
-    document.querySelectorAll('.editor-prop-custom-row').forEach(row => {
+function applyCustomWidgetFieldValues(item, schemaFields) {
+    // Clear the user-added keys, then re-populate from the visible rows.
+    // Schema-declared and reserved keys are left alone.
+    const panel = document.getElementById('editor-properties-body');
+    if (!panel) return;
+    for (const k of customKeys(item, schemaFields)) delete item[k];
+
+    panel.querySelectorAll('.editor-prop-custom-row').forEach(row => {
         const k = row.dataset.customKey;
         if (!k) return;
         const el = document.getElementById(fieldId(k));
