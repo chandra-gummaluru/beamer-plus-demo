@@ -6,7 +6,9 @@
   "label": "Coding Notebook",
   "category": "Computer Science",
   "fields": [
-    { "key": "notebook", "label": "Notebook file", "type": "text", "placeholder": "notebooks/demo.ipynb  or  https://…/demo.ipynb" }
+    { "key": "notebook", "label": "Notebook file", "type": "text", "placeholder": "notebooks/demo.ipynb  or  https://…/demo.ipynb" },
+    { "key": "packages", "label": "Extra packages (one per line)", "type": "textarea-lines", "rows": 4, "placeholder": "pandas\nsympy\nrequests==2.31.0", "note": "merged with any the notebook's metadata declares" },
+    { "key": "autoImport", "label": "Auto-load packages from imports", "type": "checkbox", "default": true, "note": "checks each cell's imports before running it" }
   ]
 }
 </script>
@@ -182,6 +184,40 @@ body {
 }
 #boot-msg   { font-size: 13px; }
 #boot-sub   { font-size: 11.5px; color: var(--text-3); }
+
+/* ── Package warning banner ────────────────────────────────────── */
+#pkg-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--border-med);
+  border-left: 3px solid var(--amber);
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+#pkg-warning strong { color: var(--amber); font-weight: 600; }
+#pkg-warning code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}
+.pkg-warn-x {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.pkg-warn-x:hover { color: var(--text); }
 
 /* ── Cell block ────────────────────────────────────────────────── */
 .cell-block { margin-bottom: 3px; position: relative; }
@@ -473,6 +509,8 @@ body {
 // Falls back to URL params for standalone testing:
 //   ?viewer=1          → viewer mode
 //   ?notebook=path     → load notebook file
+//   ?packages=a,b,c    → extra packages to install at boot
+//   ?autoImport=0      → disable per-cell import detection
 // ─────────────────────────────────────────────────────────────────────────────
 const _qs      = new URLSearchParams(location.search);
 const CFG      = window.WIDGET_CONFIG || {};
@@ -480,6 +518,29 @@ const WIDGET_ID      = CFG.id              || 'jupyter-notebook';
 const NOTEBOOK_PATH  = CFG.notebook        || _qs.get('notebook') || null;
 const NOTEBOOK_OBJ   = CFG.notebookContent || null;  // pre-loaded by renderer
 const IS_VIEWER      = !!(CFG.viewer || _qs.get('viewer') === '1');
+
+// ── Package configuration ───────────────────────────────────────────────────
+// Always loaded — the widget's matplotlib capture helper depends on them.
+const BASE_PACKAGES = ['numpy', 'matplotlib'];
+
+// `packages` arrives as an array (the editor's textarea-lines field) but a
+// comma/newline-separated string is accepted too, for hand-written configs
+// and the ?packages= URL param.
+function parsePackageList(v) {
+  let list;
+  if (Array.isArray(v))            list = v;
+  else if (typeof v === 'string')  list = v.split(/[\n,]/);
+  else                             list = [];
+  return list.map(s => String(s).trim()).filter(Boolean);
+}
+
+const EXTRA_PACKAGES = parsePackageList(
+  CFG.packages != null ? CFG.packages : _qs.get('packages')
+);
+// Default on; only an explicit false / ?autoImport=0 turns it off.
+const AUTO_IMPORT = CFG.autoImport != null
+  ? CFG.autoImport !== false
+  : _qs.get('autoImport') !== '0';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE
@@ -575,14 +636,125 @@ function emitCellOutput(payload) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PACKAGE INSTALLATION
+//
+// Two sources, tried in order for each name:
+//   1. pyodide.loadPackage()  — packages shipped in the Pyodide distribution
+//                               (numpy, pandas, scipy, sympy, scikit-learn, …)
+//   2. micropip.install()     — pure-Python wheels from PyPI, plus anything
+//                               with a version specifier or an explicit
+//                               .whl URL, which loadPackage can't express.
+// Names that look like a requirement spec ("pandas==2.0.1", "pkg[extra]") or a
+// URL skip straight to micropip.
+// ─────────────────────────────────────────────────────────────────────────────
+const SPEC_LIKE = /[=<>!~\[\]\s]|\.whl$|^https?:\/\//i;
+
+const loadedPackages = [];   // successfully installed, for the kernel tooltip
+const failedPackages = [];   // reported to the user in a banner
+
+let _micropip = null;
+async function getMicropip() {
+  if (_micropip) return _micropip;
+  await pyodide.loadPackage('micropip');
+  _micropip = pyodide.pyimport('micropip');
+  return _micropip;
+}
+
+async function installPackage(name) {
+  if (SPEC_LIKE.test(name)) {
+    const mp = await getMicropip();
+    await mp.install(name);
+    return;
+  }
+  try {
+    await pyodide.loadPackage(name);
+  } catch (_) {
+    // Not in the Pyodide distribution — try PyPI.
+    const mp = await getMicropip();
+    await mp.install(name);
+  }
+}
+
+// "pandas==2.0.1" → "pandas"; a wheel URL keeps its full string.
+// Used so a pinned spec and a bare name are recognised as the same package.
+function packageKey(spec) {
+  const s = String(spec).trim();
+  if (/^https?:\/\//i.test(s) || /\.whl$/i.test(s)) return s.toLowerCase();
+  return s.split(/[=<>!~\[;\s]/)[0].toLowerCase();
+}
+
+// Merge package lists, first occurrence winning. Callers pass the widget
+// config's list first, so a pin there beats an unpinned notebook entry.
+function mergePackageLists(...lists) {
+  const seen = new Set();
+  const out  = [];
+  for (const spec of [].concat(...lists)) {
+    const key = packageKey(spec);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(spec);
+  }
+  return out;
+}
+
+async function installExtraPackages(names) {
+  const seen = new Set(BASE_PACKAGES);
+  for (const name of names) {
+    const key = packageKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    setBoot(`Installing ${name}…`);
+    try {
+      await installPackage(name);
+      loadedPackages.push(name);
+    } catch (e) {
+      console.warn(`[Beamer+] package install failed: ${name}`, e);
+      failedPackages.push(name);
+    }
+  }
+}
+
+function showPackageWarning(failed) {
+  if (!failed.length) return;
+  const nb = document.getElementById('notebook');
+  if (!nb || document.getElementById('pkg-warning')) return;
+
+  const div = document.createElement('div');
+  div.id = 'pkg-warning';
+  div.innerHTML =
+    `<div><strong>Could not install:</strong> <code>${escHtml(failed.join(', '))}</code><br>` +
+    `Not in the Pyodide distribution, and no pure-Python wheel on PyPI. ` +
+    `Cells importing them will fail.</div>` +
+    `<button class="pkg-warn-x" title="Dismiss">✕</button>`;
+  div.querySelector('.pkg-warn-x').addEventListener('click', () => div.remove());
+  nb.prepend(div);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PYODIDE INIT  (presenter only)
 // ─────────────────────────────────────────────────────────────────────────────
 async function initPyodide() {
+  // Start the notebook fetch alongside the runtime download — the two are
+  // independent, and we need the notebook's metadata before installing
+  // packages so it can contribute to the list.
   setBoot('Loading Pyodide runtime…');
+  const nbPromise = resolveNotebook();
+
   pyodide = await loadPyodide();
+  const { nb, filename, error: nbError } = await nbPromise;
 
   setBoot('Loading numpy + matplotlib…');
-  await pyodide.loadPackage(['numpy', 'matplotlib']);
+  await pyodide.loadPackage(BASE_PACKAGES);
+  loadedPackages.push(...BASE_PACKAGES);
+
+  // Widget config first, then whatever the notebook declares for itself.
+  const requested = mergePackageLists(
+    EXTRA_PACKAGES,
+    nb ? packagesFromNotebook(nb) : []
+  );
+  if (requested.length) {
+    await installExtraPackages(requested);
+  }
 
   // Set Agg backend; patch plt.show(); expose figure-capture helper
   await pyodide.runPythonAsync(`
@@ -610,79 +782,84 @@ def _bp_capture_figures():
   removeBoot();
   setKernel('ready', 'Python 3 · Pyodide');
   enablePresenterToolbar();
+  showPackageWarning(failedPackages);
 
-  if (NOTEBOOK_OBJ) {
-    await loadNotebookObj(NOTEBOOK_OBJ, NOTEBOOK_PATH || 'notebook.ipynb');
-  } else if (NOTEBOOK_PATH) {
-    await loadNotebookFile(NOTEBOOK_PATH);
-  } else {
-    addCodeCell('');
-  }
+  if (nb)           renderNotebook(nb, filename);
+  else if (nbError) addCodeCell('# Could not load notebook: ' + nbError);
+  else              addCodeCell('');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // .ipynb LOADING
+//
+// Resolving (fetch + parse) is split from rendering (building the cells) so
+// the notebook can be read BEFORE the kernel installs packages — that's what
+// lets a notebook declare its own dependencies and travel with them.  They go
+// in the notebook's top-level metadata, in any of:
+//
+//   "metadata": { "beamerplus": { "packages": ["pandas", "sympy"] } }
+//   "metadata": { "pyodide":    { "packages": [ … ] } }
+//   "metadata": { "packages":   [ … ] }
+//
+// A newline/comma-separated string works there too.  Widget-config packages
+// are installed first and win on version conflicts.
 // ─────────────────────────────────────────────────────────────────────────────
-async function loadNotebookFile(path) {
+
+// Never throws. Returns { nb, filename, error } — nb is null if there is no
+// notebook configured, or if it could not be loaded (error then explains why).
+async function resolveNotebook() {
+  const filename = NOTEBOOK_PATH ? NOTEBOOK_PATH.split('/').pop() : 'Untitled.ipynb';
+
+  // Pre-loaded from the deck ZIP by the renderer — nothing to fetch.
+  if (NOTEBOOK_OBJ)   return { nb: NOTEBOOK_OBJ, filename, error: null };
+  if (!NOTEBOOK_PATH) return { nb: null, filename, error: null };
+
   try {
-    setBoot(`Loading ${path.split('/').pop()}…`);
-    const resp = await fetch(path);
+    setBoot(`Loading ${filename}…`);
+    const resp = await fetch(NOTEBOOK_PATH);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const nb = await resp.json();
-
-    // Update title
-    document.getElementById('notebook-title').textContent = path.split('/').pop();
-
-    for (const cell of nb.cells || []) {
-      const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
-
-      if (cell.cell_type === 'markdown') {
-        addMarkdownCell(src);
-
-      } else if (cell.cell_type === 'code') {
-        const id = addCodeCell(src);
-        // Restore saved outputs from the file (don't re-execute)
-        if (cell.outputs?.length) {
-          const outputs = parseIpynbOutputs(cell.outputs);
-          renderOutputs(id, outputs, cell.execution_count);
-          if (cell.execution_count != null) {
-            const en = document.getElementById(`enum-${id}`);
-            if (en) { en.textContent = `[${cell.execution_count}]`; en.classList.add('ran'); }
-          }
-        }
-      }
-    }
-    removeBoot();
+    return { nb: await resp.json(), filename, error: null };
   } catch (e) {
     console.warn('Notebook load failed:', e);
-    removeBoot();
-    addCodeCell('# Could not load notebook: ' + e.message);
+    return { nb: null, filename, error: e.message || String(e) };
   }
 }
 
-// Load a notebook from an already-parsed JSON object (passed by the renderer)
-async function loadNotebookObj(nb, filename) {
+// Packages the notebook itself asks for, from its metadata.
+function packagesFromNotebook(nb) {
+  const md = nb?.metadata;
+  if (!md) return [];
+  const src = md.beamerplus?.packages ?? md.pyodide?.packages ?? md.packages;
+  return parsePackageList(src);
+}
+
+// Build the cells from a resolved notebook.
+// `withOutputs` is false in viewer mode, where outputs come from the presenter
+// over Socket.IO rather than from the file.
+function renderNotebook(nb, filename, withOutputs = true) {
   try {
-    document.getElementById('notebook-title').textContent = filename.split('/').pop();
+    if (filename) {
+      document.getElementById('notebook-title').textContent = filename.split('/').pop();
+    }
     for (const cell of nb.cells || []) {
       const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
-      if (cell.cell_type === 'markdown') {
-        addMarkdownCell(src);
-      } else if (cell.cell_type === 'code') {
-        const id = addCodeCell(src);
-        if (cell.outputs?.length) {
-          const outputs = parseIpynbOutputs(cell.outputs);
-          renderOutputs(id, outputs, cell.execution_count);
-          if (cell.execution_count != null) {
-            const en = document.getElementById(`enum-${id}`);
-            if (en) { en.textContent = `[${cell.execution_count}]`; en.classList.add('ran'); }
-          }
+
+      if (cell.cell_type === 'markdown') { addMarkdownCell(src); continue; }
+      if (cell.cell_type !== 'code') continue;
+
+      const id = addCodeCell(src);
+      // Restore saved outputs from the file (don't re-execute)
+      if (withOutputs && cell.outputs?.length) {
+        renderOutputs(id, parseIpynbOutputs(cell.outputs), cell.execution_count);
+        if (cell.execution_count != null) {
+          const en = document.getElementById(`enum-${id}`);
+          if (en) { en.textContent = `[${cell.execution_count}]`; en.classList.add('ran'); }
         }
       }
     }
   } catch (e) {
-    console.warn('Notebook object load failed:', e);
-    addCodeCell('# Could not load notebook: ' + e.message);
+    console.warn('Notebook render failed:', e);
+    addCodeCell('# Could not load notebook: ' + (e.message || e));
   }
 }
 
@@ -892,6 +1069,16 @@ async function runCell(id) {
   const outputs = [];
 
   try {
+    // Pull in any Pyodide-distributed package this cell imports but that isn't
+    // loaded yet (unknown imports are ignored here and raise normally below).
+    if (AUTO_IMPORT) {
+      try {
+        await pyodide.loadPackagesFromImports(code);
+      } catch (e) {
+        console.warn('[Beamer+] auto-import failed:', e);
+      }
+    }
+
     const result = await pyodide.runPythonAsync(code);
 
     // Capture matplotlib figures
@@ -1122,6 +1309,12 @@ function refreshAddRows() {
 function setKernel(state, label) {
   document.getElementById('k-dot').className = `k-dot ${state}`;
   document.getElementById('k-label').textContent = label;
+  // Hovering the pill shows what's actually available in the kernel.
+  const pill = document.querySelector('.kernel-pill');
+  if (pill && loadedPackages.length) {
+    pill.title = 'Packages: ' + loadedPackages.join(', ')
+      + (failedPackages.length ? `\nFailed: ${failedPackages.join(', ')}` : '');
+  }
 }
 
 function setBoot(msg) {
@@ -1162,25 +1355,14 @@ if (IS_VIEWER) {
 initSocket();
 
 if (IS_VIEWER) {
-  // Viewer: load notebook skeleton for context (no Pyodide), wait for sync
+  // Viewer: notebook skeleton only — no kernel, so no packages to install.
+  // Outputs arrive from the presenter via Socket.IO.
   removeBoot();
   setKernel('viewer', 'View only');
-  if (NOTEBOOK_PATH) {
-    document.getElementById('notebook-title').textContent = NOTEBOOK_PATH.split('/').pop();
-    // Load structure only (outputs will arrive via Socket.IO)
-    fetch(NOTEBOOK_PATH)
-      .then(r => r.json())
-      .then(nb => {
-        for (const cell of nb.cells || []) {
-          const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
-          if (cell.cell_type === 'markdown') addMarkdownCell(src);
-          else if (cell.cell_type === 'code') addCodeCell(src);
-        }
-      })
-      .catch(() => addCodeCell(''));
-  } else {
-    addCodeCell('');
-  }
+  resolveNotebook().then(({ nb, filename }) => {
+    if (nb) renderNotebook(nb, filename, false);
+    else    addCodeCell('');
+  });
 } else {
   // Presenter: full Pyodide kernel
   initPyodide().catch(e => {
